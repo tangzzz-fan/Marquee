@@ -13,6 +13,15 @@ import MarqueeCore
 @MainActor
 public final class SelectionOverlayController {
 
+    /// 覆盖层出现的意图。**决定拖出区域之后做什么**，而不是加一个额外的模式弹窗
+    /// （PRD 3.1 要求"模式弹窗 0 个"）。
+    public enum Mode: Sendable {
+        /// 一次成像：拖选区 / 点窗口 / 整屏，停住后 `⏎` 采集（ticket 03/04）
+        case singleShot
+        /// 长截图：拖出区域或点窗口后**直接开始连续抓帧**，用户自己滚（ticket 11）
+        case scrollCapture
+    }
+
     public enum Outcome: Sendable {
         case completed(CaptureOutcome)
         case cancelled
@@ -26,7 +35,10 @@ public final class SelectionOverlayController {
     private let onFinish: (Outcome) -> Void
     /// `⌘S` 时由宿主拼好落盘请求。`nil` 时 `⌘S` 只复制，不写磁盘。
     private let makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)?
+    /// 长截图会话工厂。`nil` 时 `Mode.scrollCapture` 不可用。
+    private let makeScrollSession: (@MainActor () -> ScrollCaptureSession)?
 
+    private var mode: Mode = .singleShot
     private var session = SelectionSession()
     private var overlays: [(panel: SelectionOverlayPanel, view: SelectionOverlayView)] = []
     private var displayGeometries: [DisplayGeometry] = []
@@ -46,13 +58,20 @@ public final class SelectionOverlayController {
     /// 一次 `Esc` 退出。不靠各块屏的面板各自消化，否则多屏要点好几次。
     private var keyMonitor: Any?
 
+    // 长截图（ticket 11）
+    private var scrollSession: ScrollCaptureSession?
+    private var scrollDriver: Task<Void, Never>?
+    private var scrollProgress: ScrollCaptureSession.Progress?
+    private var scrollRect: CGRect?
+
     public init(regionFlow: RegionCaptureFlow,
                 fullScreenFlow: FullScreenCaptureFlow,
                 windowFlow: WindowCaptureFlow,
                 windowLister: WindowListing,
                 displays: DisplayLocating,
                 onFinish: @escaping (Outcome) -> Void,
-                makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)? = nil) {
+                makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)? = nil,
+                makeScrollSession: (@MainActor () -> ScrollCaptureSession)? = nil) {
         self.regionFlow = regionFlow
         self.fullScreenFlow = fullScreenFlow
         self.windowFlow = windowFlow
@@ -60,21 +79,27 @@ public final class SelectionOverlayController {
         self.displays = displays
         self.onFinish = onFinish
         self.makeSaveRequest = makeSaveRequest
+        self.makeScrollSession = makeScrollSession
     }
 
     public var isPresented: Bool { !overlays.isEmpty }
 
+    /// 长截图正在连续抓帧
+    public var isScrollCapturing: Bool { scrollSession != nil && scrollProgress != nil }
+
     // MARK: - 呈现 / 收场
 
-    public func present() {
+    public func present(mode: Mode = .singleShot) {
         guard !isPresented else { return }
 
+        self.mode = mode
         isFinishing = false
         session = SelectionSession()
         pointerDownAt = nil
         dragExceededSlop = false
         hoveredWindow = nil
         isOptionDown = false
+        resetScroll()
         displayGeometries = displays.allDisplays()
 
         guard !displayGeometries.isEmpty,
@@ -123,6 +148,7 @@ public final class SelectionOverlayController {
     private func teardown() {
         for overlay in overlays {
             overlay.panel.onCancel = nil
+            overlay.panel.ignoresMouseEvents = false
             overlay.view.delegate = nil
             overlay.panel.orderOut(nil)
         }
@@ -132,7 +158,16 @@ public final class SelectionOverlayController {
         pointerDownAt = nil
         dragExceededSlop = false
         removeKeyMonitor()
+        resetScroll()
         NSCursor.arrow.set()
+    }
+
+    private func resetScroll() {
+        scrollDriver?.cancel()
+        scrollDriver = nil
+        scrollSession = nil
+        scrollProgress = nil
+        scrollRect = nil
     }
 
     private func installKeyMonitor() {
@@ -150,6 +185,90 @@ public final class SelectionOverlayController {
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
             self.keyMonitor = nil
+        }
+    }
+
+    // MARK: - 长截图（ticket 11）
+
+    /// 拖出区域（或点了窗口）之后立刻开滚。
+    ///
+    /// 关键一步是**把面板设成鼠标穿透**：滚动截屏要让用户去滚下面的应用，
+    /// 而覆盖层面板会吞掉滚轮事件。`ignoresMouseEvents = true` 只影响鼠标，
+    /// 键盘仍然回到本面板（`⏎` 结束 / `Esc` 取消照常）。
+    private func beginScrollCapture(cocoaRect: CGRect) {
+        guard !isFinishing, !isScrollCapturing, let makeScrollSession else { return }
+        guard cocoaRect.width >= 8, cocoaRect.height >= 8 else { return }
+
+        let session = makeScrollSession()
+        self.scrollSession = session
+        scrollRect = cocoaRect
+        // 选区状态机也要落点：覆盖层靠它画出被采区域的镂空与描边
+        self.session.settle(rect: cocoaRect)
+        setPanelsIgnoreMouse(true)
+        refresh()
+
+        let quartz = ScreenCoordinateConversion.quartzRect(fromCocoa: cocoaRect,
+                                                           primaryScreenHeight: primaryScreenHeight)
+        let geometries = displayGeometries
+
+        Task { [weak self] in
+            guard let self else { return }
+            switch await session.begin(selection: quartz, displays: geometries) {
+            case .started(let progress):
+                self.scrollProgress = progress
+                self.refresh()
+                self.startScrollDriver(session)
+
+            case .permissionBlocked(let decision, let grantedJustNow):
+                // 复用既有的收尾通道：宿主已经会为这两种结果弹正确的说明
+                self.teardown()
+                self.onFinish(.completed(.permissionBlocked(blockedBy: decision,
+                                                           grantedJustNow: grantedJustNow)))
+
+            case .failed(let failure):
+                self.teardown()
+                self.onFinish(.completed(.failed(failure)))
+            }
+        }
+    }
+
+    /// 按会话给定的节奏反复抓帧。**不在这里做配准或拼接**，那些都归 Core 的会话，
+    /// 这里只负责"按节拍敲一下"和把进度画出来。
+    private func startScrollDriver(_ session: ScrollCaptureSession) {
+        scrollDriver?.cancel()
+        let interval = session.settings.frameInterval
+        scrollDriver = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(interval))
+                if Task.isCancelled { break }
+                guard let self, !self.isFinishing else { break }
+                let progress = await session.captureFrame()
+                self.scrollProgress = progress
+                self.refresh()
+                if !progress.phase.isAcceptingFrames { break }
+            }
+        }
+    }
+
+    /// 结束长截图：把长图交给宿主（剪贴板 + 可选落盘 + 打开编辑器）。
+    private func finishScrollCapture(saveToDisk: Bool) {
+        guard !isFinishing, let session = scrollSession else { return }
+        isFinishing = true
+        scrollDriver?.cancel()
+        scrollDriver = nil
+        let save = saveRequest(for: nil, enabled: saveToDisk)
+
+        Task { [weak self] in
+            guard let self else { return }
+            let outcome = await session.finish(save: save)
+            self.teardown()
+            self.onFinish(.completed(outcome))
+        }
+    }
+
+    private func setPanelsIgnoreMouse(_ ignores: Bool) {
+        for overlay in overlays {
+            overlay.panel.ignoresMouseEvents = ignores
         }
     }
 
@@ -219,6 +338,7 @@ public final class SelectionOverlayController {
         guard !isFinishing else { return }
         isFinishing = true
         session.cancel()
+        scrollSession?.cancel()
         teardown()
         onFinish(.cancelled)
     }
@@ -229,7 +349,9 @@ public final class SelectionOverlayController {
         let cocoaRect = session.rect
         let presentation: SelectionPresentation
 
-        if let window = session.settledWindow {
+        if let progress = scrollProgress, isScrollCapturing {
+            presentation = scrollPresentation(rect: scrollRect, progress: progress)
+        } else if let window = session.settledWindow {
             let cocoaHover = session.rect
                 ?? ScreenCoordinateConversion.cocoaRect(fromQuartz: window.frame,
                                                         primaryScreenHeight: primaryScreenHeight)
@@ -253,6 +375,19 @@ public final class SelectionOverlayController {
             let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: hovered.frame,
                                                                   primaryScreenHeight: primaryScreenHeight)
             presentation = windowPresentation(hovered, cocoaRect: cocoaHover, locked: false)
+        } else if mode == .scrollCapture, let display = displayUnderPointer() {
+            // 长截图的空状态：用整块屏做高亮底，把"拖区域或点窗口"说清楚。
+            // 没有这个的话用户看到的只是一片变暗，不知道该干什么。
+            let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: display.frame,
+                                                                  primaryScreenHeight: primaryScreenHeight)
+            presentation = SelectionPresentation(
+                globalRect: nil,
+                sizeText: "",
+                originText: "",
+                hoverRect: cocoaHover,
+                hoverLabel: "长截图：拖出要滚动的区域，或单击要滚动的窗口",
+                hoverCornerRadius: 12
+            )
         } else {
             presentation = .empty
         }
@@ -298,6 +433,37 @@ public final class SelectionOverlayController {
         )
     }
 
+    /// 长截图抓帧中的读数：进度 + 操作提示 + 告警。
+    private func scrollPresentation(rect: CGRect?,
+                                    progress: ScrollCaptureSession.Progress) -> SelectionPresentation {
+        var status = progress.frameCount <= 1
+            ? "长截图已开始 · 往下滚"
+            : "长截图 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧"
+        if let milliseconds = progress.lastRegistrationMilliseconds {
+            status += String(format: " · 配准 %.0f ms", milliseconds)
+        }
+        return SelectionPresentation(
+            globalRect: rect,
+            sizeText: "",
+            originText: "",
+            hoverRect: nil,
+            hoverLabel: "",
+            hoverCornerRadius: 10,
+            isScrollCapturing: true,
+            scrollStatusText: status,
+            scrollHintText: "继续往下滚；⏎ 结束 · ⌘S 结束并保存 · Esc 取消",
+            scrollWarningText: progress.warning ?? ""
+        )
+    }
+
+    /// 指针所在屏（Quartz 空间）。
+    private func displayUnderPointer() -> DisplayGeometry? {
+        guard primaryScreenHeight > 0 else { return displayGeometries.first }
+        let quartz = ScreenCoordinateConversion.quartzPoint(fromCocoa: NSEvent.mouseLocation,
+                                                            primaryScreenHeight: primaryScreenHeight)
+        return displayGeometries.first { $0.frame.contains(quartz) } ?? displayGeometries.first
+    }
+
     private func settleOnWindow(_ window: WindowInfo) {
         let cocoa = ScreenCoordinateConversion.cocoaRect(fromQuartz: window.frame,
                                                          primaryScreenHeight: primaryScreenHeight)
@@ -316,6 +482,8 @@ public final class SelectionOverlayController {
     /// 方向键步长按**像素**给：2x 屏上 1 像素 = 0.5 点，
     /// 所以这里换算成点再交给状态机（ticket 03 要求 ±1 px / ⇧±10 px）。
     private func nudge(dx: CGFloat, dy: CGFloat) {
+        // 长截图抓帧中，方向键不该去挪已经确定的采集区域
+        guard !isScrollCapturing else { return }
         guard let cocoaRect = session.rect else { return }
         let quartz = ScreenCoordinateConversion.quartzRect(fromCocoa: cocoaRect,
                                                            primaryScreenHeight: primaryScreenHeight)
@@ -351,7 +519,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     }
 
     func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint, optionDown: Bool) {
-        guard !isFinishing else { return }
+        guard !isFinishing, !isScrollCapturing else { return }
         defer {
             pointerDownAt = nil
             dragExceededSlop = false
@@ -361,6 +529,10 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             // 松手 = 选区落点停住，等方向键微调 / ⏎ 确认。立即提交会让微调键永远走不到。
             _ = session.endDrag(at: globalPoint)
             refresh()
+            if mode == .scrollCapture, let rect = session.rect {
+                // 长截图不需要"停住再确认"：拖到哪里就从哪里开始滚
+                beginScrollCapture(cocoaRect: rect)
+            }
             return
         }
 
@@ -372,6 +544,9 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             // 单击窗口 = 落点停住，等 ⏎ 确认。立刻采集就没有确认过程。
             isOptionDown = optionDown
             settleOnWindow(window)
+            if mode == .scrollCapture, let rect = session.rect {
+                beginScrollCapture(cocoaRect: rect)
+            }
         }
     }
 
@@ -406,6 +581,23 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     private func performCommit(saveToDisk: Bool) {
         guard !isFinishing else { return }
+
+        if mode == .scrollCapture {
+            if isScrollCapturing {
+                finishScrollCapture(saveToDisk: saveToDisk)
+            } else if let rect = session.rect {
+                beginScrollCapture(cocoaRect: rect)
+            } else if let display = displayUnderPointer() {
+                // 没划区域就按 ⏎ = 整屏长截图（用户可能只想滚整个页面）
+                let cocoa = ScreenCoordinateConversion.cocoaRect(fromQuartz: display.frame,
+                                                                primaryScreenHeight: primaryScreenHeight)
+                session.settle(rect: cocoa)
+                refresh()
+                beginScrollCapture(cocoaRect: cocoa)
+            }
+            return
+        }
+
         switch session.commitAction(hasHoveredWindow: hoveredWindow != nil) {
         case .commitRegion:
             commitRegion(saveToDisk: saveToDisk)
@@ -425,6 +617,11 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     }
 
     func overlayViewDidRequestWholeScreen(_ view: SelectionOverlayView) {
+        if mode == .scrollCapture {
+            // 长截图里双击 = "整屏开始滚"，而不是"截一张整屏"
+            performCommit(saveToDisk: false)
+            return
+        }
         commitWholeScreen(saveToDisk: false)
     }
 

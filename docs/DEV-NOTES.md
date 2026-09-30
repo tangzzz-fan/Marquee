@@ -175,3 +175,48 @@ defaults delete com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox
 
 **结论**：所有构建走 `scripts/build.sh`，所有测试走 `scripts/test.sh`，  
 不要再手敲裸命令 —— 参数是必需的，不是可选的。
+
+## 4.1 被沙箱包裹的 shell 里，xcodebuild 编不过 SwiftUI 宏（**不是代码问题**）
+
+**症状**（2026-10-01 实测，出现在 `MarqueeEditor/AnnotationEditorWindow.swift` 的 `@State`）：
+
+```
+error: external macro implementation type 'SwiftUIMacros.StateMacro' could not be found
+for macro 'State()'; '.../swift-plugin-server' produced malformed response
+```
+
+**根因**：`swift-plugin-server` 启动时**自己再套一层沙箱**（`sandbox_apply()`）。
+外层已经处在受限 profile 时，这次 apply 被拒，进程随即被杀 ——
+本机实测该二进制连 `--version` 都打不出任何输出，退出码 **137（SIGKILL）**。
+与 4 节是同一类"嵌套沙箱"问题，只是这次的触发点在宏插件。
+
+**判断方法（30 秒排除代码嫌疑）**：
+
+```bash
+./scripts/test.sh          # 走 SwiftPM，按 --disable-sandbox 拉起插件 → 能过
+./scripts/build.sh         # 走 xcodebuild → 宏插件被杀 → 报上面的错
+```
+
+**只要 SwiftPM 能编、xcodebuild 不能，就一定是宿主沙箱在挡，不要动代码。**
+
+**试过且无效的做法**（别再重复）：
+
+| 尝试                                            | 结果                                            |
+| --------------------------------------------- | --------------------------------------------- |
+| 清空 PATH（去掉 agent 的 shim 前缀）                 | 无效                                            |
+| `env -i` 最小环境变量                              | 无效                                            |
+| `-jobs 1/2` 降并发                               | 无效                                            |
+| 官方三件套 `-IDEPackageSupportDisableManifestSandbox=1`<br>`-IDEPackageSupportDisablePluginExecutionSandbox=1`<br>`ENABLE_USER_SCRIPT_SANDBOXING=NO` | 无效 —— 它们只关**内层**插件沙箱，<br>而外层 apply 本身就被拒 |
+
+那三个官方参数对**正常终端 / Xcode** 是有效解法（社区同款问题就是这么解的），
+只是对本机的受限宿主无效。所以 `scripts/build.sh` 里**刻意不加**，
+避免让人误以为脚本能自愈。
+
+**可用替代**：App 层源码可以用 SwiftPM 产物单独做类型检查，不必依赖 xcodebuild：
+
+```bash
+cd Modules && swift build --disable-sandbox
+cd .. && xcrun swiftc -typecheck -target arm64-apple-macos15.0 -swift-version 6 \
+  -strict-concurrency=complete -I Modules/.build/out/Products/Debug App/Sources/*.swift
+```
+

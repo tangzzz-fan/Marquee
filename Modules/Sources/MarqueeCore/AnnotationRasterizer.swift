@@ -5,6 +5,17 @@ import Foundation
 ///
 /// 交互绘制走 SwiftUI Canvas（`MarqueeEditor`）。这里是导出路径，
 /// `Esc` 复制到剪贴板之前必须走它，不能把对象信息留在剪贴板里。
+///
+/// ## ⚠️ 底图必须在翻转 CTM **之前**画（实测，2026-10-01）
+///
+/// 原来的写法是先翻成"左上原点、y 向下"再画底图，结果是**底图整个上下颠倒**，
+/// 而标注位置是对的 —— 导出的成品是一张倒着的截图配正着的框。
+/// 之所以一直没被发现：当时的断言用的是纯色底图，翻转看不出来。
+///
+/// 原因：翻转后 `draw(image, in: rect)` 仍把图像顶行放在 `rect.maxY`，
+/// 而翻转后 `rect.maxY` 已经是视觉上的**下**边。所以底图要先在默认坐标系里画，
+/// 之后再把 CTM 翻成左上原点，专门给标注的坐标用。
+/// （同一个坑在 `ScrollStitchRenderer` 里也踩到过，那里的注释有对照实验数据。）
 public enum AnnotationRasterizer {
 
     public static func image(document: AnnotationDocument, source: CGImage) -> CGImage? {
@@ -23,10 +34,12 @@ public enum AnnotationRasterizer {
                                       space: colorSpace,
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
 
-        // 翻成左上原点、y 向下，和标注坐标一致。图像用 CGImage 自己的方向画进去即可。
+        // ① 底图：默认 y 向上坐标系，rect 恰好铺满（画布尺寸 == 裁剪尺寸）
+        context.draw(cropped, in: CGRect(x: 0, y: 0, width: crop.width, height: crop.height))
+
+        // ② 翻成左上原点、y 向下，这样标注坐标（原图像素、原点左上）可以直接用
         context.translateBy(x: 0, y: CGFloat(height))
         context.scaleBy(x: 1, y: -1)
-        context.draw(cropped, in: CGRect(x: 0, y: 0, width: crop.width, height: crop.height))
         context.translateBy(x: -crop.minX, y: -crop.minY)
 
         let ordered = document.annotations.enumerated().sorted { lhs, rhs in

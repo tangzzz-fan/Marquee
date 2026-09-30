@@ -118,7 +118,7 @@ final class CaptureCoordinator {
         }
     }
 
-    func presentOverlay() {
+    func presentOverlay(mode: SelectionOverlayController.Mode = .singleShot) {
         guard overlay?.isPresented != true else { return }
 
         let controller = SelectionOverlayController(
@@ -138,10 +138,25 @@ final class CaptureCoordinator {
                     applicationName: window?.ownerName ?? "",
                     windowTitle: window?.title ?? ""
                 )
+            },
+            // 直接捕获依赖而不是 `[weak self]`：会话工厂在覆盖层呈现时才被调用，
+            // 而覆盖层本身由 self 持有 —— 写 `weak` 只会多出一个永远走不到的 nil 分支。
+            makeScrollSession: { [permission = self.permission,
+                                  capturer = self.capturer,
+                                  clipboard = self.clipboard] in
+                ScrollCaptureSession(permission: permission,
+                                     capturer: capturer,
+                                     registrar: VisionScrollRegistrar(),
+                                     clipboard: clipboard)
             }
         )
         overlay = controller
-        controller.present()
+        controller.present(mode: mode)
+    }
+
+    /// 菜单「滚动截屏」入口（ticket 11：手动滚动长截图）。
+    func performScrollCapture() {
+        presentOverlay(mode: .scrollCapture)
     }
 
     /// 截图已经进了剪贴板。编辑器里 `Esc` 会把带标注的成品再写回去。

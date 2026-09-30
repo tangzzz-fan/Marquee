@@ -57,6 +57,20 @@ enum TestImage {
         }
     }
 
+    /// 上黑下白（上半 `0.5` 以上为黑）。
+    ///
+    /// 专用来抓"画进去的图被上下颠倒"这类错误：**纯色图上看不出翻转**，
+    /// 这正是 `AnnotationRasterizer` 那个底图颠倒 bug 一直没被发现的原因。
+    static func topBlackBottomWhite(width: Int, height: Int) -> CGImage {
+        makeContext(width: width, height: height) { context in
+            let half = height / 2
+            context.setFillColor(color(0, 0, 0))
+            context.fill(CGRect(x: 0, y: half, width: width, height: height - half))
+            context.setFillColor(color(1, 1, 1))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: half))
+        }
+    }
+
     /// 读像素。**以左上角为原点**（y 向下），与 `targetPixelRect` 同一空间。
     ///
     /// 两条实测出来的硬约束（都踩过）：

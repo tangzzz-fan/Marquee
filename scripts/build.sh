@@ -18,6 +18,29 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# ⚠️ 已知环境限制：**被外部沙箱包裹的 shell 里，这个脚本跑不过去**。
+#
+# 症状（出现在 `MarqueeEditor/AnnotationEditorWindow.swift`）：
+#
+#   external macro implementation type 'SwiftUIMacros.StateMacro' could not be found
+#   for macro 'State()'; '.../swift-plugin-server' produced malformed response
+#
+# 根因不是代码，也不是 PATH：`swift-plugin-server` 启动时会**自己再套一层沙箱**
+# （`sandbox_apply()`），外层沙箱不放行就会被直接杀掉（实测该进程在本 shell 里
+# 退出码 137 / SIGKILL，`--version` 都打不出任何东西）。这是嵌套沙箱问题。
+#
+# 判断是不是这个原因：`./scripts/test.sh` 走 SwiftPM，**同一条代码路径能过** ——
+# 因为它按 `--disable-sandbox` 拉起插件。所以只要 SwiftPM 能编、xcodebuild 不能，
+# 就说明是宿主沙箱在挡，别去改代码。
+#
+# 正常终端 / Xcode / 本机 shell 下这个脚本是好的。
+# 官方给 xcodebuild 的对应参数是
+#   -IDEPackageSupportDisableManifestSandbox=1
+#   -IDEPackageSupportDisablePluginExecutionSandbox=1
+#   ENABLE_USER_SCRIPT_SANDBOXING=NO
+# 它们对**外层**沙箱无效（外层的 apply 本身就被拒），因此这里不加 ——
+# 加了会让人误以为脚本能自愈。
+
 if [ "$(defaults read com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox 2>/dev/null || echo 0)" != "1" ]; then
   echo "✗ 缺少必需的 Xcode 设置，构建无法进行。请先执行（一次性，可回退）：" >&2
   echo "" >&2

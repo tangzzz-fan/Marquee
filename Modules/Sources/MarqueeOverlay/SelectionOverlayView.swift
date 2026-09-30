@@ -17,6 +17,14 @@ struct SelectionPresentation: Equatable {
     var hoverLabel: String
     /// 系统窗口圆角的近似值。没有 API 给出真实圆角，10 点贴近近年 macOS 普通窗口
     var hoverCornerRadius: CGFloat
+    /// 长截图正在抓帧。此时读数换成进度与提示，描边加粗
+    var isScrollCapturing: Bool = false
+    /// 长截图进度（如「长截图 · 已拼 1200 px · 4 帧」）
+    var scrollStatusText: String = ""
+    /// 长截图操作提示（如「滚动到底后按 ⏎ 结束 · Esc 取消」）
+    var scrollHintText: String = ""
+    /// 长截图告警（如「已经滚到底了」「这一帧没对齐」），非空时用醒目色
+    var scrollWarningText: String = ""
 
     static let empty = SelectionPresentation(globalRect: nil,
                                              sizeText: "",
@@ -43,6 +51,13 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     /// 双击：整屏
     func overlayViewDidRequestWholeScreen(_ view: SelectionOverlayView)
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView)
+}
+
+/// 读数框的三种行色。集中放一处，免得各处硬编码颜色漂移。
+enum ReadoutStyle {
+    static let normal = NSColor.white
+    static let warning = NSColor.systemOrange
+    static let hint = NSColor.white.withAlphaComponent(0.75)
 }
 
 /// 单块屏上的蒙层视图。
@@ -143,8 +158,10 @@ final class SelectionOverlayView: NSView {
 
         if let localSelection, localSelection.width >= 1, localSelection.height >= 1 {
             fillMask(punching: localSelection, cornerRadius: 0)
-            stroke(localSelection, cornerRadius: 0, lineWidth: 1)
-            drawReadout(in: localSelection, text: presentation.sizeText + "\n" + presentation.originText)
+            stroke(localSelection,
+                   cornerRadius: 0,
+                   lineWidth: presentation.isScrollCapturing ? 2 : 1)
+            drawReadout(in: localSelection, lines: readoutLines())
             return
         }
 
@@ -153,12 +170,32 @@ final class SelectionOverlayView: NSView {
             fillMask(punching: localHover, cornerRadius: radius)
             stroke(localHover, cornerRadius: radius, lineWidth: 2)
             if !presentation.hoverLabel.isEmpty {
-                drawReadout(in: localHover, text: presentation.hoverLabel)
+                drawReadout(in: localHover,
+                            lines: [(presentation.hoverLabel, ReadoutStyle.normal)])
             }
             return
         }
 
         bounds.fill()
+    }
+
+    /// 长截图抓帧中显示进度与提示，否则显示尺寸/坐标读数。
+    private func readoutLines() -> [(text: String, color: NSColor)] {
+        guard presentation.isScrollCapturing else {
+            return [(presentation.sizeText, ReadoutStyle.normal),
+                    (presentation.originText, ReadoutStyle.normal)]
+        }
+        var lines: [(text: String, color: NSColor)] = []
+        if !presentation.scrollStatusText.isEmpty {
+            lines.append((presentation.scrollStatusText, ReadoutStyle.normal))
+        }
+        if !presentation.scrollWarningText.isEmpty {
+            lines.append((presentation.scrollWarningText, ReadoutStyle.warning))
+        }
+        if !presentation.scrollHintText.isEmpty {
+            lines.append((presentation.scrollHintText, ReadoutStyle.hint))
+        }
+        return lines
     }
 
     private func fillMask(punching hole: CGRect, cornerRadius: CGFloat) {
@@ -180,13 +217,19 @@ final class SelectionOverlayView: NSView {
         return NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
     }
 
-    private func drawReadout(in localSelection: CGRect, text: String) {
-        guard !text.isEmpty else { return }
+    private func drawReadout(in localSelection: CGRect, lines: [(text: String, color: NSColor)]) {
+        let visible = lines.filter { !$0.text.isEmpty }
+        guard !visible.isEmpty else { return }
 
-        let attributed = NSAttributedString(string: text, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: NSColor.white,
-        ])
+        // 逐行上色：告警行用醒目色，否则用户看不出"到底了"和"还在滚"的差别
+        let attributed = NSMutableAttributedString()
+        for (index, line) in visible.enumerated() {
+            if index > 0 { attributed.append(NSAttributedString(string: "\n")) }
+            attributed.append(NSAttributedString(string: line.text, attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: line.color,
+            ]))
+        }
         let textSize = attributed.size()
         let padding = NSSize(width: 8, height: 5)
         let boxSize = NSSize(width: textSize.width + padding.width * 2,

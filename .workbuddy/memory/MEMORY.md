@@ -24,7 +24,9 @@
 | 模块依赖方向 | 只有 `MarqueeCore` 无依赖，其余只依赖 Core。**Core 额外持有"接缝（协议/值类型）+ 编排逻辑"**（`CaptureSeams.swift` / `FullScreenCaptureFlow.swift` / `ShortcutService.swift`），实现模块只提供 OS 实现。理由：编排要能脱机单测，而 SwiftPM 依赖是单向的（ticket 02 定） |
 | 快捷键可配置 | **从 ticket 02 起就是可配置的**（用户明确要求"启动后能换键"）。`UserDefaults` 键 `shortcut.fullScreenCapture`，**默认 `⌃Q`**（2026-09-30 由用户从 ⌃⌘A 改过来 —— ⌃⌘A 被微信独占占用）；入口＝菜单栏「快捷键…」 |
 | 截屏入口 | **ticket 03 起＝选区覆盖层**。拖拽＝区域（松开后停住，方向键微调，`⏎` 提交）；单击或 `⏎` 高亮窗口＝**先停住**，再 `⏎` 才截这一扇窗（带阴影；`⌥` 无阴影）；叠层画面用拖选区。无目标时 `⏎`/双击＝整屏、`Esc`＝取消。**不另设"直接全屏"菜单项** |
+| 滚动截屏入口 | **ticket 11 起＝菜单栏「滚动截屏」**（菜单 6 项，已到 PRD 上限，再加要先合并）。进入后拖区域或点窗口＝**立刻开始抓帧**（不需要"停住再确认"）；`⏎`（无区域）＝指针所在整屏开滚；抓帧中 `⏎` 结束、`⌘S` 结束并落盘、`Esc` 取消。抓帧期间面板 `ignoresMouseEvents = true` 让滚轮穿透（否则用户滚不动）。**已知限制：面板失去 key 焦点后 `⏎`/`Esc` 会失效** |
 | 确认之后 | 原图立刻进剪贴板（`⌘S` 才落盘）。同时打开标注编辑器。编辑器里 `Esc` 把标注栅格化后再写回剪贴板并关闭。裁切界面在 ticket 09 |
+| 测试目标结构 | `MarqueeCoreTests`（纯逻辑）+ **`MarqueeCaptureTests`**（真实 Vision 的装置自检必须打在真实实现上）+ `MarqueeTestSupport`（**测试专用**库：合成长页 / 位图读取 / MAE，不挂宿主 target）。新测试目标要同时改 `Modules/Package.swift` |
 | 签名 | **由 `project.yml` 负责**（`Apple Development` + `DEVELOPMENT_TEAM: UKXWZ3FS84`），**不是**构建脚本重签 —— Xcode Run 不执行脚本，只改脚本等于没修。ad-hoc 会让 TCC 每次都当新应用 → 权限反复索要。见 DEV-NOTES 第 1 节 |
 | 权限探针 | `SystemScreenRecordingPermission` 返回 granted / notDetermined / **进程内 denied**（问过一次仍未授权；**不要**写 UserDefaults）。`requestPermission()` 必须碰一次 `SCShareableContent` **枚举**（不要截帧），同一进程只弹一次系统框；刚授权必须重启后 SCK 才可用。见 DEV-NOTES 第 1 / 1.1 / 1.3 节 |
 | 坐标空间 | **覆盖层内部一律用 Cocoa 全局点坐标**（`NSEvent`/`NSScreen` 都在这个空间），只在提交采集时经 `ScreenCoordinateConversion` 转 Quartz。`DisplayGeometry.frame` / `CGDisplayBounds` 是 Quartz。两者 y 轴相反，混用会静默错位 |
@@ -70,6 +72,8 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 | 滚动配准可行 | 端到端拼接 vs 真值 **MAE 0.000/255**；Vision 平移配准精确无误差 |
 | **配准主方案 = Vision** | `VNTranslationalImageRegistrationRequest`；自研 SAD 正确但 **258ms/次太慢** |
 | 亚像素必须处理 | 整数累积误差 ±0.5px → 抛物线精化 0.04px，按**累计小数位移重采样** |
+| Vision 位移符号 | **`rows = +ty`**（`targetedCGImage:` = 上一帧、handler = 当前帧）。取负 → 每帧都判成"没动"，长图永远只有一屏（不崩不报错）。2026-10-01 用探针钉死 |
+| 滚动配准实测 | 480×600 帧：**8.3 ms/次**（首次 68 ms 是一次性开销）→ 不需要降采样。5 帧拼接 1 ms，端到端 MAE **0.0** |
 | 全局快捷键 | Carbon `RegisterEventHotKey`，无需辅助功能权限；**冲突码 `-9878` 只在"独占注册"时才出得来**（见陷阱 14） |
 | 权限检测 | `CGPreflightScreenCaptureAccess()` / `CGPreflightListenEventAccess()` / `AXIsProcessTrusted()`（在 `CoreGraphics.tbd`） |
 | Liquid Glass | `NSGlassEffectView` = **macos(26.0)+**（`effectIsInteractive` = 27.0）；`SCScreenshotConfiguration` = 26.0+ |
@@ -102,6 +106,11 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 20. **bash + `set -u`：中文文案里 `$VAR` 紧跟全角字符会被当成变量名的一部分**（如 `$IDENTITY（team …）`）→ 报 "unbound variable"。写 `${VAR}`。
 21. **别依赖 Xcode 自动创建的 user scheme**（在 `xcuserdata/`）。`xcodegen generate` 之后它可能不在了，构建直接报 `does not contain a scheme named …` → 必须在 `project.yml` 里声明**共享** scheme。
 22. **屏幕录制授权框连弹**：`requestPermission()` 里截帧 + preflight 在重启前一直是 false 仍报 `.notDetermined` + 刚授权还去采集，三者叠在一起会让每次快捷键都弹系统框。进程内记住"问过一次"（不要写 UserDefaults），刚授权只提示重启。见 DEV-NOTES 第 1.3 节。
+23. **翻转 CTM 之后再 `draw(CGImage, in:)`，图会上下颠倒。** 翻转后图像的顶行仍在 `rect.maxY`，而 `rect.maxY` 已是视觉上的**下**边。实测：自上而下 10/20/30/40 的四行图落在第 2 行，翻转得 `40,30,20,10`。所以**底图要在默认 y 向上坐标系里画**，需要"左上原点"时再把 CTM 翻过来画别的（标注）。`AnnotationRasterizer` 与 `ScrollStitchRenderer` 都踩过；**纯色底图看不出翻转**，所以 `TestSupport` 里加了 `topBlackBottomWhite` 专门抓它。
+24. **位图行步长必须用 `ctx.bytesPerRow`（**字节**）**，不能 `bytesPerRow / 4` 再乘像素下标 —— 单位混用会读出毫无关系的字节，且**不报错**，只是断言在胡说。宽度不是 16 倍数时 `bytesPerRow` 还会被 CG 补齐（实测 400 宽 → 416）。
+25. **长图拼接的总高与每片底边都取 `floor`，不要 `ceil`。** 取 `ceil` 会多出一行"只覆盖一半"的行，谁都不完整覆盖它 → 长图上一条**半透明横线**。片的落位是连续坐标，`floor` 才是真正被完整覆盖到的行数。
+26. **被沙箱包裹的 shell 里 `xcodebuild` 编不过 SwiftUI 宏**：`swift-plugin-server` 启动时自己再套一层沙箱，外层不放行就被 SIGKILL（退出码 137），报 `StateMacro ... produced malformed response`。**判断方法：`./scripts/test.sh`（SwiftPM，按 `--disable-sandbox`）能过、`./scripts/build.sh` 不能 → 一定是宿主沙箱，别动代码。** 清 PATH / `env -i` / `-jobs` / 官方三件套都试过无效；App 层可改用 `swiftc -typecheck -I Modules/.build/out/Products/Debug` 验证。见 DEV-NOTES 第 4.1 节。
+27. **`NSLock.lock()` 在 async 上下文里不可用**（编译报 "unavailable from asynchronous contexts"）→ 把加解锁收进一个同步闭包（`withLocked`），在闭包外再做异步的事。
 
 ## 文档与资产
 
@@ -111,7 +120,9 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 | `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限完整复盘（四层根因 + 当前设计 + 验证） |
 | `docs/RENDER-BENCH.md` | 渲染技术实测报告 |
 | `docs/SPIKE-PLAN.md` | **坑点/难点/重点清单 + 提前验证报告（37 项）** |
-| `docs/DEV-NOTES.md` | 开发循环的已知摩擦（签名、沙箱、工程生成） |
+| `docs/DEV-NOTES.md` | 开发循环的已知摩擦（签名、沙箱、工程生成、宏插件被杀） |
+| `Modules/Sources/MarqueeTestSupport/` | **测试专用**：合成长页 `SyntheticPage`（含小数偏移取帧）+ 位图读取 / MAE。被 Core 与 Capture 两个测试目标共用 |
+| `Modules/Tests/MarqueeCaptureTests/` | 真实 Vision 的**装置自检**（符号 / 亚像素 / 端到端 MAE / 耗时预算） |
 | `.scratch/issues/2026-09-30-marquee-mvp/` | **18 条 ticket + INDEX**（本地 tracker） |
 | `Tools/Spikes/`、`Tools/RenderBench/` | 独立验证工具，与产品代码分离 |
 

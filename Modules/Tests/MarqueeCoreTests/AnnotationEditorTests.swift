@@ -191,6 +191,38 @@ struct AnnotationEditorTests {
         #expect(stroke.blue > 200)
     }
 
+    @Test("导出时底图不许上下颠倒 —— 用上下不同的底图抓翻转")
+    func exportKeepsImageOrientation() {
+        // 纯色底图看不出翻转：这正是底图颠倒 bug 潜伏下来的原因，所以这里必须用上下不同的图
+        let source = TestImage.topBlackBottomWhite(width: 24, height: 16)
+        let document = AnnotationDocument(pixelSize: CGSize(width: 24, height: 16))
+
+        guard let exported = AnnotationRasterizer.image(document: document, source: source) else {
+            Issue.record("导出失败")
+            return
+        }
+        #expect(exported.width == 24)
+        #expect(exported.height == 16)
+
+        let top = TestImage.pixel(exported, x: 12, y: 1)
+        #expect(top.red < 40, "顶部应当是黑的；读到 \(top) 说明底图被上下颠倒了")
+        let bottom = TestImage.pixel(exported, x: 12, y: 14)
+        #expect(bottom.red > 200, "底部应当是白的；读到 \(bottom) 说明底图被上下颠倒了")
+
+        // 裁切后的方向也要对：只取下半（白），且裁切原点不能错位
+        let cropped = AnnotationDocument(pixelSize: CGSize(width: 24, height: 16),
+                                         cropRect: CGRect(x: 0, y: 8, width: 24, height: 8))
+        guard let croppedExport = AnnotationRasterizer.image(document: cropped, source: source) else {
+            Issue.record("裁切导出失败")
+            return
+        }
+        #expect(croppedExport.height == 8)
+        for y in [0, 3, 7] {
+            #expect(TestImage.pixel(croppedExport, x: 12, y: y).red > 200,
+                    "裁到下半应当整段是白的，第 \(y) 行不是")
+        }
+    }
+
     @Test("100 个标注的导出低于 4 毫秒")
     func rasterizesOneHundredWithinBudget() {
         var annotations: [Annotation] = []

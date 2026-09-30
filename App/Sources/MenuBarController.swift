@@ -3,7 +3,9 @@ import MarqueeCore
 
 /// 菜单栏入口。
 ///
-/// 约束（PRD 3.1「功能简洁」）：下拉菜单 **≤ 6 项**，当前 5 项。
+/// 约束（PRD 3.1「功能简洁」）：下拉菜单 **≤ 6 项**，当前 6 项
+/// （截屏 / 滚动截屏 / 延时截屏 / 最近截图 / 快捷键… / 退出），已到上限 ——
+/// 再加东西要先合并，别默默变第 7 项。
 ///
 /// 「设置…」这一项在 ticket 02 里直接变成了**可用的「快捷键…」**：
 /// 与其摆一个点不动的「设置…」占位、再另开一个只能改快捷键的窗口，
@@ -14,6 +16,8 @@ final class MenuBarController {
 
     /// 点击「截屏」
     var onCapture: (() -> Void)?
+    /// 点击「滚动截屏」
+    var onScrollCapture: (() -> Void)?
     /// 点击「快捷键…」
     var onShowShortcuts: (() -> Void)?
 
@@ -48,6 +52,13 @@ final class MenuBarController {
 
         captureItem.target = self
         menu.addItem(captureItem)
+
+        // ticket 11：长截图（手动滚动）
+        let scroll = NSMenuItem(title: "滚动截屏",
+                                action: #selector(triggerScrollCapture),
+                                keyEquivalent: "")
+        scroll.target = self
+        menu.addItem(scroll)
 
         // ticket 15：延时截屏（3 / 5 / 10 秒）
         menu.addItem(Self.placeholder("延时截屏"))
@@ -89,6 +100,10 @@ final class MenuBarController {
 
     @objc private func triggerCapture() {
         onCapture?()
+    }
+
+    @objc private func triggerScrollCapture() {
+        onScrollCapture?()
     }
 
     @objc private func showShortcuts() {
