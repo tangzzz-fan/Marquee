@@ -1,0 +1,21 @@
+# Xcode / 构建产物
+*.xcodeproj/
+DerivedData/
+build/
+.build/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# 测试与覆盖率
+*.profraw
+*.profdata
+
+# Tools 下的命令行工具编译产物（源码入库，二进制不入库）
+Tools/Spikes/spikes
+Tools/RenderBench/bench
+Tools/RenderBench/bench2
+
+# macOS
+.DS_Store

@@ -1,0 +1,58 @@
+# Marquee —— XcodeGen 工程定义
+#
+# .xcodeproj 是生成物，不入库。改动工程配置一律改这里，然后 `xcodegen generate`。
+# 模块边界见 Modules/Package.swift。
+
+name: Marquee
+
+options:
+  bundleIdPrefix: dev.tango
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  groupSortPosition: top
+
+packages:
+  MarqueeModules:
+    path: Modules
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  Marquee:
+    type: application
+    platform: macOS
+    sources:
+      - path: App/Sources
+    dependencies:
+      - package: MarqueeModules
+        product: MarqueeCore
+      - package: MarqueeModules
+        product: MarqueeCapture
+      - package: MarqueeModules
+        product: MarqueeOverlay
+      - package: MarqueeModules
+        product: MarqueeEditor
+      - package: MarqueeModules
+        product: MarqueeSettings
+      - package: MarqueeModules
+        product: MarqueeHistory
+    settings:
+      base:
+        PRODUCT_NAME: Marquee
+        PRODUCT_BUNDLE_IDENTIFIER: dev.tango.Marquee
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: App/Info.plist
+        # 首期本地开发用 ad-hoc 签名；正式签名与公证见 ticket 18
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+        COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
