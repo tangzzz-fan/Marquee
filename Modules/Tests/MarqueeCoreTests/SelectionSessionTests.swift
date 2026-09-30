@@ -176,3 +176,61 @@ struct SelectionSessionNudgeTests {
         #expect(session.rect?.height == 200)
     }
 }
+
+@Suite("选区会话：窗口落点与 ⏎ 意图")
+struct SelectionSessionWindowSettleTests {
+
+    private let window = WindowInfo(windowID: 7,
+                                    frame: CGRect(x: 10, y: 20, width: 400, height: 300),
+                                    layer: 0,
+                                    ownerPID: 100,
+                                    ownerName: "Safari",
+                                    title: "Start",
+                                    alpha: 1)
+    private let cocoaRect = CGRect(x: 10, y: 500, width: 400, height: 300)
+
+    @Test("锁定窗口后停住，不自动提交")
+    func settleWindowLocksWithoutCommit() {
+        var session = SelectionSession()
+        session.settleWindow(window, cocoaRect: cocoaRect)
+        #expect(session.isSettled)
+        #expect(session.settledWindow == window)
+        #expect(session.rect == cocoaRect)
+        #expect(session.commitAction(hasHoveredWindow: true) == .commitWindow)
+    }
+
+    @Test("悬停窗口时第一次 ⏎ 是落点，不是整屏、也不是立刻截窗")
+    func enterWhileHoveringSettles() {
+        let session = SelectionSession()
+        #expect(session.commitAction(hasHoveredWindow: true) == .settleHoveredWindow)
+        #expect(session.commitAction(hasHoveredWindow: false) == .commitWholeScreen)
+    }
+
+    @Test("拖选区落点后 ⏎ 提交的是区域，不是窗口")
+    func settledRegionCommitsRegion() {
+        var session = SelectionSession()
+        session.beginDrag(at: CGPoint(x: 0, y: 0))
+        _ = session.endDrag(at: CGPoint(x: 80, y: 40))
+        #expect(session.settledWindow == nil)
+        #expect(session.commitAction(hasHoveredWindow: true) == .commitRegion)
+    }
+
+    @Test("窗口落点后再微调 → 变成普通选区")
+    func nudgeDropsWindowTarget() {
+        var session = SelectionSession()
+        session.settleWindow(window, cocoaRect: cocoaRect)
+        let moved = session.nudge(dx: 1, dy: 0)
+        #expect(moved)
+        #expect(session.settledWindow == nil)
+        #expect(session.commitAction(hasHoveredWindow: false) == .commitRegion)
+    }
+
+    @Test("重新拖选区会丢掉已锁定的窗口")
+    func beginDragClearsSettledWindow() {
+        var session = SelectionSession()
+        session.settleWindow(window, cocoaRect: cocoaRect)
+        session.beginDrag(at: CGPoint(x: 0, y: 0))
+        #expect(session.settledWindow == nil)
+        #expect(session.isDragging)
+    }
+}

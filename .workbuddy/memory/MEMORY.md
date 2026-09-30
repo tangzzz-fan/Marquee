@@ -23,9 +23,9 @@
 | 任务管理 | matt pocock `to-tickets`；本地 markdown tracker 在 `.scratch/issues/`（**刻意入库**） |
 | 模块依赖方向 | 只有 `MarqueeCore` 无依赖，其余只依赖 Core。**Core 额外持有"接缝（协议/值类型）+ 编排逻辑"**（`CaptureSeams.swift` / `FullScreenCaptureFlow.swift` / `ShortcutService.swift`），实现模块只提供 OS 实现。理由：编排要能脱机单测，而 SwiftPM 依赖是单向的（ticket 02 定） |
 | 快捷键可配置 | **从 ticket 02 起就是可配置的**（用户明确要求"启动后能换键"）。`UserDefaults` 键 `shortcut.fullScreenCapture`，**默认 `⌃Q`**（2026-09-30 由用户从 ⌃⌘A 改过来 —— ⌃⌘A 被微信独占占用）；入口＝菜单栏「快捷键…」 |
-| 截屏入口 | **ticket 03 起＝选区覆盖层**（菜单「截屏」与快捷键都走它）。拖拽＝区域、`⏎`(无选区)/双击＝整屏、`Esc`＝取消、方向键＝±1 像素微调（`⇧`±10）。**不另设"直接全屏"菜单项**（用户 2026-09-30 确认） |
-| 签名 | **构建后用证书重签**（`scripts/build.sh`，`MARQUEE_SIGN_IDENTITY` 可覆盖）。ad-hoc 会让 TCC 每次重构建都当成新应用 → 屏幕录制权限反复索要。见 DEV-NOTES 第 1 节 |
-| 权限探针 | `SystemScreenRecordingPermission` **只返回 granted / notDetermined，不声称 denied**。用自己持久化的标记推断 denied 会把用户锁死（永远授权不了），原因见 DEV-NOTES 第 1 节 |
+| 截屏入口 | **ticket 03 起＝选区覆盖层**。拖拽＝区域（松开后停住，方向键微调，`⏎` 提交）；单击或 `⏎` 高亮窗口＝**先停住**，再 `⏎` 才截这一扇窗（带阴影；`⌥` 无阴影）；叠层画面用拖选区。无目标时 `⏎`/双击＝整屏、`Esc`＝取消。**不另设"直接全屏"菜单项** |
+| 签名 | **由 `project.yml` 负责**（`Apple Development` + `DEVELOPMENT_TEAM: UKXWZ3FS84`），**不是**构建脚本重签 —— Xcode Run 不执行脚本，只改脚本等于没修。ad-hoc 会让 TCC 每次都当新应用 → 权限反复索要。见 DEV-NOTES 第 1 节 |
+| 权限探针 | `SystemScreenRecordingPermission` 返回 granted / notDetermined / **进程内 denied**（问过一次仍未授权；**不要**写 UserDefaults）。`requestPermission()` 必须碰一次 `SCShareableContent` **枚举**（不要截帧），同一进程只弹一次系统框；刚授权必须重启后 SCK 才可用。见 DEV-NOTES 第 1 / 1.1 / 1.3 节 |
 | 坐标空间 | **覆盖层内部一律用 Cocoa 全局点坐标**（`NSEvent`/`NSScreen` 都在这个空间），只在提交采集时经 `ScreenCoordinateConversion` 转 Quartz。`DisplayGeometry.frame` / `CGDisplayBounds` 是 Quartz。两者 y 轴相反，混用会静默错位 |
 | 跨屏选区 | 逐屏取交集后拼接（`SelectionLayout` + `ImageCompositing`），输出 scale 取参与屏里**最大**的（不丢信息）。不用 15.2+ 的 `captureImage(in:)`：高于最低系统，且输出分辨率不受控 |
 
@@ -96,12 +96,18 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 15. **别用自己持久化的标记去推断 TCC 的 `denied`**：签名身份一变，TCC 状态重置而标记还在，于是再也不敢调 `CGRequestScreenCaptureAccess()`；而 macOS 只在应用调用采集 API 时才把它登记进「屏幕录制」列表 → 用户永远授权不了。见 DEV-NOTES 第 1 节。
 16. **`OptionSet` 的 Codable 是 `RawRepresentable` 单值编码**：`ShortcutModifiers`（包一个 `rawValue`）编出来是 `"modifiers":9`，**不是** `{"rawValue":9}`。手写偏好做测试时别猜形状（用等价类型实编一次）。
 17. **`os.Logger` 的字符串插值里引用实例属性要写 `self.`**，否则 Swift 6 报 "requires explicit use of 'self'"。
+18. **`DEVELOPMENT_TEAM` 要填真正的 team id**（`codesign -dvvv` 里的 `TeamIdentifier`，本机 `UKXWZ3FS84`），**不是**证书名括号里那串（`Apple Development: … (7H6TJ2PN25)` 里的是证书标识）。填错报 `No signing certificate "Mac Development" found`。
+19. **macOS 只在应用调用采集 API 时才把它登记进「屏幕录制」列表**。权限门若拦在采集之前，"请求权限"里也必须真的碰一次 `SCShareableContent`，否则列表里没有这个应用 → **用户永远授权不了**（现象是系统设置里找不到 Marquee）。碰一次枚举就够了，**不要再截一帧**：`SCScreenshotManager.captureImage` 在 macOS 15+ 会叠出第二张系统授权框。
+20. **bash + `set -u`：中文文案里 `$VAR` 紧跟全角字符会被当成变量名的一部分**（如 `$IDENTITY（team …）`）→ 报 "unbound variable"。写 `${VAR}`。
+21. **别依赖 Xcode 自动创建的 user scheme**（在 `xcuserdata/`）。`xcodegen generate` 之后它可能不在了，构建直接报 `does not contain a scheme named …` → 必须在 `project.yml` 里声明**共享** scheme。
+22. **屏幕录制授权框连弹**：`requestPermission()` 里截帧 + preflight 在重启前一直是 false 仍报 `.notDetermined` + 刚授权还去采集，三者叠在一起会让每次快捷键都弹系统框。进程内记住"问过一次"（不要写 UserDefaults），刚授权只提示重启。见 DEV-NOTES 第 1.3 节。
 
 ## 文档与资产
 
 | 路径 | 内容 |
 | --- | --- |
 | `docs/PRD.md` | 产品与方案设计 |
+| `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限完整复盘（四层根因 + 当前设计 + 验证） |
 | `docs/RENDER-BENCH.md` | 渲染技术实测报告 |
 | `docs/SPIKE-PLAN.md` | **坑点/难点/重点清单 + 提前验证报告（37 项）** |
 | `docs/DEV-NOTES.md` | 开发循环的已知摩擦（签名、沙箱、工程生成） |

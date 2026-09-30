@@ -24,6 +24,29 @@ settings:
     DEAD_CODE_STRIPPING: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 
+# ⚠️ 必须显式声明 scheme。
+#
+# 曾经能用 `xcodebuild -scheme Marquee` 是**碰巧**：Xcode 打开工程时会自动建一个
+# 用户级 scheme（在 `xcuserdata/` 里）。但 `xcodegen generate` 重新生成工程后它就不在了，
+# 于是 `xcodebuild -scheme Marquee` 直接报
+# `The project named "Marquee" does not contain a scheme named "Marquee"`。
+# 声明成共享 scheme 后，工程每次生成结果都是确定的，谁 clone 下来都能直接构建。
+schemes:
+  Marquee:
+    build:
+      targets:
+        Marquee: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
 targets:
   Marquee:
     type: application
@@ -50,15 +73,21 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: App/Info.plist
-        # Xcode 这边保持 ad-hoc（最省事、不会因为没有匹配的 provisioning profile 而构建失败），
-        # 真正的**稳定签名**由 scripts/build.sh 在构建后用证书重签一次。
+        # ⚠️ 必须用**证书**签名，不要用 ad-hoc（"-"）。
         #
-        # 为什么必须重签：ad-hoc 没有稳定身份，macOS 的 TCC 只能退回按 cdhash 记账，
-        # 而每次重新构建 cdhash 都变 → 屏幕录制权限每次都要重新授权。
-        # `security find-identity -v -p codesigning` 可查可用身份。
+        # 原因（已实测）：TCC 的屏幕录制授权按「bundle id + 代码签名身份」记账；
+        # ad-hoc 没有身份，macOS 只能退回按 cdhash 记账 —— 而每次重新构建 cdhash 都变，
+        # 于是每次 Run/构建都被当成一个**新应用**，屏幕录制权限反复索要、勾选也留不住。
+        #
+        # `DEVELOPMENT_TEAM` 必须是**真正的 team id（UKXWZ3FS84）**。
+        # 别把证书名括号里的那串（`Apple Development: … (7H6TJ2PN25)`）填进来 ——
+        # 那是证书自身的标识，不是 team id，填错会报
+        # `No signing certificate "Mac Development" found`。
+        # 查可用身份：`security find-identity -v -p codesigning`
         # 详见 docs/DEV-NOTES.md 第 1 节。
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: UKXWZ3FS84
         ENABLE_HARDENED_RUNTIME: NO
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: ""

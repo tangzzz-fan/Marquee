@@ -8,7 +8,12 @@ import AppKit
 /// - `hidesOnDeactivate = false`：`NSPanel` 默认会在应用失活时隐藏自己，
 ///   而我们的应用本来就是 accessory（后台），不关掉这个开关蒙层会一闪就没
 /// - `canBecomeKey = true`：`Esc` / 方向键 / `⏎` 必须收得到
+/// - `becomesKeyOnlyIfNeeded = false`：`NSPanel` 默认只有点到文本框才变 key，
+///   不关掉的话 `Esc` 到不了覆盖层
 final class SelectionOverlayPanel: NSPanel {
+
+    /// 一次 `Esc` 要关掉**所有屏**的蒙层。面板自己的 `cancel:` 只会收掉当前这一块。
+    var onCancel: (() -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -29,5 +34,18 @@ final class SelectionOverlayPanel: NSPanel {
         acceptsMouseMovedEvents = true
         ignoresMouseEvents = false
         animationBehavior = .none
+        becomesKeyOnlyIfNeeded = false
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 0x35 {
+            onCancel?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
     }
 }

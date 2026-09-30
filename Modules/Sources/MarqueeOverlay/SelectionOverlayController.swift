@@ -1,12 +1,13 @@
 import AppKit
 import MarqueeCore
 
-/// 逐屏覆盖层的调度者（ticket 03）。
+/// 逐屏覆盖层的调度者（ticket 03 选区、ticket 04 窗口识别）。
 ///
 /// 职责边界：
 /// - 窗口与事件：本类（无法自动化测试）
 /// - 状态迁移：`MarqueeCore.SelectionSession`（纯逻辑，有单测）
-/// - 采集与拼接：`MarqueeCore.RegionCaptureFlow` / `FullScreenCaptureFlow`
+/// - 窗口命中：`MarqueeCore.WindowCatalog`（纯逻辑，有单测）
+/// - 采集：`RegionCaptureFlow` / `FullScreenCaptureFlow` / `WindowCaptureFlow`
 ///
 /// 因此这里只做三件事：把事件喂给状态机、把状态机的输出画出来、提交时调流程。
 @MainActor
@@ -19,6 +20,8 @@ public final class SelectionOverlayController {
 
     private let regionFlow: RegionCaptureFlow
     private let fullScreenFlow: FullScreenCaptureFlow
+    private let windowFlow: WindowCaptureFlow
+    private let windowLister: WindowListing
     private let displays: DisplayLocating
     private let onFinish: (Outcome) -> Void
 
@@ -29,13 +32,28 @@ public final class SelectionOverlayController {
     private var primaryScreenHeight: CGFloat = 0
     /// 一旦开始提交/取消，就忽略后续事件（防止连点触发两次采集）
     private var isFinishing = false
+    /// 覆盖层期间缓存的窗口清单。悬停只做命中测试，不每次去问 SCK。
+    private var cachedWindows: [WindowInfo] = []
+    private var hoveredWindow: WindowInfo?
+    private var isOptionDown = false
+    private let ownPID = Int32(ProcessInfo.processInfo.processIdentifier)
+    /// 按下位置。用来区分「单击窗口」和「拖选区」，避免已落点后再点一下把选区清掉。
+    private var pointerDownAt: CGPoint?
+    private var dragExceededSlop = false
+    private static let dragSlop: CGFloat = 4
+    /// 一次 `Esc` 退出。不靠各块屏的面板各自消化，否则多屏要点好几次。
+    private var keyMonitor: Any?
 
     public init(regionFlow: RegionCaptureFlow,
                 fullScreenFlow: FullScreenCaptureFlow,
+                windowFlow: WindowCaptureFlow,
+                windowLister: WindowListing,
                 displays: DisplayLocating,
                 onFinish: @escaping (Outcome) -> Void) {
         self.regionFlow = regionFlow
         self.fullScreenFlow = fullScreenFlow
+        self.windowFlow = windowFlow
+        self.windowLister = windowLister
         self.displays = displays
         self.onFinish = onFinish
     }
@@ -49,6 +67,10 @@ public final class SelectionOverlayController {
 
         isFinishing = false
         session = SelectionSession()
+        pointerDownAt = nil
+        dragExceededSlop = false
+        hoveredWindow = nil
+        isOptionDown = false
         displayGeometries = displays.allDisplays()
 
         guard !displayGeometries.isEmpty,
@@ -68,6 +90,7 @@ public final class SelectionOverlayController {
                                               defer: false)
             let view = SelectionOverlayView()
             view.delegate = self
+            panel.onCancel = { [weak self] in self?.cancel() }
             panel.contentView = view
 
             overlays.append((panel, view))
@@ -82,15 +105,48 @@ public final class SelectionOverlayController {
         let keyOverlay = overlays[keyOverlayIndex]
         keyOverlay.panel.makeKeyAndOrderFront(nil)
         keyOverlay.panel.makeFirstResponder(keyOverlay.view)
+        installKeyMonitor()
+
+        // 清单与覆盖层并行：没有清单时仍可拖选区，不能串行等 SCK
+        let pointerAtPresent = pointer
+        Task { [weak self] in
+            guard let self, !self.isFinishing else { return }
+            self.cachedWindows = await self.windowLister.listWindows()
+            self.updateHover(at: pointerAtPresent)
+        }
     }
 
     private func teardown() {
         for overlay in overlays {
+            overlay.panel.onCancel = nil
             overlay.view.delegate = nil
             overlay.panel.orderOut(nil)
         }
         overlays.removeAll()
+        cachedWindows = []
+        hoveredWindow = nil
+        pointerDownAt = nil
+        dragExceededSlop = false
+        removeKeyMonitor()
         NSCursor.arrow.set()
+    }
+
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 0x35 else { return event }
+            MainActor.assumeIsolated {
+                self?.cancel()
+            }
+            return nil
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
     }
 
     // MARK: - 提交
@@ -112,6 +168,21 @@ public final class SelectionOverlayController {
             // 覆盖层**先不关**：采集时按进程排除自身窗口，
             // 立刻关窗反而可能因为窗口还没真正消失而被拍进去。
             let outcome = await self.regionFlow.capture(selection: quartzRect, displays: geometries)
+            self.teardown()
+            self.onFinish(.completed(outcome))
+        }
+    }
+
+    private func commitWindow(_ window: WindowInfo, style: WindowCaptureStyle) {
+        guard !isFinishing else { return }
+        isFinishing = true
+        let geometries = displayGeometries
+
+        Task { [weak self] in
+            guard let self else { return }
+            let outcome = await self.windowFlow.capture(window: window,
+                                                        style: style,
+                                                        displays: geometries)
             self.teardown()
             self.onFinish(.completed(outcome))
         }
@@ -143,20 +214,30 @@ public final class SelectionOverlayController {
         let cocoaRect = session.rect
         let presentation: SelectionPresentation
 
-        if let cocoaRect, cocoaRect.width >= 1, cocoaRect.height >= 1 {
+        if let window = session.settledWindow {
+            let cocoaHover = session.rect
+                ?? ScreenCoordinateConversion.cocoaRect(fromQuartz: window.frame,
+                                                        primaryScreenHeight: primaryScreenHeight)
+            presentation = windowPresentation(window, cocoaRect: cocoaHover, locked: true)
+        } else if let cocoaRect, cocoaRect.width >= 1, cocoaRect.height >= 1 {
             let quartz = ScreenCoordinateConversion.quartzRect(fromCocoa: cocoaRect,
                                                                primaryScreenHeight: primaryScreenHeight)
             let scale = pixelScale(forQuartzRect: quartz)
-            // 读数用与 `SelectionLayout` 相同的规则（取参与屏里最大的 scale），
-            // 保证"屏幕上写的尺寸"和"实际拿到的像素"永远一致
             let pixelSize = CGSize(width: (quartz.width * scale).rounded(),
                                    height: (quartz.height * scale).rounded())
             presentation = SelectionPresentation(
                 globalRect: cocoaRect,
                 sizeText: "\(Int(quartz.width.rounded())) × \(Int(quartz.height.rounded())) pt   /   "
                     + "\(Int(pixelSize.width)) × \(Int(pixelSize.height)) px",
-                originText: "(\(Int(quartz.minX.rounded())), \(Int(quartz.minY.rounded())))"
+                originText: "(\(Int(quartz.minX.rounded())), \(Int(quartz.minY.rounded())))",
+                hoverRect: nil,
+                hoverLabel: "",
+                hoverCornerRadius: 10
             )
+        } else if let hovered = hoveredWindow, session.phase == .awaitingDrag {
+            let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: hovered.frame,
+                                                                  primaryScreenHeight: primaryScreenHeight)
+            presentation = windowPresentation(hovered, cocoaRect: cocoaHover, locked: false)
         } else {
             presentation = .empty
         }
@@ -164,6 +245,50 @@ public final class SelectionOverlayController {
         for overlay in overlays {
             overlay.view.presentation = presentation
         }
+    }
+
+    private func updateHover(at cocoaPoint: CGPoint) {
+        guard session.phase == .awaitingDrag else {
+            if hoveredWindow != nil {
+                hoveredWindow = nil
+                refresh()
+            }
+            return
+        }
+        let quartz = ScreenCoordinateConversion.quartzPoint(fromCocoa: cocoaPoint,
+                                                            primaryScreenHeight: primaryScreenHeight)
+        let hit = WindowCatalog.topmost(at: quartz, in: cachedWindows, excludingPID: ownPID)
+        guard hit != hoveredWindow else { return }
+        hoveredWindow = hit
+        refresh()
+    }
+
+    private func windowPresentation(_ window: WindowInfo,
+                                    cocoaRect: CGRect,
+                                    locked: Bool) -> SelectionPresentation {
+        var hint = ""
+        if locked {
+            hint += "  ·  ⏎ 确认"
+        }
+        if isOptionDown {
+            hint += "  ·  ⌥ 无阴影"
+        }
+        return SelectionPresentation(
+            globalRect: nil,
+            sizeText: "",
+            originText: "",
+            hoverRect: cocoaRect,
+            hoverLabel: window.hoverLabel + hint,
+            hoverCornerRadius: 10
+        )
+    }
+
+    private func settleOnWindow(_ window: WindowInfo) {
+        let cocoa = ScreenCoordinateConversion.cocoaRect(fromQuartz: window.frame,
+                                                         primaryScreenHeight: primaryScreenHeight)
+        session.settleWindow(window, cocoaRect: cocoa)
+        hoveredWindow = nil
+        refresh()
     }
 
     private func pixelScale(forQuartzRect rect: CGRect) -> CGFloat {
@@ -191,24 +316,53 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     func overlayView(_ view: SelectionOverlayView, beganDragAt globalPoint: CGPoint) {
         guard !isFinishing else { return }
-        session.beginDrag(at: globalPoint)
-        refresh()
+        pointerDownAt = globalPoint
+        dragExceededSlop = false
+        if !session.isSettled {
+            updateHover(at: globalPoint)
+        }
     }
 
     func overlayView(_ view: SelectionOverlayView, draggedTo globalPoint: CGPoint) {
-        guard !isFinishing else { return }
+        guard !isFinishing, let start = pointerDownAt else { return }
+        if !dragExceededSlop {
+            let distance = hypot(globalPoint.x - start.x, globalPoint.y - start.y)
+            guard distance >= Self.dragSlop else { return }
+            dragExceededSlop = true
+            session.beginDrag(at: start)
+        }
         session.updateDrag(to: globalPoint)
         refresh()
     }
 
-    func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint) {
+    func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint, optionDown: Bool) {
         guard !isFinishing else { return }
-        if session.endDrag(at: globalPoint) {
-            commitRegion()
-        } else {
-            // 面积太小（多半是误点一下）：不提交也不退出，让用户重来
-            refresh()
+        defer {
+            pointerDownAt = nil
+            dragExceededSlop = false
         }
+
+        if dragExceededSlop {
+            // 松手 = 选区落点停住，等方向键微调 / ⏎ 确认。立即提交会让微调键永远走不到。
+            _ = session.endDrag(at: globalPoint)
+            refresh()
+            return
+        }
+
+        if session.isSettled {
+            return
+        }
+
+        if let window = hoveredWindow {
+            // 单击窗口 = 落点停住，等 ⏎ 确认。立刻采集就没有确认过程。
+            isOptionDown = optionDown
+            settleOnWindow(window)
+        }
+    }
+
+    func overlayView(_ view: SelectionOverlayView, movedTo globalPoint: CGPoint) {
+        guard !isFinishing else { return }
+        updateHover(at: globalPoint)
     }
 
     func overlayView(_ view: SelectionOverlayView, nudgeBy dx: CGFloat, dy: CGFloat) {
@@ -221,12 +375,28 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         refresh()
     }
 
+    func overlayView(_ view: SelectionOverlayView, optionChanged isDown: Bool) {
+        guard isOptionDown != isDown else { return }
+        isOptionDown = isDown
+        refresh()
+    }
+
     func overlayViewDidRequestCommit(_ view: SelectionOverlayView) {
         guard !isFinishing else { return }
-        // `⏎`：有选区就提交选区，没选区就是"整屏"意图
-        if session.isSettled {
+        switch session.commitAction(hasHoveredWindow: hoveredWindow != nil) {
+        case .commitRegion:
             commitRegion()
-        } else {
+        case .commitWindow:
+            guard let window = session.settledWindow else {
+                commitRegion()
+                return
+            }
+            let style = WindowCaptureStyle.isolatedWindow(includeShadow: !isOptionDown)
+            commitWindow(window, style: style)
+        case .settleHoveredWindow:
+            guard let window = hoveredWindow else { return }
+            settleOnWindow(window)
+        case .commitWholeScreen:
             commitWholeScreen()
         }
     }

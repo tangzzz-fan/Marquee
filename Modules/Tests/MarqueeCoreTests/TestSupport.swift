@@ -135,10 +135,17 @@ final class FakePermissionProbe: ScreenRecordingPermissionProbing, @unchecked Se
 
     func currentPermission() -> ScreenRecordingPermission { status }
 
-    func requestPermission() -> Bool {
+    func requestPermission() async -> Bool {
         withLocked(lock) {
             storedRequestCount += 1
-            return storedGrantsOnRequest
+            if storedGrantsOnRequest {
+                storedStatus = .granted
+                return true
+            }
+            // 与真实探针对齐：问过一次还没过，后续就按 denied 走，
+            // 否则 CaptureGate 会把每次快捷键都当成"还没问过"再弹系统框。
+            storedStatus = .denied
+            return false
         }
     }
 }
@@ -161,7 +168,14 @@ actor RecordingCapturer: ScreenCapturing {
 
     private(set) var regionCalls: [Call] = []
     private(set) var fullScreenCalls: [Call] = []
+    private(set) var windowCalls: [WindowCall] = []
     private var failure: StubCaptureError?
+
+    struct WindowCall: Equatable, Sendable {
+        let windowID: UInt32
+        let includeShadow: Bool
+        let backingScale: CGFloat
+    }
 
     init(failure: StubCaptureError? = nil) {
         self.failure = failure
@@ -181,6 +195,23 @@ actor RecordingCapturer: ScreenCapturing {
         regionCalls.append(Call(rect: rect, displayID: display.displayID))
         if let failure { throw failure }
         return makeImage(for: display, pixelSize: display.pixelRect(for: rect).size)
+    }
+
+    func captureWindow(_ window: WindowInfo,
+                       includeShadow: Bool,
+                       backingScale: CGFloat) async throws -> CapturedImage {
+        windowCalls.append(WindowCall(windowID: window.windowID,
+                                      includeShadow: includeShadow,
+                                      backingScale: backingScale))
+        if let failure { throw failure }
+        let pixelSize = CGSize(width: max(1, (window.frame.width * backingScale).rounded()),
+                               height: max(1, (window.frame.height * backingScale).rounded()))
+        let image = TestImage.solid(width: Int(pixelSize.width),
+                                    height: Int(pixelSize.height),
+                                    red: includeShadow ? 1 : 0,
+                                    green: includeShadow ? 0 : 1,
+                                    blue: 0)
+        return CapturedImage(image: image, displayID: 1, backingScale: backingScale)
     }
 
     /// 2x 屏给红、1x 屏给蓝，方便断言"哪一片画到了哪"

@@ -11,6 +11,10 @@ import MarqueeCore
 enum PermissionPrompt {
 
     /// 屏幕录制权限缺席时的说明 + 一键跳转。
+    ///
+    /// 除了跳系统设置，还给一个「在 Finder 中显示」：**系统设置里没有 Marquee 这一行**是真实会发生的情况
+    /// （macOS 只在应用调用过采集 API 后才把它登记进列表），此时用户需要手动把 app 添加进去。
+    /// 从 DerivedData 里翻出这个路径对人是件苦差事，直接替他打开省事得多。
     static func presentPermissionGuidance(grantedJustNow: Bool) {
         let alert = NSAlert()
         alert.alertStyle = .informational
@@ -23,13 +27,20 @@ enum PermissionPrompt {
             : """
               请到「系统设置 → 隐私与安全性 → 屏幕录制」里勾选 Marquee，然后退出并重新打开应用。
 
-              如果列表里**找不到 Marquee**：点列表下方的「+」，把正在运行的 Marquee 添加进去。
+              如果列表里**找不到 Marquee**：点「在 Finder 中显示」，把打开的 Marquee
+              拖进列表（或点列表下方的「+」选中它）。
               """
         alert.addButton(withTitle: "打开系统设置")
+        alert.addButton(withTitle: "在 Finder 中显示")
         alert.addButton(withTitle: "稍后")
 
-        if alert.runModal() == .alertFirstButtonReturn {
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
             NSWorkspace.shared.open(SystemSettingsLink.screenRecording)
+        case .alertSecondButtonReturn:
+            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        default:
+            break
         }
     }
 

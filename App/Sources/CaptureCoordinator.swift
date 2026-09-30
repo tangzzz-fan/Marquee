@@ -31,6 +31,10 @@ final class CaptureCoordinator {
                                                             capturer: capturer,
                                                             clipboard: clipboard,
                                                             displays: displays)
+    private lazy var windowFlow = WindowCaptureFlow(permission: permission,
+                                                    capturer: capturer,
+                                                    clipboard: clipboard)
+    private let windowLister = ScreenCaptureKitWindowLister()
 
     /// `lazy` 而不是 `let`：快捷键的 handler 要回调 `self`，
     /// 而 `self` 在 `init` 里还不能用。`lazy` 允许闭包直接捕获 `self`。
@@ -83,6 +87,12 @@ final class CaptureCoordinator {
         guard overlay?.isPresented != true, !isPreflighting else { return }
         isPreflighting = true
 
+        // 没权限时这一按会引出系统授权框（以及"把 Marquee 登记进屏幕录制列表"那一步）。
+        // 我们是 accessory 应用，先激活自己，免得框被压在别的应用后面用户根本看不见。
+        if permission.currentPermission() != .granted {
+            NSApp.activate()
+        }
+
         Task { [weak self] in
             guard let self else { return }
             let gate = await CaptureGateRunner.run(self.permission)
@@ -94,6 +104,12 @@ final class CaptureCoordinator {
                 PermissionPrompt.presentPermissionGuidance(grantedJustNow: self.grantedThisSession)
             case .proceed(let grantedJustNow):
                 self.grantedThisSession = self.grantedThisSession || grantedJustNow
+                if self.grantedThisSession {
+                    // ScreenCaptureKit 在「刚勾选授权」的同一个进程里还不可用。
+                    // 继续弹出覆盖层再采集，会再触发一次系统授权框，并且必然失败。
+                    PermissionPrompt.presentPermissionGuidance(grantedJustNow: true)
+                    return
+                }
                 self.presentOverlay()
             }
         }
@@ -105,6 +121,8 @@ final class CaptureCoordinator {
         let controller = SelectionOverlayController(
             regionFlow: selectionFlow,
             fullScreenFlow: fullScreenFlow,
+            windowFlow: windowFlow,
+            windowLister: windowLister,
             displays: displays,
             onFinish: { [weak self] outcome in
                 self?.handleOverlayFinish(outcome)
@@ -139,6 +157,7 @@ final class CaptureCoordinator {
         let registration = activationResult.failureMessage ?? "注册成功"
         return """
         Marquee 诊断
+          运行位置        : \(Bundle.main.bundleURL.path)
           屏幕录制权限    : \(Self.describe(permission.currentPermission()))
           preflight 原始值: \(CGPreflightScreenCaptureAccess() ? "true" : "false")
           当前快捷键      : \(shortcut.current.displayString)

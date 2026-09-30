@@ -24,6 +24,18 @@ public enum SelectionPhase: Equatable, Sendable {
     case cancelled
 }
 
+/// `⏎` 在当前会话下该做什么。覆盖层只执行，不自己猜。
+public enum SelectionCommitAction: Equatable, Sendable {
+    /// 提交已落点的矩形选区
+    case commitRegion
+    /// 提交已锁定的窗口（独立窗口，不是选区像素）
+    case commitWindow
+    /// 悬停着窗口但还没锁定：先停住，等下一次 `⏎` 再采集
+    case settleHoveredWindow
+    /// 没有选区也没有悬停窗口：整屏
+    case commitWholeScreen
+}
+
 /// 选区拖拽会话。
 ///
 /// 把「按下 → 拖 → 松手 → 微调 → 提交/取消」的全部规则收在一个可单测的值类型里。
@@ -35,6 +47,8 @@ public struct SelectionSession: Equatable, Sendable {
     public private(set) var isShiftDown = false
     /// 是否经过方向键精修。精修后不再吸附到整点（见 `nudge` 的注释）。
     public private(set) var isRefined = false
+    /// 落点锁定的窗口。非 `nil` 时 `⏎` 截这一扇窗，而不是框里的屏幕像素。
+    public private(set) var settledWindow: WindowInfo?
 
     public init() {}
 
@@ -65,12 +79,27 @@ public struct SelectionSession: Equatable, Sendable {
 
     public var isCancelled: Bool { phase == .cancelled }
 
+    /// 覆盖层按 `⏎` 时根据当前状态决定动作。
+    ///
+    /// 窗口不能一按就采集：和拖选区一样要先停住让人确认。
+    /// 悬停中第一次 `⏎` 是锁定窗口；锁定后再 `⏎` 才提交。
+    public func commitAction(hasHoveredWindow: Bool) -> SelectionCommitAction {
+        if isSettled {
+            return settledWindow == nil ? .commitRegion : .commitWindow
+        }
+        if hasHoveredWindow {
+            return .settleHoveredWindow
+        }
+        return .commitWholeScreen
+    }
+
     // MARK: - 拖拽
 
     public mutating func beginDrag(at point: CGPoint) {
         guard !isCancelled else { return }
         phase = .dragging(anchor: point, current: point)
         isRefined = false
+        settledWindow = nil
     }
 
     public mutating func updateDrag(to point: CGPoint) {
@@ -86,6 +115,7 @@ public struct SelectionSession: Equatable, Sendable {
     @discardableResult
     public mutating func endDrag(at point: CGPoint) -> Bool {
         guard case .dragging(let anchor, _) = phase else { return false }
+        settledWindow = nil
         guard let raw = Self.validRect(anchor: anchor, current: point, square: isShiftDown),
               raw.width >= 1, raw.height >= 1 else {
             phase = .awaitingDrag
@@ -116,6 +146,8 @@ public struct SelectionSession: Equatable, Sendable {
         guard case .settled(let rect) = phase else { return false }
         phase = .settled(rect: rect.offsetBy(dx: dx, dy: dy))
         isRefined = true
+        // 微调后矩形已不再等于窗口边界，改走区域采集
+        settledWindow = nil
         return true
     }
 
@@ -123,11 +155,22 @@ public struct SelectionSession: Equatable, Sendable {
 
     public mutating func cancel() {
         phase = .cancelled
+        settledWindow = nil
     }
 
     /// 直接给出一个矩形（整屏 / 程序化设定）
     public mutating func settle(rect: CGRect) {
         phase = .settled(rect: rect)
+        isRefined = false
+        settledWindow = nil
+    }
+
+    /// 锁定一扇窗，等 `⏎` 确认。`cocoaRect` 必须已换到 Cocoa 全局坐标。
+    public mutating func settleWindow(_ window: WindowInfo, cocoaRect: CGRect) {
+        guard !isCancelled else { return }
+        guard cocoaRect.width >= 1, cocoaRect.height >= 1 else { return }
+        phase = .settled(rect: cocoaRect)
+        settledWindow = window
         isRefined = false
     }
 

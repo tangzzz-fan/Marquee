@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**骨架阶段。** 应用能启动、菜单栏有图标、退出可用；所有截屏功能尚未实现。
+**M1 捕获核心进行中。** 菜单栏应用可启动；全屏/选区/窗口截图已实现，待人工验收。
 进度见 `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md`（18 条 ticket）。
 
 ## 构建
@@ -56,6 +56,7 @@ defaults delete com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox
 | 文档 | 内容 |
 | --- | --- |
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
+| `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限：现象、四层根因、当前设计、验证与残留 |
 | `docs/RENDER-BENCH.md` | 渲染技术实测：Canvas / Core Graphics / Metal |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告 |
 | `docs/DEV-NOTES.md` | 开发循环中的已知摩擦与注意事项 |

@@ -42,6 +42,21 @@ public protocol ScreenCapturing: Sendable {
 
     /// 截取全局点坐标下的一个区域（ticket 03）
     func captureRegion(_ rect: CGRect, on display: DisplayGeometry) async throws -> CapturedImage
+
+    /// 截取一扇窗口（ticket 04）。
+    ///
+    /// - Parameter includeShadow: `true` 带系统投影；`false` 无阴影、无背景
+    /// - Parameter backingScale: 该窗所在屏的 scale，用来定输出像素
+    func captureWindow(_ window: WindowInfo,
+                       includeShadow: Bool,
+                       backingScale: CGFloat) async throws -> CapturedImage
+}
+
+/// 当前可见窗口清单。抽成协议是为了让覆盖层的悬停命中能脱离真实 SCK 单测。
+public protocol WindowListing: Sendable {
+    /// 返回**前台到后台**顺序的窗口。失败时给空数组，不要抛 ——
+    /// 覆盖层没有清单仍然可以拖选区，不能因为枚举失败就把截屏入口废掉。
+    func listWindows() async -> [WindowInfo]
 }
 
 // MARK: - 剪贴板

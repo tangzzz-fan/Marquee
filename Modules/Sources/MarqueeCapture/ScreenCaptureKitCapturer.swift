@@ -81,16 +81,47 @@ public struct ScreenCaptureKitCapturer: ScreenCapturing {
                              displayID: scDisplay.displayID,
                              backingScale: display.backingScale)
     }
+
+    public func captureWindow(_ window: WindowInfo,
+                              includeShadow: Bool,
+                              backingScale: CGFloat) async throws -> CapturedImage {
+        let content = try await SCShareableContent.excludingDesktopWindows(true,
+                                                                           onScreenWindowsOnly: true)
+        guard let scWindow = content.windows.first(where: { $0.windowID == window.windowID }) else {
+            throw CaptureError.windowNotFound(window.windowID)
+        }
+
+        let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+        let configuration = SCStreamConfiguration()
+        configuration.captureResolution = .best
+        configuration.scalesToFit = false
+        configuration.showsCursor = false
+        configuration.ignoreShadowsSingleWindow = !includeShadow
+        configuration.includeChildWindows = true
+
+        // 带阴影时输出会超出窗口框。四周留出空间，否则投影被裁掉，
+        // 看起来就像"单击窗口却没有系统阴影"。
+        let padding: CGFloat = includeShadow ? 80 : 0
+        configuration.width = max(1, Int((window.frame.width + padding * 2) * backingScale))
+        configuration.height = max(1, Int((window.frame.height + padding * 2) * backingScale))
+
+        let image = try await SCScreenshotManager.captureImage(contentFilter: filter,
+                                                               configuration: configuration)
+        return CapturedImage(image: image, displayID: scWindow.windowID, backingScale: backingScale)
+    }
 }
 
 public enum CaptureError: Error, Equatable, Sendable {
     case displayNotFound(UInt32)
+    case windowNotFound(UInt32)
     case notImplemented(String)
 
     public var localizedDescription: String {
         switch self {
         case .displayNotFound(let id):
             "没找到 ID 为 \(id) 的显示器"
+        case .windowNotFound(let id):
+            "没找到窗口 \(id)，它可能已经关掉了"
         case .notImplemented(let detail):
             "尚未实现：\(detail)"
         }

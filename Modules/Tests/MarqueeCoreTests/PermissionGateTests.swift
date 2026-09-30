@@ -29,6 +29,39 @@ struct PermissionGateTests {
     }
 }
 
+@Suite("权限门执行：同一进程不能反复弹系统框")
+@MainActor
+struct CaptureGateRunnerPromptOnceTests {
+
+    @Test("用户拒绝后再次过门 → 不再调 requestPermission")
+    func doesNotRePromptAfterDenial() async {
+        let probe = FakePermissionProbe(status: .notDetermined, grantsOnRequest: false)
+
+        let first = await CaptureGateRunner.run(probe)
+        #expect(first == .blocked(.guideToSystemSettings))
+        #expect(probe.requestCount == 1)
+        #expect(probe.status == .denied)
+
+        let second = await CaptureGateRunner.run(probe)
+        #expect(second == .blocked(.guideToSystemSettings))
+        #expect(probe.requestCount == 1, "同一进程已经问过，快捷键再按下也不该再弹系统框")
+    }
+
+    @Test("用户同意后再次过门 → 直接放行，不再请求")
+    func doesNotRePromptAfterGrant() async {
+        let probe = FakePermissionProbe(status: .notDetermined, grantsOnRequest: true)
+
+        let first = await CaptureGateRunner.run(probe)
+        #expect(first == .proceed(grantedJustNow: true))
+        #expect(probe.requestCount == 1)
+        #expect(probe.status == .granted)
+
+        let second = await CaptureGateRunner.run(probe)
+        #expect(second == .proceed(grantedJustNow: false))
+        #expect(probe.requestCount == 1)
+    }
+}
+
 @Suite("快捷键注册结果映射")
 struct HotKeyRegistrationOutcomeTests {
 

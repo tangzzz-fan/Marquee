@@ -28,47 +28,61 @@ if [ "$(defaults read com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox
 fi
 
 xcodegen generate
+
+# ── 产物路径固定到工程目录下 ────────────────────────────────────────────
+#
+# 默认的 ~/Library/Developer/Xcode/DerivedData/<工程名>-<路径哈希> 有两个问题：
+#   1. 路径里带哈希，你没法凭直觉找到 app
+#   2. 工程目录改名（本项目 Snipo → Marquee）会**再生成一份**，旧的那份还留着 ——
+#      很容易跑到旧的 ad-hoc 产物上，然后怀疑"为什么权限不对"
+#
+# `-derivedDataPath` 显式钉死路径。注意 `xcodebuild` **不认** workspace 里的
+# DerivedDataLocationStyle 设置（实测：指定 workspace 后它又换了个哈希目录），
+# 所以必须在这里显式给。
+#
+# GUI 那边（File → Workspace Settings → Derived Data → Workspace-relative）
+# 由 `Marquee.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings` 提供。
+# 覆盖 CLI 路径：MARQUEE_DERIVED_DATA=/some/path ./scripts/build.sh
+DERIVED_DATA="${MARQUEE_DERIVED_DATA:-$PWD/DerivedData}"
+
 xcodebuild \
-  -project Marquee.xcodeproj \
+  -workspace Marquee.xcworkspace \
   -scheme Marquee \
   -configuration "${CONFIGURATION:-Debug}" \
   -destination 'platform=macOS' \
+  -derivedDataPath "$DERIVED_DATA" \
   build
 
-# ── 稳定签名：让「屏幕录制」授权跨构建保留 ──────────────────────────────
+# ── 签名核验：稳定身份 = 「屏幕录制」授权能留住的前提 ──────────────────
 #
 # 背景（已实测，见 docs/DEV-NOTES.md 第 1 节）：
-# TCC 按「bundle id + 代码签名身份」记账。ad-hoc 签名（CODE_SIGN_IDENTITY = "-"）
-# 没有稳定身份，系统只能退回按 cdhash 记账 —— 而每次重新构建 cdhash 都会变，
-# 于是 macOS 把新构建当成一个**新应用**，每次都重新弹屏幕录制权限、之前的勾选也失效。
+# TCC 按「bundle id + 代码签名身份」记账。ad-hoc 签名没有身份，系统只能退回按 cdhash 记账，
+# 而每次重新构建 cdhash 都会变 —— 于是 macOS 把每次构建都当成**新应用**，
+# 屏幕录制权限反复索要、勾过的也留不住。
 #
-# 用证书重签一次后身份就稳定了，授权跨构建保留。
-# 代价：从 ad-hoc 换成证书的**第一次**仍会再弹一次（身份变了），之后不该再弹。
-#
-# 覆盖方式：MARQUEE_SIGN_IDENTITY="..." ./scripts/build.sh
-# 跳过：    MARQUEE_SKIP_RESIGN=1 ./scripts/build.sh
-SIGN_IDENTITY="${MARQUEE_SIGN_IDENTITY:-Apple Development: zhenzhi Tang (7H6TJ2PN25)}"
+# 签名本身必须由**工程**负责（project.yml 的 CODE_SIGN_IDENTITY + DEVELOPMENT_TEAM），
+# 这样从 Xcode 里直接 Run 也是对的 —— 开发时走 Xcode Run 才是常态，
+# 把修复只放在这个脚本里等于没修（2026-09-30 踩过这个坑）。
+# 这一段只做两件事：**核验**结果，以及发现退回 ad-hoc 时给出可执行的补救。
+APP_PATH="$DERIVED_DATA/Build/Products/${CONFIGURATION:-Debug}/Marquee.app"
 
-if [ "${MARQUEE_SKIP_RESIGN:-0}" = "1" ]; then
-  echo "⏭  跳过重签（MARQUEE_SKIP_RESIGN=1）：本次构建仍是 ad-hoc，权限会需要重新授权"
-elif security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
-  APP_PATH=$(xcodebuild \
-      -project Marquee.xcodeproj \
-      -scheme Marquee \
-      -configuration "${CONFIGURATION:-Debug}" \
-      -destination 'platform=macOS' \
-      -showBuildSettings 2>/dev/null \
-    | awk -F' = ' '/ BUILT_PRODUCTS_DIR = /{dir=$2} / FULL_PRODUCT_NAME = /{name=$2} END{if (dir != "" && name != "") print dir "/" name}')
-
-  if [ -n "$APP_PATH" ] && [ -d "$APP_PATH" ]; then
-    codesign --force --sign "$SIGN_IDENTITY" --identifier dev.tango.Marquee "$APP_PATH"
-    echo "✓ 已用稳定身份重签：$SIGN_IDENTITY"
-    echo "  → 屏幕录制授权现在跨构建保留（从 ad-hoc 换过来的第一次仍需授权一次）"
+if [ ! -d "$APP_PATH" ]; then
+  echo "✗ 没能定位构建产物：$APP_PATH" >&2
+elif codesign -dvvv "$APP_PATH" 2>&1 | grep -q "adhoc"; then
+  echo "⚠️  产物是 **ad-hoc** 签名 —— macOS 会把每次构建当成新应用，屏幕录制权限会反复索要。" >&2
+  echo "   检查 project.yml 的 CODE_SIGN_IDENTITY / DEVELOPMENT_TEAM 是否被改回 \"-\"。" >&2
+  if [ -n "${MARQUEE_SIGN_IDENTITY:-}" ]; then
+    codesign --force --sign "$MARQUEE_SIGN_IDENTITY" --identifier dev.tango.Marquee "$APP_PATH"
+    echo "✓ 已按 MARQUEE_SIGN_IDENTITY 强制重签：$MARQUEE_SIGN_IDENTITY" >&2
   else
-    echo "✗ 没能定位构建产物，跳过重签（权限可能需要重新授权）" >&2
+    echo "   临时补救：MARQUEE_SIGN_IDENTITY=\"<证书名>\" ./scripts/build.sh" >&2
+    echo "   可用证书：security find-identity -v -p codesigning" >&2
   fi
 else
-  echo "⚠️  未找到签名身份：$SIGN_IDENTITY" >&2
-  echo "   本次构建保持 ad-hoc —— 每次重新构建都要重新授权屏幕录制。" >&2
-  echo "   查看可用身份：security find-identity -v -p codesigning" >&2
+  IDENTITY=$(codesign -dvvv "$APP_PATH" 2>&1 | awk -F'=' '/^Authority=/{print $2; exit}')
+  TEAM=$(codesign -dvvv "$APP_PATH" 2>&1 | awk -F'=' '/^TeamIdentifier=/{print $2; exit}')
+  # 注意：`${IDENTITY}` 的大括号不能省。中文文案里紧跟在变量后面的全角字符会被 shell
+  # 当成变量名的一部分，于是 `set -u` 直接报 "unbound variable"。
+  echo "✓ 签名身份稳定：${IDENTITY} (team ${TEAM})"
+  echo "  产物：${APP_PATH}"
 fi

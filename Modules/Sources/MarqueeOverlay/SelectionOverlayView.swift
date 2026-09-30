@@ -12,19 +12,31 @@ struct SelectionPresentation: Equatable {
     var sizeText: String
     /// 左上角坐标读数
     var originText: String
+    /// 悬停窗口，**Cocoa 全局坐标**；拖选区时为 `nil`
+    var hoverRect: CGRect?
+    var hoverLabel: String
+    /// 系统窗口圆角的近似值。没有 API 给出真实圆角，10 点贴近近年 macOS 普通窗口
+    var hoverCornerRadius: CGFloat
 
-    static let empty = SelectionPresentation(globalRect: nil, sizeText: "", originText: "")
+    static let empty = SelectionPresentation(globalRect: nil,
+                                             sizeText: "",
+                                             originText: "",
+                                             hoverRect: nil,
+                                             hoverLabel: "",
+                                             hoverCornerRadius: 10)
 }
 
 @MainActor
 protocol SelectionOverlayViewDelegate: AnyObject {
     func overlayView(_ view: SelectionOverlayView, beganDragAt globalPoint: CGPoint)
     func overlayView(_ view: SelectionOverlayView, draggedTo globalPoint: CGPoint)
-    func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint)
+    func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint, optionDown: Bool)
+    func overlayView(_ view: SelectionOverlayView, movedTo globalPoint: CGPoint)
     /// 方向键微调，`dx`/`dy` 只取 -1 / 0 / 1
     func overlayView(_ view: SelectionOverlayView, nudgeBy dx: CGFloat, dy: CGFloat)
     func overlayView(_ view: SelectionOverlayView, shiftChanged isDown: Bool)
-    /// `⏎`：有选区则提交，无选区则整屏
+    func overlayView(_ view: SelectionOverlayView, optionChanged isDown: Bool)
+    /// `⏎`：已落点则提交；悬停窗口则先锁定；否则整屏
     func overlayViewDidRequestCommit(_ view: SelectionOverlayView)
     /// 双击：整屏
     func overlayViewDidRequestWholeScreen(_ view: SelectionOverlayView)
@@ -66,10 +78,28 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        delegate?.overlayView(self, endedDragAt: cocoaPoint(of: event))
+        delegate?.overlayView(self, endedDragAt: cocoaPoint(of: event),
+                              optionDown: event.modifierFlags.contains(.option))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        delegate?.overlayView(self, movedTo: cocoaPoint(of: event))
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.activeAlways, .mouseMoved, .inVisibleRect],
+                                       owner: self,
+                                       userInfo: nil))
     }
 
     // MARK: - 键盘
+
+    override func cancelOperation(_ sender: Any?) {
+        delegate?.overlayViewDidRequestCancel(self)
+    }
 
     override func keyDown(with event: NSEvent) {
         switch Int(event.keyCode) {
@@ -92,6 +122,7 @@ final class SelectionOverlayView: NSView {
 
     override func flagsChanged(with event: NSEvent) {
         delegate?.overlayView(self, shiftChanged: event.modifierFlags.contains(.shift))
+        delegate?.overlayView(self, optionChanged: event.modifierFlags.contains(.option))
     }
 
     override func resetCursorRects() {
@@ -102,32 +133,51 @@ final class SelectionOverlayView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let localSelection = presentation.globalRect.map { globalToLocal($0) }
+        let localHover = presentation.hoverRect.map { globalToLocal($0) }
 
         NSColor.black.withAlphaComponent(0.42).setFill()
 
-        guard let localSelection, localSelection.width >= 1, localSelection.height >= 1 else {
-            bounds.fill()
+        if let localSelection, localSelection.width >= 1, localSelection.height >= 1 {
+            fillMask(punching: localSelection, cornerRadius: 0)
+            stroke(localSelection, cornerRadius: 0, lineWidth: 1)
+            drawReadout(in: localSelection, text: presentation.sizeText + "\n" + presentation.originText)
             return
         }
 
-        // 选区镂空：外框 + 内框用 even-odd 填充规则挖洞，
-        // 比"画四条边"更不容易在缩放/半像素位置露出缝
-        let mask = NSBezierPath(rect: bounds)
-        mask.append(NSBezierPath(rect: localSelection))
-        mask.windingRule = .evenOdd
-        mask.fill()
+        if let localHover, localHover.width >= 1, localHover.height >= 1 {
+            let radius = presentation.hoverCornerRadius
+            fillMask(punching: localHover, cornerRadius: radius)
+            stroke(localHover, cornerRadius: radius, lineWidth: 2)
+            if !presentation.hoverLabel.isEmpty {
+                drawReadout(in: localHover, text: presentation.hoverLabel)
+            }
+            return
+        }
 
-        let outline = NSBezierPath(rect: localSelection.insetBy(dx: 0.5, dy: 0.5))
-        outline.lineWidth = 1
-        NSColor.controlAccentColor.setStroke()
-        outline.stroke()
-
-        drawReadout(in: localSelection)
+        bounds.fill()
     }
 
-    private func drawReadout(in localSelection: CGRect) {
-        let text = presentation.sizeText + "\n" + presentation.originText
-        guard !presentation.sizeText.isEmpty else { return }
+    private func fillMask(punching hole: CGRect, cornerRadius: CGFloat) {
+        let mask = NSBezierPath(rect: bounds)
+        mask.append(Self.roundedPath(hole, radius: cornerRadius))
+        mask.windingRule = .evenOdd
+        mask.fill()
+    }
+
+    private func stroke(_ rect: CGRect, cornerRadius: CGFloat, lineWidth: CGFloat) {
+        let outline = Self.roundedPath(rect.insetBy(dx: 0.5, dy: 0.5), radius: max(0, cornerRadius - 0.5))
+        outline.lineWidth = lineWidth
+        NSColor.controlAccentColor.setStroke()
+        outline.stroke()
+    }
+
+    private static func roundedPath(_ rect: CGRect, radius: CGFloat) -> NSBezierPath {
+        guard radius > 0 else { return NSBezierPath(rect: rect) }
+        return NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+    }
+
+    private func drawReadout(in localSelection: CGRect, text: String) {
+        guard !text.isEmpty else { return }
 
         let attributed = NSAttributedString(string: text, attributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),

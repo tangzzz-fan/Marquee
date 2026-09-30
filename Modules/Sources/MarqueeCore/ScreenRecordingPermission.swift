@@ -4,18 +4,16 @@ import Foundation
 
 /// 屏幕录制（TCC）授权状态。
 ///
-/// 注意这里比 `CGPreflightScreenCaptureAccess()` 的布尔返回值多了一档：
-/// 系统 API 只能回答"现在有没有权限"，**无法区分「从没问过」和「已被拒绝」**。
-/// 而这两者的正确处理完全相反 ——
-/// 前者可以调 `CGRequestScreenCaptureAccess()` 弹系统框，后者再弹一次也不会出现任何东西。
-/// 所以 `MarqueeCapture.SystemScreenRecordingPermission` 自己持久化一个
-/// "我们主动请求过" 的标记，把布尔补成三态。
+/// 这里比 `CGPreflightScreenCaptureAccess()` 的布尔返回值多了一档。
+/// `.denied` 可以是进程内记忆（「这次已经问过系统」），**不能**写到 UserDefaults：
+/// 签名身份一变 TCC 重置而标记还在，会把用户永久锁死（2026-09-30 实测踩到）。
 public enum ScreenRecordingPermission: Equatable, Sendable {
     /// 已授权，可以直接采集
     case granted
-    /// 用户在系统设置里关掉了（或曾经拒绝过）—— 只能引导去系统设置手动打开
+    /// 已明确被拒绝，或本进程已经问过系统、再问也不会再弹框。
+    /// 真实探针在「本次进程已经 `requestPermission()` 过、preflight 仍为 false」时给出这一档。
     case denied
-    /// 从未询问过 —— 可以弹系统请求框
+    /// 尚未确定 —— 应当去走一次系统授权流程
     case notDetermined
 }
 
@@ -24,12 +22,26 @@ public protocol ScreenRecordingPermissionProbing: Sendable {
     /// 当前权限状态，**不**弹任何系统框
     func currentPermission() -> ScreenRecordingPermission
 
-    /// 主动请求权限（会弹系统框；仅 `.notDetermined` 时有意义）。
+    /// 触发系统授权流程，返回结束后是否已获得授权。
     ///
-    /// 返回请求结束后是否已获得授权。注意：此调用会**阻塞**到用户做出选择，
-    /// 调用方必须放到主线程之外。
+    /// ⚠️ 实现必须同时满足：
+    ///
+    /// 1. **真的碰一次采集 API**。macOS 只在应用调用采集 API 时才把它登记进
+    ///    「系统设置 → 隐私与安全性 → 屏幕录制」列表。只要不碰，列表里就永远没有这个应用 ——
+    ///    用户翻遍系统设置也找不到可勾选的行，于是**永远授权不了**（2026-09-30 实测踩到）。
+    ///    碰一次 `SCShareableContent` 枚举就够了；**不要**在这里再截一帧，
+    ///    `SCScreenshotManager.captureImage` 会再弹一张系统授权框。
+    /// 2. 调 `CGRequestScreenCaptureAccess()` 拿到权威结论。被拒绝过的进程调用它不会弹框、
+    ///    直接返回 false。
+    /// 3. **同一进程只走一次系统弹框**。`requestPermission()` 返回 false 之后，
+    ///    `currentPermission()` 不得再报 `.notDetermined`，否则每次按快捷键都会
+    ///    再进这一支、再弹系统框（macOS 15+ 上 `CGPreflightScreenCaptureAccess()`
+    ///    在重启前会一直是 false，即使用户已经去系统设置里勾过）。
+    ///    这是进程内记忆，**不要**写到 UserDefaults —— 签名身份一变会把人永久锁死。
+    ///
+    /// 因为要碰异步的采集 API，这个方法是 `async` 的。
     @discardableResult
-    func requestPermission() -> Bool
+    func requestPermission() async -> Bool
 }
 
 // MARK: - 权限门

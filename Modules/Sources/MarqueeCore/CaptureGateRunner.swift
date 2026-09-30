@@ -20,9 +20,12 @@ public enum CaptureGateRunner {
             return .blocked(.guideToSystemSettings)
 
         case .requestSystemPrompt:
-            // 系统框可能停留数秒，必须离开主线程
+            // 这一步里会真的碰一次采集 API（让 macOS 把 Marquee 登记进「屏幕录制」列表），
+            // 并且可能弹系统框停住好几秒 —— 必须离开主线程。
+            // 探针必须保证同一进程只问一次：问完若仍未授权，`currentPermission()`
+            // 应报 `.denied`，下次快捷键走 `guideToSystemSettings` 而不是再弹系统框。
             let granted = await Task.detached(priority: .userInitiated) { [permission] in
-                permission.requestPermission()
+                await permission.requestPermission()
             }.value
             return granted ? .proceed(grantedJustNow: true) : .blocked(.guideToSystemSettings)
 

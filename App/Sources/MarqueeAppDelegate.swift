@@ -1,4 +1,5 @@
 import AppKit
+import MarqueeCapture
 import MarqueeCore
 
 @MainActor
@@ -22,6 +23,38 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         // 菜单栏图标与菜单已经就位，用户仍能通过菜单截图。
         // `start()` 会把实际生效的组合回推给菜单。
         coordinator.start()
+
+        // 权限登记入口：`Marquee -marqueeRequestPermission`
+        //
+        // 存在的理由：macOS 只在应用**真的发起采集**时才把它登记进「屏幕录制」列表，
+        // 而我们的权限门拦在采集之前 —— 不主动跑一次这一步，用户翻遍系统设置也找不到
+        // 可勾选的 Marquee。这个开关让"登记 + 请求授权"能被单独触发，不必等用户按快捷键。
+        //
+        // 用 `open -a Marquee.app --args -marqueeRequestPermission` 启动（而不是直接 exec 可执行文件）：
+        // LaunchServices 启动才会让 Marquee 成为自己的 "responsible process"。
+        // 从 shell 直接 exec 时，TCC 可能把这次访问算在父进程（终端）头上，
+        // 于是登记的是终端而不是 Marquee —— 那正是"列表里找不到 Marquee"的一种成因。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeRequestPermission") {
+            print("app 路径：\(Bundle.main.bundleURL.path)")
+            print("正在请求屏幕录制权限（若弹出系统授权框，请点「打开系统设置」）…")
+            NSApplication.shared.activate()
+            Task {
+                let granted = await SystemScreenRecordingPermission().requestPermission()
+                let report = """
+                Marquee 权限登记探针
+                  app 路径    : \(Bundle.main.bundleURL.path)
+                  请求结果    : \(granted ? "✅ 已授权（如刚授权，需退出并重新打开应用才生效）" : "❌ 仍未授权")
+                  preflight   : \(CGPreflightScreenCaptureAccess() ? "true" : "false")
+                  时间        : \(Date())
+                """
+                print(report)
+                Self.writeProbeReport(report)
+                // 多留一会儿再退出：系统授权框可能正在等用户操作
+                try? await Task.sleep(for: .seconds(15))
+                NSApplication.shared.terminate(nil)
+            }
+            return
+        }
 
         // 开发用冒烟入口：`Marquee -marqueeSmokeOverlay` 启动即弹出覆盖层，1.5 秒后自动退出。
         //
@@ -48,5 +81,18 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
+    }
+
+    /// 把探针结果落到固定路径。
+    ///
+    /// 用 `open`（LaunchServices）启动时 stdout 不会回到调用方的终端，
+    /// 所以这类一次性探针必须落文件才读得到。放在 `~/Library/Logs/Marquee/` 下，位置好记。
+    private static func writeProbeReport(_ text: String) {
+        let directory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Marquee", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? text.write(to: directory.appendingPathComponent("permission-probe.txt"),
+                        atomically: true,
+                        encoding: .utf8)
     }
 }
