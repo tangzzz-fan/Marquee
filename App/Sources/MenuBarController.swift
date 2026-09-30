@@ -1,16 +1,26 @@
 import AppKit
+import MarqueeCore
 
 /// 菜单栏入口。
 ///
-/// 约束（PRD 3.1「功能简洁」）：下拉菜单 **≤ 6 项**。
+/// 约束（PRD 3.1「功能简洁」）：下拉菜单 **≤ 6 项**，当前 5 项。
 ///
-/// 尚未实现的项以 `nil` action 加入菜单 —— AppKit 会把它们呈现为禁用态。
-/// 这是刻意的：宁可让用户看到一个明确的灰项，也不要放一个点了没反应的假入口。
-/// 每项的归属 ticket 写在旁边，实现时删掉注释即可。
+/// 「设置…」这一项在 ticket 02 里直接变成了**可用的「快捷键…」**：
+/// 与其摆一个点不动的「设置…」占位、再另开一个只能改快捷键的窗口，
+/// 不如让唯一存在的设置入口直达唯一存在的设置项。
+/// ticket 15 做完整四页偏好设置时，把这一项改回「设置…」即可。
 @MainActor
 final class MenuBarController {
 
+    /// 点击「截屏」
+    var onCapture: (() -> Void)?
+    /// 点击「快捷键…」
+    var onShowShortcuts: (() -> Void)?
+
     private let statusItem: NSStatusItem
+    private let captureItem = NSMenuItem(title: "截屏",
+                                         action: #selector(triggerCapture),
+                                         keyEquivalent: "a")
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -18,20 +28,37 @@ final class MenuBarController {
         image?.isTemplate = true
         statusItem.button?.image = image
         statusItem.button?.toolTip = "Marquee"
-        statusItem.menu = Self.makeMenu()
+        statusItem.menu = makeMenu()
+        updateShortcut(KeyCombo.fullScreenCapture)
     }
 
-    private static func makeMenu() -> NSMenu {
+    /// 快捷键变化后同步菜单上显示的组合。
+    ///
+    /// 菜单里的 keyEquivalent 只在应用激活时生效，**不**承担全局触发 ——
+    /// 全局触发是 Carbon 的事（`CarbonGlobalHotKey`）。这里放它纯粹是"告诉用户现在是哪个键"。
+    func updateShortcut(_ combo: KeyCombo) {
+        captureItem.keyEquivalent = combo.keyLabel.lowercased()
+        captureItem.keyEquivalentModifierMask = Self.appKitModifiers(for: combo.modifiers)
+    }
+
+    // MARK: - 私有
+
+    private func makeMenu() -> NSMenu {
         let menu = NSMenu()
 
-        // ticket 02：全屏截图直达剪贴板
-        menu.addItem(placeholder("截屏"))
+        captureItem.target = self
+        menu.addItem(captureItem)
+
         // ticket 15：延时截屏（3 / 5 / 10 秒）
-        menu.addItem(placeholder("延时截屏"))
+        menu.addItem(Self.placeholder("延时截屏"))
         // ticket 16：最近截图面板
-        menu.addItem(placeholder("最近截图"))
-        // ticket 15：偏好设置
-        menu.addItem(placeholder("设置…"))
+        menu.addItem(Self.placeholder("最近截图"))
+
+        let shortcuts = NSMenuItem(title: "快捷键…",
+                                   action: #selector(showShortcuts),
+                                   keyEquivalent: "")
+        shortcuts.target = self
+        menu.addItem(shortcuts)
 
         menu.addItem(.separator())
 
@@ -48,5 +75,23 @@ final class MenuBarController {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
+    }
+
+    /// 语义修饰键 → AppKit 修饰位（只用于菜单展示）
+    private static func appKitModifiers(for modifiers: ShortcutModifiers) -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if modifiers.contains(.command) { flags.insert(.command) }
+        if modifiers.contains(.shift) { flags.insert(.shift) }
+        if modifiers.contains(.option) { flags.insert(.option) }
+        if modifiers.contains(.control) { flags.insert(.control) }
+        return flags
+    }
+
+    @objc private func triggerCapture() {
+        onCapture?()
+    }
+
+    @objc private func showShortcuts() {
+        onShowShortcuts?()
     }
 }

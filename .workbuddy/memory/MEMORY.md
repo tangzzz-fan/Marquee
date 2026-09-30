@@ -21,6 +21,8 @@
 | 本地 AI | 只做系统级（Vision OCR），不引入本地视觉模型 |
 | 工程 | XcodeGen（`project.yml`）+ SPM 本地包 6 模块：Core / Capture / Overlay / Editor / Settings / History；宿主 target `App` |
 | 任务管理 | matt pocock `to-tickets`；本地 markdown tracker 在 `.scratch/issues/`（**刻意入库**） |
+| 模块依赖方向 | 只有 `MarqueeCore` 无依赖，其余只依赖 Core。**Core 额外持有"接缝（协议/值类型）+ 编排逻辑"**（`CaptureSeams.swift` / `FullScreenCaptureFlow.swift` / `ShortcutService.swift`），实现模块只提供 OS 实现。理由：编排要能脱机单测，而 SwiftPM 依赖是单向的（ticket 02 定） |
+| 快捷键可配置 | **从 ticket 02 起就是可配置的**（用户明确要求"启动后能换键"）。`UserDefaults` 键 `shortcut.fullScreenCapture`，默认 ⌃⌘A；入口＝菜单栏「快捷键…」 |
 
 ## 构建与测试（走脚本，不要手敲裸命令）
 
@@ -74,7 +76,10 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 3. **长图拼接**：新内容 = 本帧顶部 d 行 = `(viewH-d)..<viewH`。
 4. **配准模块必须内置"装置自检"**：用已知位移的合成图做回归。上面 3 个坑都是靠自检才发现的，且都属于"不崩溃、不报错、只悄悄错"。
 5. **`xcodebuild` 无法解析本地 SPM 包**（deny-default 沙箱在本环境不可应用）→ 见 DEV-NOTES 第 4 节，用 `scripts/build.sh`。
-6. **模块缺 `import Foundation` 会让 `Equatable` 静默合成失败**（`URL`/`Date`/`UUID` 场景）。
+6. **模块缺 `import Foundation` 会让 `Equatable` 静默合成失败**（`URL`/`Date`/`UUID` 场景）。同源：`CGImageDestination*` 要 `import ImageIO`（只 import CoreGraphics 不算）。
+7. **`NSEvent.ModifierFlags` 的 ⌘ 是 `1<<20`（0x100000），不是 `1<<16`** —— `1<<16` 是 **Caps Lock**。位值：capsLock `1<<16`、shift `1<<17`、control `1<<18`、option `1<<19`、command `1<<20`（`NSEvent.h:168-172`）。写错不崩，只会让所有 ⌘ 组合静默变成"没按 ⌘"。已用测试钉死。
+8. **Carbon 虚拟键码不是顺序的**：`kVK_ANSI_5 = 0x17`、`kVK_ANSI_6 = 0x16`（反序）。键码表一律从 `Events.h` 抄，别按下标推。
+9. **Swift 6 的 nonisolated `deinit` 不能碰非 Sendable 的存储属性**（如 `EventHotKeyRef` / `EventHandlerRef`，都是 `OpaquePointer`）→ 编译报错。解法：不写 deinit 做清理，改由显式 `unregister()` 负责（进程退出时系统会回收）。
 
 ## 文档与资产
 

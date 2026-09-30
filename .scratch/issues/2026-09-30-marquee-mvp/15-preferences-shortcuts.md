@@ -6,6 +6,17 @@
 
 **Status:** ready-for-agent
 
+## ⚠️ 前情（ticket 02 已提前交付了一部分）
+
+ticket 02 因为"应用启动后要能换快捷键"这条追加需求，已经落地了以下内容，**不要重复造**：
+
+- `MarqueeCore.ShortcutService`：校验 → 试注册 → 成功才落盘 → 冲突回滚
+- `MarqueeCore.ShortcutValidation`：修饰键缺失 / 仅 ⇧ / 系统保留组合的拦截
+- `MarqueeCore.UserDefaultsShortcutStore` + `MarqueeSettings.CarbonGlobalHotKey`
+- 菜单栏「快捷键…」→ `App/ShortcutPreferencesWindowController`（单页，仅快捷键）
+
+因此本条 ticket 的范围调整为：**把那个单页面板并进四页偏好设置窗口**，并把「通用 / 截屏 / 输出」三页补齐。菜单项届时从「快捷键…」改回「设置…」。
+
 ## 设计约束（已定）
 
 - **不超过 4 页**，每页可调项要克制（这是"功能简洁"的硬约束）
