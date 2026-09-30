@@ -8,8 +8,14 @@
 
 ## 当前状态
 
-**M1 捕获核心进行中。** 菜单栏应用可启动；全屏/选区/窗口截图已实现，待人工验收。
-进度见 `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md`（18 条 ticket）。
+**M1 捕获核心基本完成。** 菜单栏应用可启动；全屏 / 选区 / 窗口 / 滚动截屏、标注编辑器、
+`⌘S` 落盘都已实现，**待人工验收**。测试 171 全绿。
+
+| 想做的事 | 看这里 |
+| --- | --- |
+| 现在到哪了、卡在哪 | **`docs/STATUS-AND-ACCEPTANCE.md`** §1–2 |
+| 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3 |
+| 逐条 ticket 状态 | `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md`（18 条） |
 
 ## 构建
 
@@ -56,6 +62,7 @@ defaults delete com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox
 | 文档 | 内容 |
 | --- | --- |
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
+| `docs/STATUS-AND-ACCEPTANCE.md` | **进度 / 阻塞项 / 人工验收清单**（含与 SPIKE M1–M20 的对应） |
 | `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限：现象、四层根因、当前设计、验证与残留 |
 | `docs/RENDER-BENCH.md` | 渲染技术实测：Canvas / Core Graphics / Metal |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告 |

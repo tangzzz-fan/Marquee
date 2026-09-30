@@ -117,6 +117,7 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 | 路径 | 内容 |
 | --- | --- |
 | `docs/PRD.md` | 产品与方案设计 |
+| **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–I 分组 + SPIKE M1–M20 对应 + 排障速查）。ticket 06 的交付物；验收与汇报都从这份起 |
 | `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限完整复盘（四层根因 + 当前设计 + 验证） |
 | `docs/RENDER-BENCH.md` | 渲染技术实测报告 |
 | `docs/SPIKE-PLAN.md` | **坑点/难点/重点清单 + 提前验证报告（37 项）** |
