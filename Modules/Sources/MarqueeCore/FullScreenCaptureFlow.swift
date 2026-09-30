@@ -36,24 +36,11 @@ public final class FullScreenCaptureFlow {
 
         // ── 1. 权限门 ────────────────────────────────────────────────
         var grantedJustNow = false
-        switch CaptureGate.decision(for: permission.currentPermission()) {
-        case .guideToSystemSettings:
-            return .permissionBlocked(blockedBy: .guideToSystemSettings, grantedJustNow: false)
-
-        case .requestSystemPrompt:
-            // `CGRequestScreenCaptureAccess()` 会阻塞到用户点完系统框，
-            // 因此在后台线程上跑（实测这个框可能停留数秒）。
-            let granted = await Task.detached(priority: .userInitiated) { [permission] in
-                permission.requestPermission()
-            }.value
-            guard granted else {
-                // 用户刚拒绝 → 系统不会再弹框，只能引导去系统设置
-                return .permissionBlocked(blockedBy: .guideToSystemSettings, grantedJustNow: false)
-            }
-            grantedJustNow = true
-
-        case .proceed:
-            break
+        switch await CaptureGateRunner.run(permission) {
+        case .blocked(let decision):
+            return .permissionBlocked(blockedBy: decision, grantedJustNow: false)
+        case .proceed(let justGranted):
+            grantedJustNow = justGranted
         }
 
         // ── 2. 定位显示器 ────────────────────────────────────────────

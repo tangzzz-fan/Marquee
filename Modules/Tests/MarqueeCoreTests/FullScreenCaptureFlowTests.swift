@@ -4,123 +4,93 @@ import ImageIO
 import Testing
 @testable import MarqueeCore
 
-// MARK: - 测试替身
+// MARK: - 装置自检 / 拼接
 
-/// 可控的权限探针。真实 TCC 状态无法在测试里摆布，这正是把它抽成协议的原因。
-private final class FakePermissionProbe: ScreenRecordingPermissionProbing, @unchecked Sendable {
-    var status: ScreenRecordingPermission
-    var grantsOnRequest: Bool
-    private(set) var requestCount = 0
+@Suite("图像拼接：装置自检")
+struct ImageCompositingTests {
 
-    init(status: ScreenRecordingPermission, grantsOnRequest: Bool = false) {
-        self.status = status
-        self.grantsOnRequest = grantsOnRequest
+    @Test("单切片铺满 → 直接复用原图，不重绘（最常见的单屏路径不该付质量代价）")
+    func singleFullSliceReusesImage() throws {
+        let image = TestImage.solid(width: 8, height: 8, red: 0.5, green: 0.5, blue: 0.5)
+        let composed = try #require(ImageCompositing.compose(
+            outputSize: CGSize(width: 8, height: 8),
+            slices: [ImageSlice(image: image, target: CGRect(x: 0, y: 0, width: 8, height: 8))]
+        ))
+        #expect(composed === image)
     }
 
-    func currentPermission() -> ScreenRecordingPermission { status }
+    @Test("横向拼接：左右位置正确，且**上下方向不翻转**")
+    func horizontalComposeKeepsOrientation() throws {
+        let left = TestImage.fourQuadrants()
+        let right = TestImage.solid(width: 2, height: 2, red: 0, green: 1, blue: 1) // 青
 
-    func requestPermission() -> Bool {
-        requestCount += 1
-        return grantsOnRequest
-    }
-}
+        let composed = try #require(ImageCompositing.compose(
+            outputSize: CGSize(width: 4, height: 2),
+            slices: [
+                ImageSlice(image: left, target: CGRect(x: 0, y: 0, width: 2, height: 2)),
+                ImageSlice(image: right, target: CGRect(x: 2, y: 0, width: 2, height: 2)),
+            ]
+        ))
 
-/// 测试用的采集错误。
-///
-/// 刻意不用 `MarqueeCapture.CaptureError`：Core 的测试不该依赖实现模块
-/// （`MarqueeCoreTests` 只依赖 `MarqueeCore`）。这条路径要验证的是
-/// "采集抛错时流程怎么呈现"，用哪个错误类型不重要。
-private struct StubCaptureError: Error, LocalizedError {
-    let message: String
-    var errorDescription: String? { message }
-}
+        #expect(composed.width == 4)
+        #expect(composed.height == 2)
 
-/// 采集器替身：记录被调用次数，返回一张指定尺寸的图或抛错。
-private actor FakeCapturer: ScreenCapturing {
-    private let result: Result<CapturedImage, StubCaptureError>
-    private(set) var fullScreenCallCount = 0
-
-    init(result: Result<CapturedImage, StubCaptureError>) {
-        self.result = result
+        // 左上仍是红、左下仍是蓝 —— 如果 CGContext 的 y 忘了翻，这两条会互换
+        #expect(TestImage.matches(TestImage.pixel(composed, x: 0, y: 0), red: 1, green: 0, blue: 0))
+        #expect(TestImage.matches(TestImage.pixel(composed, x: 0, y: 1), red: 0, green: 0, blue: 1))
+        #expect(TestImage.matches(TestImage.pixel(composed, x: 1, y: 0), red: 0, green: 1, blue: 0))
+        #expect(TestImage.matches(TestImage.pixel(composed, x: 3, y: 1), red: 0, green: 1, blue: 1))
     }
 
-    func captureFullScreen(_ display: DisplayGeometry) async throws -> CapturedImage {
-        fullScreenCallCount += 1
-        return try result.get()
+    @Test("纵向拼接：上片在上、下片在下（落位翻错就在这里露馅）")
+    func verticalComposeRespectsTopDownOrder() throws {
+        let top = TestImage.solid(width: 2, height: 2, red: 1, green: 0, blue: 0)
+        let bottom = TestImage.solid(width: 2, height: 2, red: 0, green: 0, blue: 1)
+
+        let composed = try #require(ImageCompositing.compose(
+            outputSize: CGSize(width: 2, height: 4),
+            slices: [
+                ImageSlice(image: top, target: CGRect(x: 0, y: 0, width: 2, height: 2)),
+                ImageSlice(image: bottom, target: CGRect(x: 0, y: 2, width: 2, height: 2)),
+            ]
+        ))
+
+        #expect(TestImage.matches(TestImage.pixel(composed, x: 0, y: 0), red: 1, green: 0, blue: 0))
+        #expect(TestImage.matches(TestImage.pixel(composed, x: 1, y: 1), red: 1, green: 0, blue: 0))
+        #expect(TestImage.matches(TestImage.pixel(composed, x: 0, y: 2), red: 0, green: 0, blue: 1))
+        #expect(TestImage.matches(TestImage.pixel(composed, x: 1, y: 3), red: 0, green: 0, blue: 1))
     }
 
-    func captureRegion(_ rect: CGRect, on display: DisplayGeometry) async throws -> CapturedImage {
-        throw StubCaptureError(message: "ticket 03 才实现")
-    }
-
-    func callCount() -> Int { fullScreenCallCount }
-}
-
-private final class FakeClipboard: ClipboardWriting, @unchecked Sendable {
-    private(set) var written: [Data] = []
-    func writePNG(_ data: Data) { written.append(data) }
-}
-
-private struct FakeDisplays: DisplayLocating {
-    let display: DisplayGeometry?
-    func displayUnderPointer() -> DisplayGeometry? { display }
-}
-
-/// 每次调用返回一个递增的假时间，让耗时断言可复现。
-///
-/// 步长取 0.125 秒（= 1/8，二进制可精确表示）而不是 0.02：
-/// 0.02 不是精确的二进制小数，`(100.02 - 100.00) * 1000` 会得到 19.999999999996，
-/// 断言相等就会假报失败。
-private final class FakeClock: MonotonicClock, @unchecked Sendable {
-    private var value: Double
-    private let step: Double
-
-    init(start: Double = 100, step: Double = 0.125) {
-        self.value = start
-        self.step = step
-    }
-
-    func now() -> Double {
-        defer { value += step }
-        return value
+    @Test("没有切片 / 尺寸非法 → nil，而不是给一张空图")
+    func invalidInputsReturnNil() {
+        #expect(ImageCompositing.compose(outputSize: CGSize(width: 10, height: 10), slices: []) == nil)
+        #expect(ImageCompositing.compose(outputSize: .zero,
+                                         slices: [ImageSlice(image: TestImage.fourQuadrants(),
+                                                             target: .zero)]) == nil)
     }
 }
 
-// MARK: - 工具
-
-private func makeImage(width: Int = 8, height: Int = 6) -> CGImage {
-    let context = CGContext(data: nil,
-                            width: width,
-                            height: height,
-                            bitsPerComponent: 8,
-                            bytesPerRow: 0,
-                            space: CGColorSpaceCreateDeviceRGB(),
-                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-    return context.makeImage()!
-}
-
-private let retinaDisplay = DisplayGeometry(frame: CGRect(x: 0, y: 0, width: 1440, height: 900),
-                                           backingScale: 2,
-                                           displayID: 1)
+// MARK: - 全屏流程
 
 @MainActor
-private func makeFlow(permission: ScreenRecordingPermission,
-                      grantsOnRequest: Bool = false,
-                      captureResult: Result<CapturedImage, StubCaptureError>,
-                      display: DisplayGeometry? = retinaDisplay)
-    -> (flow: FullScreenCaptureFlow, probe: FakePermissionProbe, capturer: FakeCapturer, clipboard: FakeClipboard) {
+private func makeFullScreenHarness(permission: ScreenRecordingPermission,
+                                   grantsOnRequest: Bool = false,
+                                   failure: StubCaptureError? = nil,
+                                   displays: [DisplayGeometry] = [TestDisplays.retina])
+    -> (flow: FullScreenCaptureFlow,
+        probe: FakePermissionProbe,
+        capturer: RecordingCapturer,
+        clipboard: FakeClipboard) {
     let probe = FakePermissionProbe(status: permission, grantsOnRequest: grantsOnRequest)
-    let capturer = FakeCapturer(result: captureResult)
+    let capturer = RecordingCapturer(failure: failure)
     let clipboard = FakeClipboard()
     let flow = FullScreenCaptureFlow(permission: probe,
                                      capturer: capturer,
                                      clipboard: clipboard,
-                                     displays: FakeDisplays(display: display),
+                                     displays: FakeDisplays(all: displays),
                                      clock: FakeClock())
     return (flow, probe, capturer, clipboard)
 }
-
-// MARK: - 用例
 
 @Suite("全屏截图流程：权限门")
 @MainActor
@@ -128,63 +98,47 @@ struct FullScreenCaptureFlowPermissionTests {
 
     @Test("未授权且从没问过 → 弹系统框；用户同意后继续采集并复制")
     func notDeterminedThenGranted() async {
-        let image = makeImage()
-        let harness = makeFlow(permission: .notDetermined,
-                               grantsOnRequest: true,
-                               captureResult: .success(CapturedImage(image: image,
-                                                                     displayID: 1,
-                                                                     backingScale: 2)))
+        let harness = makeFullScreenHarness(permission: .notDetermined, grantsOnRequest: true)
 
         let outcome = await harness.flow.capture()
 
         #expect(harness.probe.requestCount == 1)
-        #expect(await harness.capturer.callCount() == 1)
+        #expect(await harness.capturer.fullScreenCalls.count == 1)
         #expect(harness.clipboard.written.count == 1)
         guard case .copiedToClipboard(let metrics) = outcome else {
             Issue.record("期望复制成功，实际 \(outcome)")
             return
         }
-        #expect(metrics.pixelSize == CGSize(width: 8, height: 6))
+        #expect(metrics.pixelSize == TestDisplays.retina.pixelSize)
     }
 
     @Test("未授权且用户拒绝 → 引导去系统设置，且**不**尝试采集")
     func notDeterminedThenDenied() async {
-        let harness = makeFlow(permission: .notDetermined,
-                               grantsOnRequest: false,
-                               captureResult: .success(CapturedImage(image: makeImage(),
-                                                                     displayID: 1,
-                                                                     backingScale: 2)))
+        let harness = makeFullScreenHarness(permission: .notDetermined, grantsOnRequest: false)
 
         let outcome = await harness.flow.capture()
 
         #expect(outcome == .permissionBlocked(blockedBy: .guideToSystemSettings, grantedJustNow: false))
-        #expect(await harness.capturer.callCount() == 0)
+        #expect(await harness.capturer.fullScreenCalls.isEmpty)
         #expect(harness.clipboard.written.isEmpty)
     }
 
     @Test("已被拒绝 → 连系统框都不弹，直接引导；不采集、不写剪贴板")
     func deniedNeverPromptsAndNeverCaptures() async {
-        let harness = makeFlow(permission: .denied,
-                               captureResult: .success(CapturedImage(image: makeImage(),
-                                                                     displayID: 1,
-                                                                     backingScale: 2)))
+        let harness = makeFullScreenHarness(permission: .denied)
 
         let outcome = await harness.flow.capture()
 
         #expect(outcome == .permissionBlocked(blockedBy: .guideToSystemSettings, grantedJustNow: false))
         #expect(harness.probe.requestCount == 0, "被拒绝过的进程再请求也不会弹框，不该浪费这一次调用")
-        #expect(await harness.capturer.callCount() == 0)
+        #expect(await harness.capturer.fullScreenCalls.isEmpty)
         #expect(harness.clipboard.written.isEmpty)
     }
 
     @Test("权限没过时不能静默：必须有明确结果，且剪贴板保持原样")
     func permissionFailureIsNeverSilent() async {
         for status in [ScreenRecordingPermission.denied, .notDetermined] {
-            let harness = makeFlow(permission: status,
-                                   grantsOnRequest: false,
-                                   captureResult: .success(CapturedImage(image: makeImage(),
-                                                                         displayID: 1,
-                                                                         backingScale: 2)))
+            let harness = makeFullScreenHarness(permission: status, grantsOnRequest: false)
             let outcome = await harness.flow.capture()
             guard case .permissionBlocked = outcome else {
                 Issue.record("状态 \(status) 下应返回 permissionBlocked，实际 \(outcome)")
@@ -201,11 +155,7 @@ struct FullScreenCaptureFlowCaptureTests {
 
     @Test("已授权 → 一次采集、一次写剪贴板，写入的是原始 PNG 数据")
     func grantedWritesPNG() async throws {
-        let image = makeImage(width: 12, height: 10)
-        let harness = makeFlow(permission: .granted,
-                               captureResult: .success(CapturedImage(image: image,
-                                                                     displayID: 1,
-                                                                     backingScale: 2)))
+        let harness = makeFullScreenHarness(permission: .granted)
 
         let outcome = await harness.flow.capture()
 
@@ -213,21 +163,19 @@ struct FullScreenCaptureFlowCaptureTests {
             Issue.record("期望复制成功，实际 \(outcome)")
             return
         }
-        #expect(await harness.capturer.callCount() == 1)
+        #expect(await harness.capturer.fullScreenCalls.count == 1)
 
         // 写入的必须是 PNG（魔数校验），而不是 NSImage 往返出来的 TIFF
         let png = try #require(harness.clipboard.written.first)
         #expect(png.count == metrics.pngByteCount)
         #expect(png.prefix(8) == Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
-        #expect(metrics.pixelSize == CGSize(width: 12, height: 10))
+        // Retina 下必须是物理像素，不是点数
+        #expect(metrics.pixelSize == CGSize(width: 2880, height: 1800))
     }
 
     @Test("耗时按注入时钟计算（性能预算 150 ms 的判定依据）")
     func elapsedUsesInjectedClock() async {
-        let harness = makeFlow(permission: .granted,
-                               captureResult: .success(CapturedImage(image: makeImage(),
-                                                                     displayID: 1,
-                                                                     backingScale: 2)))
+        let harness = makeFullScreenHarness(permission: .granted)
         let outcome = await harness.flow.capture()
 
         guard case .copiedToClipboard(let metrics) = outcome else {
@@ -240,11 +188,7 @@ struct FullScreenCaptureFlowCaptureTests {
 
     @Test("找不到鼠标所在显示器 → 明确失败，不采集")
     func missingDisplayFails() async {
-        let harness = makeFlow(permission: .granted,
-                               captureResult: .success(CapturedImage(image: makeImage(),
-                                                                     displayID: 1,
-                                                                     backingScale: 2)),
-                               display: nil)
+        let harness = makeFullScreenHarness(permission: .granted, displays: [])
 
         let outcome = await harness.flow.capture()
 
@@ -253,14 +197,14 @@ struct FullScreenCaptureFlowCaptureTests {
             return
         }
         #expect(failure.message.contains("显示器"))
-        #expect(await harness.capturer.callCount() == 0)
+        #expect(await harness.capturer.fullScreenCalls.isEmpty)
     }
 
     @Test("刚授权就采集失败 → 提示重启应用（SPIKE A5：授权需重启进程生效）")
     func failedRightAfterGrantingSuggestsRestart() async {
-        let harness = makeFlow(permission: .notDetermined,
-                               grantsOnRequest: true,
-                               captureResult: .failure(StubCaptureError(message: "屏幕采集失败")))
+        let harness = makeFullScreenHarness(permission: .notDetermined,
+                                            grantsOnRequest: true,
+                                            failure: StubCaptureError(message: "屏幕采集失败"))
 
         let outcome = await harness.flow.capture()
 
@@ -273,8 +217,8 @@ struct FullScreenCaptureFlowCaptureTests {
 
     @Test("已授权后采集失败 → 报真实错误，不提「重启」")
     func failureWithExistingPermissionReportsRealError() async {
-        let harness = makeFlow(permission: .granted,
-                               captureResult: .failure(StubCaptureError(message: "ticket 03 才实现")))
+        let harness = makeFullScreenHarness(permission: .granted,
+                                            failure: StubCaptureError(message: "显示器被拔了"))
 
         let outcome = await harness.flow.capture()
 
@@ -282,17 +226,175 @@ struct FullScreenCaptureFlowCaptureTests {
             Issue.record("期望 failed，实际 \(outcome)")
             return
         }
-        #expect(failure.message.contains("ticket 03"))
+        #expect(failure.message.contains("显示器被拔了"))
         #expect(!failure.message.contains("重新打开"))
     }
 }
+
+// MARK: - 区域流程
+
+@MainActor
+private func makeRegionHarness(permission: ScreenRecordingPermission = .granted,
+                               grantsOnRequest: Bool = false,
+                               failure: StubCaptureError? = nil)
+    -> (flow: RegionCaptureFlow,
+        probe: FakePermissionProbe,
+        capturer: RecordingCapturer,
+        clipboard: FakeClipboard) {
+    let probe = FakePermissionProbe(status: permission, grantsOnRequest: grantsOnRequest)
+    let capturer = RecordingCapturer(failure: failure)
+    let clipboard = FakeClipboard()
+    let flow = RegionCaptureFlow(permission: probe,
+                                 capturer: capturer,
+                                 clipboard: clipboard,
+                                 clock: FakeClock())
+    return (flow, probe, capturer, clipboard)
+}
+
+@Suite("区域截图流程")
+@MainActor
+struct RegionCaptureFlowTests {
+
+    @Test("单屏选区：只调一次采集，输出像素 = 点 × scale")
+    func singleDisplaySelection() async throws {
+        let harness = makeRegionHarness()
+        let selection = CGRect(x: 100, y: 200, width: 300, height: 150)
+
+        let outcome = await harness.flow.capture(selection: selection, displays: [TestDisplays.retina])
+
+        guard case .copiedToClipboard(let metrics) = outcome else {
+            Issue.record("期望复制成功，实际 \(outcome)")
+            return
+        }
+        #expect(metrics.pixelSize == CGSize(width: 600, height: 300))
+
+        let calls = await harness.capturer.regionCalls
+        #expect(calls.count == 1)
+        #expect(calls[0].rect == selection)
+        #expect(calls[0].displayID == TestDisplays.retina.displayID)
+
+        let png = try #require(harness.clipboard.written.first)
+        #expect(png.prefix(8) == Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+    }
+
+    @Test("跨屏选区：逐屏取片，输出尺寸取参与屏里最大的 scale")
+    func crossDisplaySelection() async {
+        let harness = makeRegionHarness()
+        let displays = [TestDisplays.retina, TestDisplays.plainRight]
+        // 从 2x 主屏拖到 1x 右屏
+        let selection = CGRect(x: 1300, y: 200, width: 340, height: 300)
+
+        let outcome = await harness.flow.capture(selection: selection, displays: displays)
+
+        guard case .copiedToClipboard(let metrics) = outcome else {
+            Issue.record("期望复制成功，实际 \(outcome)")
+            return
+        }
+        #expect(metrics.pixelSize == CGSize(width: 680, height: 600))
+
+        let calls = await harness.capturer.regionCalls
+        #expect(calls.count == 2, "两块屏各取一片")
+        #expect(Set(calls.map(\.displayID)) == [1, 2])
+        // 每片拿到的都是"该屏与选区的交集"，而不是整个选区
+        #expect(calls.first { $0.displayID == 1 }?.rect == CGRect(x: 1300, y: 200, width: 140, height: 300))
+        #expect(calls.first { $0.displayID == 2 }?.rect == CGRect(x: 1440, y: 200, width: 200, height: 300))
+    }
+
+    @Test("未授权 → 不采集、不写剪贴板，返回权限分支")
+    func permissionBlocked() async {
+        let harness = makeRegionHarness(permission: .denied)
+
+        let outcome = await harness.flow.capture(selection: CGRect(x: 0, y: 0, width: 100, height: 100),
+                                                 displays: [TestDisplays.retina])
+
+        #expect(outcome == .permissionBlocked(blockedBy: .guideToSystemSettings, grantedJustNow: false))
+        #expect(await harness.capturer.regionCalls.isEmpty)
+        #expect(harness.clipboard.written.isEmpty)
+    }
+
+    @Test("零面积选区 → 明确失败，不采集")
+    func emptySelectionFails() async {
+        let harness = makeRegionHarness()
+
+        let outcome = await harness.flow.capture(selection: CGRect(x: 10, y: 10, width: 0, height: 50),
+                                                 displays: [TestDisplays.retina])
+
+        guard case .failed(let failure) = outcome else {
+            Issue.record("期望 failed，实际 \(outcome)")
+            return
+        }
+        #expect(failure.message.contains("太小"))
+        #expect(await harness.capturer.regionCalls.isEmpty)
+    }
+
+    @Test("选区完全在屏外 → 明确失败，不采集")
+    func offScreenSelectionFails() async {
+        let harness = makeRegionHarness()
+
+        let outcome = await harness.flow.capture(selection: CGRect(x: 9000, y: 9000, width: 100, height: 100),
+                                                 displays: [TestDisplays.retina])
+
+        guard case .failed = outcome else {
+            Issue.record("期望 failed，实际 \(outcome)")
+            return
+        }
+        #expect(await harness.capturer.regionCalls.isEmpty)
+    }
+
+    @Test("采集抛错 → 报错误信息，剪贴板保持不变")
+    func captureFailureIsReported() async {
+        let harness = makeRegionHarness(failure: StubCaptureError(message: "权限不足"))
+
+        let outcome = await harness.flow.capture(selection: CGRect(x: 0, y: 0, width: 100, height: 100),
+                                                 displays: [TestDisplays.retina])
+
+        guard case .failed(let failure) = outcome else {
+            Issue.record("期望 failed，实际 \(outcome)")
+            return
+        }
+        #expect(failure.message.contains("权限不足"))
+        #expect(harness.clipboard.written.isEmpty)
+    }
+
+    @Test("刚授权就失败 → 提示重启应用")
+    func failureRightAfterGrantingSuggestsRestart() async {
+        let harness = makeRegionHarness(permission: .notDetermined,
+                                        grantsOnRequest: true,
+                                        failure: StubCaptureError(message: "屏幕采集失败"))
+
+        let outcome = await harness.flow.capture(selection: CGRect(x: 0, y: 0, width: 100, height: 100),
+                                                 displays: [TestDisplays.retina])
+
+        guard case .failed(let failure) = outcome else {
+            Issue.record("期望 failed，实际 \(outcome)")
+            return
+        }
+        #expect(failure.message.contains("重新打开"))
+    }
+
+    @Test("耗时按注入时钟计算")
+    func elapsedUsesInjectedClock() async {
+        let harness = makeRegionHarness()
+
+        let outcome = await harness.flow.capture(selection: CGRect(x: 0, y: 0, width: 100, height: 100),
+                                                 displays: [TestDisplays.retina])
+
+        guard case .copiedToClipboard(let metrics) = outcome else {
+            Issue.record("期望复制成功，实际 \(outcome)")
+            return
+        }
+        #expect(metrics.elapsedMilliseconds == 125)
+    }
+}
+
+// MARK: - 图像编码
 
 @Suite("图像编码")
 struct ImageEncodingTests {
 
     @Test("CGImage → PNG 数据可解码回原尺寸（防止 Retina 退化）")
     func pngRoundTripKeepsPixelSize() throws {
-        let image = makeImage(width: 200, height: 120)
+        let image = TestImage.solid(width: 200, height: 120, red: 0.2, green: 0.4, blue: 0.6)
         let data = try #require(ImageEncoding.pngData(from: image))
 
         #expect(data.prefix(8) == Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))

@@ -5,12 +5,18 @@ import Testing
 @Suite("KeyCombo：键码映射与显示")
 struct KeyboardShortcutTests {
 
-    @Test("默认全屏截图快捷键是 ⌃⌘A")
+    @Test("默认截图快捷键是 ⌃Q")
     func defaultCombo() {
         let combo = KeyCombo.fullScreenCapture
-        #expect(combo.keyCode == 0x00) // kVK_ANSI_A
-        #expect(combo.modifiers == [.control, .command])
-        #expect(combo.displayString == "⌃⌘A")
+        #expect(combo.keyCode == 0x0C) // kVK_ANSI_Q
+        #expect(combo.modifiers == [.control])
+        #expect(combo.displayString == "⌃Q")
+    }
+
+    @Test("默认键不是 ⌃⌘A —— 本机实测它被别的应用（微信截图）占了")
+    func defaultIsNotTheContestedCombo() {
+        let contested = KeyCombo(keyCode: 0x00, modifiers: [.control, .command], keyLabel: "A")
+        #expect(KeyCombo.fullScreenCapture != contested)
     }
 
     @Test("显示顺序按 macOS 惯例：⌃ ⌥ ⇧ ⌘")

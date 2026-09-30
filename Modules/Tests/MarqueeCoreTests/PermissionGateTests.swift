@@ -58,10 +58,4 @@ struct SystemSettingsLinkTests {
         #expect(url.scheme == "x-apple.systempreferences")
         #expect(url.absoluteString.contains(SystemSettingsLink.screenRecordingAnchor))
     }
-
-    @Test("权限请求痕迹用独立的偏好键，不与快捷键存储冲突")
-    func defaultsKeysAreDistinct() {
-        #expect(SystemSettingsLink.permissionRequestedDefaultsKey
-            != UserDefaultsShortcutStore.storageKey)
-    }
 }

@@ -16,8 +16,15 @@ enum PermissionPrompt {
         alert.alertStyle = .informational
         alert.messageText = "Marquee 需要「屏幕录制」权限"
         alert.informativeText = grantedJustNow
-            ? "权限刚授予完成。macOS 要求应用重启后才能生效 —— 请先打开系统设置确认已勾选 Marquee，然后退出并重新打开。"
-            : "macOS 不允许应用自行开启这项权限。请到「系统设置 → 隐私与安全性 → 屏幕录制」中勾选 Marquee，然后重新打开应用。"
+            ? """
+              权限已经勾选，但 macOS 要求应用**重启后**才生效。
+              请退出 Marquee（菜单栏图标 → 退出 Marquee）再重新打开。
+              """
+            : """
+              请到「系统设置 → 隐私与安全性 → 屏幕录制」里勾选 Marquee，然后退出并重新打开应用。
+
+              如果列表里**找不到 Marquee**：点列表下方的「+」，把正在运行的 Marquee 添加进去。
+              """
         alert.addButton(withTitle: "打开系统设置")
         alert.addButton(withTitle: "稍后")
 

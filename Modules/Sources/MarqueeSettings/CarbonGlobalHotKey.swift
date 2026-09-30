@@ -15,6 +15,10 @@ public final class CarbonGlobalHotKey: HotKeyRegistering {
 
     /// 本应用的热键签名（'MRQK'）。Carbon 用它区分不同来源的热键。
     private static let signature: OSType = 0x4D_52_51_4B
+    /// 真正生效的热键 id
+    private static let liveHotKeyID: UInt32 = 1
+    /// 可用性探测用的热键 id（与生效的那个分开，免得探测把自己顶掉）
+    private static let probeHotKeyID: UInt32 = 2
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
@@ -28,7 +32,7 @@ public final class CarbonGlobalHotKey: HotKeyRegistering {
         self.handler = handler
         installEventHandlerIfNeeded()
 
-        let hotKeyID = EventHotKeyID(signature: Self.signature, id: 1)
+        let hotKeyID = EventHotKeyID(signature: Self.signature, id: Self.liveHotKeyID)
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(combo.keyCode,
                                         Self.carbonModifiers(for: combo.modifiers),
@@ -45,6 +49,23 @@ public final class CarbonGlobalHotKey: HotKeyRegistering {
             UnregisterEventHotKey(hotKeyRef)
         }
         hotKeyRef = nil
+    }
+
+    public func probeAvailability(of combo: KeyCombo) -> HotKeyRegistrationOutcome {
+        // 探测用独立的热键 id，避免与真正生效的那个混淆
+        let hotKeyID = EventHotKeyID(signature: Self.signature, id: Self.probeHotKeyID)
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(combo.keyCode,
+                                        Self.carbonModifiers(for: combo.modifiers),
+                                        hotKeyID,
+                                        GetEventDispatcherTarget(),
+                                        OptionBits(kEventHotKeyExclusive),
+                                        &ref)
+        // 探测必须是"即注册即注销"：短暂占用一下只为拿返回值，不能真的把键拿走
+        if let ref {
+            UnregisterEventHotKey(ref)
+        }
+        return HotKeyRegistrationOutcome.from(status: Int32(status))
     }
 
     // 刻意不写 `deinit` 做清理：Swift 6 的 nonisolated deinit 不允许触碰

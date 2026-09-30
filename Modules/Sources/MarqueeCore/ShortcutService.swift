@@ -14,12 +14,23 @@ public protocol ShortcutStoring: Sendable {
 /// 全局快捷键注册器。
 ///
 /// 真实现是 Carbon（`MarqueeSettings.CarbonGlobalHotKey`）。抽成协议是为了让
-/// "改键 → 先注销旧的 → 注册新的 → 冲突则回滚" 这段编排能脱离真实 Carbon 单测。
+/// "改键 → 先注销旧的 → 探测是否被占 → 注册新的 → 冲突则回滚" 这段编排能脱离真实 Carbon 单测。
 @MainActor
 public protocol HotKeyRegistering: AnyObject {
     @discardableResult
     func register(_ combo: KeyCombo, handler: @escaping @MainActor () -> Void) -> HotKeyRegistrationOutcome
     func unregister()
+
+    /// 独占试注册一次再立刻注销，用来问「这个组合是不是已经被别的应用占了」。
+    ///
+    /// 存在的唯一理由：**非独占注册永远返回成功**（本机实测），
+    /// 所以光看 `register` 的结果永远发现不了冲突 —— 这也正是
+    /// "微信也在用同一个键，两个 app 一起响应"这类问题根本收不到提示的原因。
+    /// 只有独占注册会在被占用时返回 `eventHotKeyExistsErr`。
+    ///
+    /// ⚠️ 调用前必须先 `unregister()`：**带着自己已有的非独占注册去独占探测同样会返回 -9878**（实测），
+    /// 不先注销就会把自己的注册误报成"被别的应用占用"。
+    func probeAvailability(of combo: KeyCombo) -> HotKeyRegistrationOutcome
 }
 
 // MARK: - 结果
@@ -43,7 +54,7 @@ public enum ShortcutChangeResult: Equatable, Sendable {
         case .rejected(let error):
             error.message
         case .occupied(let combo):
-            "\(combo.displayString) 已被其他应用占用，换一个组合试试"
+            "\(combo.displayString) 已被其他应用占用（例如微信的截图快捷键）。\n请到菜单栏「快捷键…」换一个组合。"
         case .registrationFailed(_, let status):
             "注册快捷键失败（错误码 \(status)）"
         }
@@ -115,7 +126,14 @@ public final class ShortcutService {
     private func apply(_ combo: KeyCombo, persist: Bool) -> ShortcutChangeResult {
         // 先注销再注册：Carbon 对同一进程内同一组合的重复注册会返回 eventHotKeyExistsErr，
         // 不先注销的话"把 A 换成 A"这种操作会假报冲突。
+        // 而且**带着自己的注册去独占探测也会假报占用**（本机实测），所以顺序不能换。
         registrar.unregister()
+
+        // 非独占注册永远成功 → 必须用独占探测才能问出"这个键是不是别人在用"
+        if case .conflict = registrar.probeAvailability(of: combo) {
+            return .occupied(combo)
+        }
+
         let outcome = registrar.register(combo, handler: handler)
         lastRegistration = outcome
 

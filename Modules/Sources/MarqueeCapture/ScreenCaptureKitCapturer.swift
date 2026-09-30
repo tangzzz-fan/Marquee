@@ -50,9 +50,36 @@ public struct ScreenCaptureKitCapturer: ScreenCapturing {
     }
 
     public func captureRegion(_ rect: CGRect, on display: DisplayGeometry) async throws -> CapturedImage {
-        // ticket 03 实现。刻意在这里显式抛错而不是返回整屏：
-        // 静默降级会变成"选区截了个整屏"这种极难察觉的错。
-        throw CaptureError.notImplemented("区域采集属于 ticket 03")
+        let content = try await SCShareableContent.excludingDesktopWindows(false,
+                                                                          onScreenWindowsOnly: true)
+        guard let scDisplay = content.displays.first(where: { $0.displayID == display.displayID }) else {
+            throw CaptureError.displayNotFound(display.displayID)
+        }
+        let ownProcessID = ProcessInfo.processInfo.processIdentifier
+        let ownWindows = content.windows.filter { $0.owningApplication?.processID == ownProcessID }
+        let filter = SCContentFilter(display: scDisplay, excludingWindows: ownWindows)
+
+        // `sourceRect` 是**该屏内容空间里的点坐标**（相对屏左上），不是全局坐标，
+        // 也不是像素 —— 像素由 `width`/`height` 决定（SCStream.h:289）。
+        let localPoints = CGRect(x: rect.minX - display.frame.minX,
+                                 y: rect.minY - display.frame.minY,
+                                 width: rect.width,
+                                 height: rect.height)
+        let localPixels = display.pixelRect(for: rect)
+
+        let configuration = SCStreamConfiguration()
+        configuration.sourceRect = localPoints
+        configuration.width = max(1, Int(localPixels.width))
+        configuration.height = max(1, Int(localPixels.height))
+        configuration.captureResolution = .best
+        configuration.scalesToFit = false
+        configuration.showsCursor = false
+
+        let image = try await SCScreenshotManager.captureImage(contentFilter: filter,
+                                                               configuration: configuration)
+        return CapturedImage(image: image,
+                             displayID: scDisplay.displayID,
+                             backingScale: display.backingScale)
     }
 }
 

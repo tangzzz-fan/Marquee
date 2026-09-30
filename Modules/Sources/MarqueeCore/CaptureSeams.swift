@@ -64,6 +64,9 @@ public protocol ClipboardWriting: Sendable {
 public protocol DisplayLocating: Sendable {
     /// 鼠标指针所在的那块屏；找不到时返回 `nil`
     func displayUnderPointer() -> DisplayGeometry?
+
+    /// 全部活动显示器（覆盖层要给每块屏都开一个面板、跨屏选区要逐屏取片）
+    func allDisplays() -> [DisplayGeometry]
 }
 
 // MARK: - 计时

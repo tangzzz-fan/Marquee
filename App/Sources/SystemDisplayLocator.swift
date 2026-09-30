@@ -11,22 +11,27 @@ import MarqueeCore
 /// 这里统一走 Quartz，坐标语义与采集层一致。
 struct SystemDisplayLocator: DisplayLocating {
 
-    func displayUnderPointer() -> DisplayGeometry? {
+    func allDisplays() -> [DisplayGeometry] {
         var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return nil }
+        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
 
         var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return nil }
-        let activeIDs = ids.prefix(Int(count))
+        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return [] }
+        return ids.prefix(Int(count)).compactMap { geometry(for: $0) }
+    }
+
+    func displayUnderPointer() -> DisplayGeometry? {
+        let all = allDisplays()
+        guard !all.isEmpty else { return nil }
 
         // 指针位置用 CGEvent 读，同样是 Quartz 全局坐标
         let pointer = CGEvent(source: nil)?.location
-        let targetID = activeIDs.first { displayID -> Bool in
-            guard let pointer else { return false }
-            return CGDisplayBounds(displayID).contains(pointer)
-        } ?? CGMainDisplayID()
-
-        return geometry(for: targetID)
+        if let pointer,
+           let hit = all.first(where: { $0.frame.contains(pointer) }) {
+            return hit
+        }
+        // 取不到指针（或恰好在屏间缝隙）→ 退回主屏
+        return all.first { $0.frame.origin == .zero } ?? all.first
     }
 
     private func geometry(for displayID: CGDirectDisplayID) -> DisplayGeometry? {

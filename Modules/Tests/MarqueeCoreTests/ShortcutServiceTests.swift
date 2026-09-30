@@ -19,7 +19,10 @@ private final class FakeStore: ShortcutStoring, @unchecked Sendable {
 private final class FakeRegistrar: HotKeyRegistering {
     /// 按"要注册的组合"决定结果，用来模拟"新键被占用、旧键可用"
     var outcome: (KeyCombo) -> HotKeyRegistrationOutcome = { _ in .registered }
+    /// 独占探测的返回值：`.conflict` 表示这个组合已被别的应用占用
+    var probeOutcome: (KeyCombo) -> HotKeyRegistrationOutcome = { _ in .registered }
     private(set) var registeredCombos: [KeyCombo] = []
+    private(set) var probedCombos: [KeyCombo] = []
     private(set) var unregisterCount = 0
 
     @discardableResult
@@ -29,6 +32,11 @@ private final class FakeRegistrar: HotKeyRegistering {
     }
 
     func unregister() { unregisterCount += 1 }
+
+    func probeAvailability(of combo: KeyCombo) -> HotKeyRegistrationOutcome {
+        probedCombos.append(combo)
+        return probeOutcome(combo)
+    }
 }
 
 private let comboB = KeyCombo(keyCode: 0x0B, modifiers: [.control, .command], keyLabel: "B")
@@ -128,6 +136,58 @@ struct ShortcutServiceTests {
 
         _ = harness.service.change(to: comboB)
         #expect(harness.registrar.unregisterCount == before + 1)
+    }
+
+    @Test("探测到被别人占用 → 直接判定占用，**不**去注册（非独占注册永远成功，注册了也收不到事件）")
+    func occupiedProbeBlocksRegistration() {
+        let harness = makeService(stored: nil)
+        harness.registrar.probeOutcome = { _ in .conflict }
+
+        let result = harness.service.activate()
+
+        #expect(result == .occupied(.fullScreenCapture))
+        #expect(harness.registrar.probedCombos == [.fullScreenCapture])
+        #expect(harness.registrar.registeredCombos.isEmpty, "已被占用就不该留下一个收不到事件的注册")
+    }
+
+    @Test("探测顺序：先注销自己再探测 —— 带着自己的非独占注册探测会假报占用")
+    func unregistersBeforeProbing() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+        let unregistersBefore = harness.registrar.unregisterCount
+
+        _ = harness.service.change(to: comboB)
+
+        #expect(harness.registrar.unregisterCount > unregistersBefore)
+        #expect(harness.registrar.probedCombos.last == comboB)
+    }
+
+    @Test("改键时探测到新键被占 → 报告占用并回滚到旧键，且不落盘")
+    func occupiedOnChangeRollsBack() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+        // 只有 comboB 被占，旧键仍然可用 —— 才能验证回滚真的把它装回去了
+        harness.registrar.probeOutcome = { $0 == comboB ? .conflict : .registered }
+
+        let result = harness.service.change(to: comboB)
+
+        #expect(result == .occupied(comboB))
+        #expect(harness.service.current == .fullScreenCapture, "回滚到旧键")
+        #expect(harness.registrar.registeredCombos.last == .fullScreenCapture)
+        #expect(harness.store.stored == nil, "冲突时不能落盘")
+    }
+
+    @Test("非法组合**不**做探测：连碰都不该碰系统")
+    func invalidComboIsNotProbed() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+        let probesBefore = harness.registrar.probedCombos.count
+
+        let result = harness.service.change(to: comboNoModifier)
+
+        #expect(result == .rejected(.missingModifier))
+        #expect(harness.registrar.probedCombos.count == probesBefore, "非法组合应在本地就被拦下")
+        #expect(!harness.registrar.probedCombos.contains(comboNoModifier))
     }
 
     @Test("非法组合 → 拒绝，且完全不碰系统、不落盘")

@@ -50,7 +50,13 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: App/Info.plist
-        # 首期本地开发用 ad-hoc 签名；正式签名与公证见 ticket 18
+        # Xcode 这边保持 ad-hoc（最省事、不会因为没有匹配的 provisioning profile 而构建失败），
+        # 真正的**稳定签名**由 scripts/build.sh 在构建后用证书重签一次。
+        #
+        # 为什么必须重签：ad-hoc 没有稳定身份，macOS 的 TCC 只能退回按 cdhash 记账，
+        # 而每次重新构建 cdhash 都变 → 屏幕录制权限每次都要重新授权。
+        # `security find-identity -v -p codesigning` 可查可用身份。
+        # 详见 docs/DEV-NOTES.md 第 1 节。
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: NO

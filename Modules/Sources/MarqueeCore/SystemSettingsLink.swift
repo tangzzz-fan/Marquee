@@ -14,12 +14,3 @@ public enum SystemSettingsLink {
     /// 面板锚点，测试用（改 URL 时不必跟着改断言）
     public static let screenRecordingAnchor = "Privacy_ScreenCapture"
 }
-
-extension SystemSettingsLink {
-    /// 记录用户是否授权成功的持久化键。
-    ///
-    /// 为什么需要它：`CGPreflightScreenCaptureAccess()` 只回答"现在有没有权限"，
-    /// **无法区分「从未询问」与「已被拒绝」**，而这两种状态该做的事完全相反。
-    /// 于是我们记一个"我们主动请求过"的痕迹，把布尔补成三态。
-    public static let permissionRequestedDefaultsKey = "permission.screenRecording.requested"
-}

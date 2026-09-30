@@ -22,7 +22,12 @@
 | 工程 | XcodeGen（`project.yml`）+ SPM 本地包 6 模块：Core / Capture / Overlay / Editor / Settings / History；宿主 target `App` |
 | 任务管理 | matt pocock `to-tickets`；本地 markdown tracker 在 `.scratch/issues/`（**刻意入库**） |
 | 模块依赖方向 | 只有 `MarqueeCore` 无依赖，其余只依赖 Core。**Core 额外持有"接缝（协议/值类型）+ 编排逻辑"**（`CaptureSeams.swift` / `FullScreenCaptureFlow.swift` / `ShortcutService.swift`），实现模块只提供 OS 实现。理由：编排要能脱机单测，而 SwiftPM 依赖是单向的（ticket 02 定） |
-| 快捷键可配置 | **从 ticket 02 起就是可配置的**（用户明确要求"启动后能换键"）。`UserDefaults` 键 `shortcut.fullScreenCapture`，默认 ⌃⌘A；入口＝菜单栏「快捷键…」 |
+| 快捷键可配置 | **从 ticket 02 起就是可配置的**（用户明确要求"启动后能换键"）。`UserDefaults` 键 `shortcut.fullScreenCapture`，**默认 `⌃Q`**（2026-09-30 由用户从 ⌃⌘A 改过来 —— ⌃⌘A 被微信独占占用）；入口＝菜单栏「快捷键…」 |
+| 截屏入口 | **ticket 03 起＝选区覆盖层**（菜单「截屏」与快捷键都走它）。拖拽＝区域、`⏎`(无选区)/双击＝整屏、`Esc`＝取消、方向键＝±1 像素微调（`⇧`±10）。**不另设"直接全屏"菜单项**（用户 2026-09-30 确认） |
+| 签名 | **构建后用证书重签**（`scripts/build.sh`，`MARQUEE_SIGN_IDENTITY` 可覆盖）。ad-hoc 会让 TCC 每次重构建都当成新应用 → 屏幕录制权限反复索要。见 DEV-NOTES 第 1 节 |
+| 权限探针 | `SystemScreenRecordingPermission` **只返回 granted / notDetermined，不声称 denied**。用自己持久化的标记推断 denied 会把用户锁死（永远授权不了），原因见 DEV-NOTES 第 1 节 |
+| 坐标空间 | **覆盖层内部一律用 Cocoa 全局点坐标**（`NSEvent`/`NSScreen` 都在这个空间），只在提交采集时经 `ScreenCoordinateConversion` 转 Quartz。`DisplayGeometry.frame` / `CGDisplayBounds` 是 Quartz。两者 y 轴相反，混用会静默错位 |
+| 跨屏选区 | 逐屏取交集后拼接（`SelectionLayout` + `ImageCompositing`），输出 scale 取参与屏里**最大**的（不丢信息）。不用 15.2+ 的 `captureImage(in:)`：高于最低系统，且输出分辨率不受控 |
 
 ## 构建与测试（走脚本，不要手敲裸命令）
 
@@ -59,13 +64,12 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 - ~~R4 全局快捷键~~：**已消除**（Carbon 无需辅助功能权限）
 
 ## 已提前验证的关键结论（SPIKE-PLAN.md）
-
 | 结论 | 细节 |
 | --- | --- |
 | 滚动配准可行 | 端到端拼接 vs 真值 **MAE 0.000/255**；Vision 平移配准精确无误差 |
 | **配准主方案 = Vision** | `VNTranslationalImageRegistrationRequest`；自研 SAD 正确但 **258ms/次太慢** |
 | 亚像素必须处理 | 整数累积误差 ±0.5px → 抛物线精化 0.04px，按**累计小数位移重采样** |
-| 全局快捷键 | Carbon `RegisterEventHotKey`，无需辅助功能权限；冲突码 `-9878` |
+| 全局快捷键 | Carbon `RegisterEventHotKey`，无需辅助功能权限；**冲突码 `-9878` 只在"独占注册"时才出得来**（见陷阱 14） |
 | 权限检测 | `CGPreflightScreenCaptureAccess()` / `CGPreflightListenEventAccess()` / `AXIsProcessTrusted()`（在 `CoreGraphics.tbd`） |
 | Liquid Glass | `NSGlassEffectView` = **macos(26.0)+**（`effectIsInteractive` = 27.0）；`SCScreenshotConfiguration` = 26.0+ |
 
@@ -80,6 +84,18 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 7. **`NSEvent.ModifierFlags` 的 ⌘ 是 `1<<20`（0x100000），不是 `1<<16`** —— `1<<16` 是 **Caps Lock**。位值：capsLock `1<<16`、shift `1<<17`、control `1<<18`、option `1<<19`、command `1<<20`（`NSEvent.h:168-172`）。写错不崩，只会让所有 ⌘ 组合静默变成"没按 ⌘"。已用测试钉死。
 8. **Carbon 虚拟键码不是顺序的**：`kVK_ANSI_5 = 0x17`、`kVK_ANSI_6 = 0x16`（反序）。键码表一律从 `Events.h` 抄，别按下标推。
 9. **Swift 6 的 nonisolated `deinit` 不能碰非 Sendable 的存储属性**（如 `EventHotKeyRef` / `EventHandlerRef`，都是 `OpaquePointer`）→ 编译报错。解法：不写 deinit 做清理，改由显式 `unregister()` 负责（进程退出时系统会回收）。
+10. **`CGBitmapContext` 的 `bytesPerRow` 必须对齐**（用 16 的倍数）。给 `width * 4` 这种未对齐值（例如 2px 宽的图 = 8 字节）会**整行读出垃圾且不报错** —— 测试里查了半天。
+11. **`CGColorSpaceCreateDeviceRGB()` 在本机（P3 屏）就是 Display P3**：用它建上下文 + 用 `CGColor(red:green:blue:alpha:)` 填色，"纯红"读回来是 `(255,38,0)`，颜色断言变成碰运气。测试里一律用 `CGColorSpace(name: .sRGB)` + `CGColor(colorSpace:components:)`（这样往返是精确的）。
+12. **swift-testing 的 `#expect(...)` 宏展开里不能调 `mutating` 方法**（`$0 is immutable`）→ 先赋给局部变量再断言。
+13. **`SelectionPhase` / 状态机类的东西放 Core**：`MarqueeOverlay` 里的东西无法自动化测试（需要真实屏幕），只有抽到 Core 才能单测。
+14. **Carbon 热键的冲突只能靠「独占注册」探测出来**（2026-09-30 实测，四种情形）：
+    - 非独占注册：**永远是 0**，被占也返回成功 → 光看它永远发现不了冲突（微信同时响应就是这么来的）
+    - 独占注册 + 同进程内已有自己的注册 → `-9878` → **必须先 `unregister()` 再探测**
+    - 独占注册 + **别的进程独占**占着 → `-9878` ✅ 可用的探测手段
+    - 独占注册 + 别的进程只是**非独占**占着（跨进程）→ **0**，探测无效；此时双方都收到事件
+15. **别用自己持久化的标记去推断 TCC 的 `denied`**：签名身份一变，TCC 状态重置而标记还在，于是再也不敢调 `CGRequestScreenCaptureAccess()`；而 macOS 只在应用调用采集 API 时才把它登记进「屏幕录制」列表 → 用户永远授权不了。见 DEV-NOTES 第 1 节。
+16. **`OptionSet` 的 Codable 是 `RawRepresentable` 单值编码**：`ShortcutModifiers`（包一个 `rawValue`）编出来是 `"modifiers":9`，**不是** `{"rawValue":9}`。手写偏好做测试时别猜形状（用等价类型实编一次）。
+17. **`os.Logger` 的字符串插值里引用实例属性要写 `self.`**，否则 Swift 6 报 "requires explicit use of 'self'"。
 
 ## 文档与资产
 

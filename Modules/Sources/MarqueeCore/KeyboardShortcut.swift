@@ -61,11 +61,15 @@ public struct KeyCombo: Hashable, Codable, Sendable {
 }
 
 extension KeyCombo {
-    /// 默认的「全屏截图」快捷键：⌃⌘A（ticket 02）
+    /// 默认的「截屏」快捷键：`⌃Q`（用户 2026-09-30 指定）。
     ///
-    /// 选这个组合的理由：旧版 Snip 与系统截图都占用了 ⌘⇧ 系列，
-    /// ⌃⌘A 在主流应用里未被占用（已有对照见 `docs/SPIKE-PLAN.md` G2）。
-    public static let fullScreenCapture = KeyCombo(keyCode: 0x00, // kVK_ANSI_A
-                                                   modifiers: [.control, .command],
-                                                   keyLabel: "A")
+    /// 为什么不是原来的 `⌃⌘A`：本机实测该组合已被**别的应用**（微信，其截图快捷键）占用。
+    /// 而且 Carbon 的坑在于 —— 非独占注册**永远返回成功**，所以我们既收不到事件、也不会报错，
+    /// 表现为"按了没反应"或"两个 app 同时响应"。换成 `⌃Q` 前已用独占探测确认为空闲。
+    ///
+    /// 任何一个 `⌃`+字母 的组合在某些编辑器里都可能是 emacs 风格绑定，
+    /// 但这是用户明确指定的默认值，且随时可在「快捷键…」里改。
+    public static let fullScreenCapture = KeyCombo(keyCode: 0x0C, // kVK_ANSI_Q
+                                                   modifiers: [.control],
+                                                   keyLabel: "Q")
 }

@@ -4,23 +4,48 @@
 
 ---
 
-## 1. ad-hoc 签名与屏幕录制权限的反复授权
+## 1. 屏幕录制权限留不住（ad-hoc 签名）——**已修复**
 
-**现象**：用 XcodeGen 生成的工程默认走 ad-hoc 签名（`CODE_SIGN_IDENTITY: "-"`）。
-TCC 的屏幕录制授权是按「bundle id + 代码签名」记账的，而每次重新构建都会改变 cdhash，
-于是 macOS 可能把新构建出来的应用当成一个"新应用"，重新弹权限、甚至需要重新勾选。
+**现象**：每次重新构建后运行，macOS 都重新要一次屏幕录制授权；用户勾选过也不管用。
 
-**影响**：在 ticket 02 之后，每次改代码重新构建都可能要重走一次授权流程，磨掉开发节奏。
+**根因（两级）**：
 
-**处理**：
+1. **签名身份不稳定**。TCC 按「bundle id + 代码签名身份」记账，
+   而 XcodeGen 生成的工程默认走 ad-hoc（`CODE_SIGN_IDENTITY: "-"`）——
+   ad-hoc 没有身份，系统退回按 **cdhash** 记账，每次重新构建 cdhash 都变，
+   macOS 就把新构建当成一个**新应用**。
+2. **我们自己的"已请求过"标记会把用户锁死**（这条更隐蔽，2026-09-30 才发现）。
+   旧实现用一个持久化的 `permission.screenRecording.requested` 标记，
+   在 `CGPreflightScreenCaptureAccess()` 返回 false 时推断出 `.denied`。
+   但签名一变，TCC 与该身份相关的状态被重置，**我们的标记却还留着** ——
+   于是我们再也不调 `CGRequestScreenCaptureAccess()`；
+   而 macOS 只在应用**调用采集 API 时**才把它登记进「屏幕录制」列表，
+   结果：**列表里没有 Marquee → 用户无从授权 → 每次按快捷键都只看到提示，永远出不来**。
 
-- 短期：把 `DerivedData` 下的构建产物路径固定，减少签名漂移；必要时手动在系统设置里保持勾选。
-- 若摩擦过大：用钥匙串创建一个本机自签证书（如 `Marquee Local Dev`），
-  在 `project.yml` 里把 `CODE_SIGN_IDENTITY` 指向它。签名稳定后 TCC 授权就能持久。
-- 正式签名与公证见 ticket 18。
+**修复**：
 
-**注意**：这条不是产品缺陷，是开发循环的摩擦。不要为了让它在开发机上"不弹窗"而
-放宽代码里的权限检查逻辑 —— 权限路径必须保持真实。
+- `scripts/build.sh` 在构建后用证书**重签一次**（`MARQUEE_SIGN_IDENTITY` 可覆盖，
+  `MARQUEE_SKIP_RESIGN=1` 可跳过）。签名身份稳定后，授权跨构建保留。
+- `SystemScreenRecordingPermission` **不再声称 `.denied`**：
+  preflight 为 false 时一律报 `.notDetermined`，交给上层去调一次系统请求。
+  真被拒绝时该调用不弹框、直接返回 false，代价可忽略；
+  已授权但当前进程未生效时会返回 true，于是能走「请重启应用」的正确分支。
+
+**代价（要如实告诉用户）**：从 ad-hoc 换成证书的**第一次**仍会再弹一次授权（身份变了），
+之后就不该再弹。**授权后必须退出并重新打开应用**，macOS 才认。
+
+**其他注意**：
+
+- 证书有有效期（Apple Development 一年）。证书续期后身份会变，需要重新授权一次。
+- 派生数据路径固定也有助于减少漂移；但真正起作用的是**签名身份稳定**。
+- 不要为了让它在开发机上"不弹窗"而放宽代码里的权限检查逻辑 —— 权限路径必须保持真实。
+
+**排障入口**：
+```bash
+Marquee.app/Contents/MacOS/Marquee -marqueeDiagnostics
+```
+打印权限状态、`preflight` 原始值、当前快捷键、注册结果、**构建签名身份**（team / 证书数）。
+"权限为什么留不住"的第一手证据就是最后一行。
 
 ---
 
