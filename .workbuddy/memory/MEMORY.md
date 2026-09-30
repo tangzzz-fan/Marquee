@@ -1,6 +1,7 @@
 # Marquee · 项目长期记忆
 
-> 项目曾用名 Snipo（工作目录仍是 `/Users/tango/Developments/Snipo`，产品名已定为 **Marquee**）。
+> 工作目录：`/Users/tango/Developments/Marquee`（2026-09-30 由 `Snipo` 改名，git 历史连续）。
+> 首次提交：`160e524`。
 
 ## 项目定位
 

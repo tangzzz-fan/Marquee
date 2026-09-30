@@ -1,7 +1,7 @@
 # Marquee · Ticket 索引
 
 **日期**: 2026-09-30
-**仓库**: `/Users/tango/Developments/Snipo`（远端未配置 → 本地 markdown tracker）
+**仓库**: `/Users/tango/Developments/Marquee`（远端未配置 → 本地 markdown tracker）
 **方法论**: Matt Pocock `to-tickets`（tracer-bullet 垂直切片 + 阻塞边）
 **输入**: `docs/PRD.md` v0.2、`docs/RENDER-BENCH.md`、`docs/SPIKE-PLAN.md`
 
