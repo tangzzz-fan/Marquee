@@ -385,6 +385,33 @@ struct RegionCaptureFlowTests {
         }
         #expect(metrics.elapsedMilliseconds == 125)
     }
+
+    @Test("落盘失败时剪贴板里的 PNG 仍然在")
+    func saveFailureKeepsClipboard() async throws {
+        let harness = makeRegionHarness()
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("marquee-not-dir-\(UUID().uuidString)")
+        try Data("x".utf8).write(to: blocker)
+        let save = CaptureSaveRequest(settings: OutputSettings(directory: blocker),
+                                      capturedAt: Date(),
+                                      sequence: 1,
+                                      applicationName: "",
+                                      windowTitle: "")
+
+        let outcome = await harness.flow.capture(selection: CGRect(x: 100, y: 200, width: 300, height: 150),
+                                                 displays: [TestDisplays.retina],
+                                                 save: save)
+
+        guard case .copiedToClipboard(let metrics) = outcome else {
+            Issue.record("期望剪贴板成功，实际 \(outcome)")
+            return
+        }
+        #expect(metrics.saveFailureMessage != nil)
+        #expect(metrics.savedFilePath == nil)
+        let png = try #require(harness.clipboard.written.first)
+        #expect(png.prefix(8) == Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        try? FileManager.default.removeItem(at: blocker)
+    }
 }
 
 // MARK: - 图像编码
@@ -403,5 +430,18 @@ struct ImageEncodingTests {
         let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
         #expect(decoded.width == 200)
         #expect(decoded.height == 120)
+    }
+
+    @Test("JPEG 降低质量后体积下降，解码回来像素尺寸不变")
+    func jpegQualityShrinksFileButKeepsPixels() throws {
+        let image = TestImage.checkerboard(width: 64, height: 48)
+        let high = try #require(ImageEncoding.data(from: image, format: .jpeg, quality: 0.95))
+        let low = try #require(ImageEncoding.data(from: image, format: .jpeg, quality: 0.05))
+        #expect(low.count < high.count)
+
+        let source = try #require(CGImageSourceCreateWithData(low as CFData, nil))
+        let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        #expect(decoded.width == 64)
+        #expect(decoded.height == 48)
     }
 }

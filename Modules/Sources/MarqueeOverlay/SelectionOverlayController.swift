@@ -24,6 +24,8 @@ public final class SelectionOverlayController {
     private let windowLister: WindowListing
     private let displays: DisplayLocating
     private let onFinish: (Outcome) -> Void
+    /// `⌘S` 时由宿主拼好落盘请求。`nil` 时 `⌘S` 只复制，不写磁盘。
+    private let makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)?
 
     private var session = SelectionSession()
     private var overlays: [(panel: SelectionOverlayPanel, view: SelectionOverlayView)] = []
@@ -49,13 +51,15 @@ public final class SelectionOverlayController {
                 windowFlow: WindowCaptureFlow,
                 windowLister: WindowListing,
                 displays: DisplayLocating,
-                onFinish: @escaping (Outcome) -> Void) {
+                onFinish: @escaping (Outcome) -> Void,
+                makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)? = nil) {
         self.regionFlow = regionFlow
         self.fullScreenFlow = fullScreenFlow
         self.windowFlow = windowFlow
         self.windowLister = windowLister
         self.displays = displays
         self.onFinish = onFinish
+        self.makeSaveRequest = makeSaveRequest
     }
 
     public var isPresented: Bool { !overlays.isEmpty }
@@ -151,10 +155,10 @@ public final class SelectionOverlayController {
 
     // MARK: - 提交
 
-    private func commitRegion() {
+    private func commitRegion(saveToDisk: Bool) {
         guard !isFinishing else { return }
         guard let cocoaRect = session.rect else {
-            commitWholeScreen()
+            commitWholeScreen(saveToDisk: saveToDisk)
             return
         }
         isFinishing = true
@@ -162,42 +166,53 @@ public final class SelectionOverlayController {
         let quartzRect = ScreenCoordinateConversion.quartzRect(fromCocoa: cocoaRect,
                                                                primaryScreenHeight: primaryScreenHeight)
         let geometries = displayGeometries
+        let save = saveRequest(for: nil, enabled: saveToDisk)
 
         Task { [weak self] in
             guard let self else { return }
             // 覆盖层**先不关**：采集时按进程排除自身窗口，
             // 立刻关窗反而可能因为窗口还没真正消失而被拍进去。
-            let outcome = await self.regionFlow.capture(selection: quartzRect, displays: geometries)
+            let outcome = await self.regionFlow.capture(selection: quartzRect,
+                                                        displays: geometries,
+                                                        save: save)
             self.teardown()
             self.onFinish(.completed(outcome))
         }
     }
 
-    private func commitWindow(_ window: WindowInfo, style: WindowCaptureStyle) {
+    private func commitWindow(_ window: WindowInfo, style: WindowCaptureStyle, saveToDisk: Bool) {
         guard !isFinishing else { return }
         isFinishing = true
         let geometries = displayGeometries
+        let save = saveRequest(for: window, enabled: saveToDisk)
 
         Task { [weak self] in
             guard let self else { return }
             let outcome = await self.windowFlow.capture(window: window,
                                                         style: style,
-                                                        displays: geometries)
+                                                        displays: geometries,
+                                                        save: save)
             self.teardown()
             self.onFinish(.completed(outcome))
         }
     }
 
-    private func commitWholeScreen() {
+    private func commitWholeScreen(saveToDisk: Bool) {
         guard !isFinishing else { return }
         isFinishing = true
+        let save = saveRequest(for: nil, enabled: saveToDisk)
 
         Task { [weak self] in
             guard let self else { return }
-            let outcome = await self.fullScreenFlow.capture()
+            let outcome = await self.fullScreenFlow.capture(save: save)
             self.teardown()
             self.onFinish(.completed(outcome))
         }
+    }
+
+    private func saveRequest(for window: WindowInfo?, enabled: Bool) -> CaptureSaveRequest? {
+        guard enabled, let makeSaveRequest else { return nil }
+        return makeSaveRequest(window)
     }
 
     private func cancel() {
@@ -382,27 +397,35 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     }
 
     func overlayViewDidRequestCommit(_ view: SelectionOverlayView) {
+        performCommit(saveToDisk: false)
+    }
+
+    func overlayViewDidRequestSave(_ view: SelectionOverlayView) {
+        performCommit(saveToDisk: true)
+    }
+
+    private func performCommit(saveToDisk: Bool) {
         guard !isFinishing else { return }
         switch session.commitAction(hasHoveredWindow: hoveredWindow != nil) {
         case .commitRegion:
-            commitRegion()
+            commitRegion(saveToDisk: saveToDisk)
         case .commitWindow:
             guard let window = session.settledWindow else {
-                commitRegion()
+                commitRegion(saveToDisk: saveToDisk)
                 return
             }
             let style = WindowCaptureStyle.isolatedWindow(includeShadow: !isOptionDown)
-            commitWindow(window, style: style)
+            commitWindow(window, style: style, saveToDisk: saveToDisk)
         case .settleHoveredWindow:
             guard let window = hoveredWindow else { return }
             settleOnWindow(window)
         case .commitWholeScreen:
-            commitWholeScreen()
+            commitWholeScreen(saveToDisk: saveToDisk)
         }
     }
 
     func overlayViewDidRequestWholeScreen(_ view: SelectionOverlayView) {
-        commitWholeScreen()
+        commitWholeScreen(saveToDisk: false)
     }
 
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView) {

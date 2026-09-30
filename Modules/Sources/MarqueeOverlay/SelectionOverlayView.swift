@@ -38,6 +38,8 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     func overlayView(_ view: SelectionOverlayView, optionChanged isDown: Bool)
     /// `⏎`：已落点则提交；悬停窗口则先锁定；否则整屏
     func overlayViewDidRequestCommit(_ view: SelectionOverlayView)
+    /// `⌘S`：与 `⏎` 同一套确认，但已落点时额外写入磁盘
+    func overlayViewDidRequestSave(_ view: SelectionOverlayView)
     /// 双击：整屏
     func overlayViewDidRequestWholeScreen(_ view: SelectionOverlayView)
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView)
@@ -107,6 +109,8 @@ final class SelectionOverlayView: NSView {
             delegate?.overlayViewDidRequestCancel(self)
         case 0x24, 0x4C: // kVK_Return / kVK_ANSI_KeypadEnter
             delegate?.overlayViewDidRequestCommit(self)
+        case 0x01 where event.modifierFlags.contains(.command): // kVK_ANSI_S
+            delegate?.overlayViewDidRequestSave(self)
         case 0x7B: // ←
             delegate?.overlayView(self, nudgeBy: -1, dy: 0)
         case 0x7C: // →

@@ -2,6 +2,7 @@ import AppKit
 import CoreGraphics
 import MarqueeCapture
 import MarqueeCore
+import MarqueeEditor
 import MarqueeOverlay
 import MarqueeSettings
 import Security
@@ -23,6 +24,7 @@ final class CaptureCoordinator {
     private let capturer = ScreenCaptureKitCapturer()
     private let clipboard = SystemClipboard()
     private let displays = SystemDisplayLocator()
+    private let outputStore = UserDefaultsOutputStore()
 
     private lazy var selectionFlow = RegionCaptureFlow(permission: permission,
                                                        capturer: capturer,
@@ -44,6 +46,7 @@ final class CaptureCoordinator {
         handler: { [weak self] in self?.performCapture() }
     )
 
+    private let editor = AnnotationEditorPresenter()
     private var overlay: SelectionOverlayController?
     private var preferencesWindow: ShortcutPreferencesWindowController?
     /// 防止预检期间连按快捷键叠出两层覆盖层
@@ -126,10 +129,27 @@ final class CaptureCoordinator {
             displays: displays,
             onFinish: { [weak self] outcome in
                 self?.handleOverlayFinish(outcome)
+            },
+            makeSaveRequest: { [weak self] window in
+                self?.makeSaveRequest(for: window) ?? CaptureSaveRequest(
+                    settings: OutputSettings(directory: OutputSettings.desktopDirectory()),
+                    capturedAt: Date(),
+                    sequence: 1,
+                    applicationName: window?.ownerName ?? "",
+                    windowTitle: window?.title ?? ""
+                )
             }
         )
         overlay = controller
         controller.present()
+    }
+
+    /// 截图已经进了剪贴板。编辑器里 `Esc` 会把带标注的成品再写回去。
+    func presentEditor(image: CGImage) {
+        editor.present(image: image) { [weak self] png in
+            self?.clipboard.writePNG(png)
+            self?.logger.info("标注已复制到剪贴板：\(png.count) 字节")
+        }
     }
 
     func showShortcutPreferences() {
@@ -206,13 +226,25 @@ final class CaptureCoordinator {
     private func handle(_ outcome: CaptureOutcome) {
         switch outcome {
         case .copiedToClipboard(let metrics):
-            // 正常路径**不弹任何东西**：截图工具弹确认框是最招人烦的设计。
-            // 耗时与像素尺寸落到系统日志，性能预算（≤150 ms）靠它做回归。
+            // 正常复制不弹窗。落盘失败才说一声，因为图已经在剪贴板里，不能装成整次失败。
+            if let saved = metrics.savedFilePath {
+                if let used = metrics.savedSequence {
+                    outputStore.advanceSequence(to: used)
+                }
+                logger.info("已保存：\(saved, privacy: .public)")
+            }
+            if let message = metrics.saveFailureMessage {
+                logger.error("保存失败：\(message, privacy: .public)")
+                PermissionPrompt.presentFailure(CaptureFailure(message: message))
+            }
             let summary = """
             截图完成：\(Int(metrics.pixelSize.width))×\(Int(metrics.pixelSize.height)) px，\
             \(metrics.pngByteCount) 字节，耗时 \(metrics.elapsedMilliseconds) ms
             """
             logger.info("\(summary, privacy: .public)")
+            if let image = metrics.image {
+                presentEditor(image: image)
+            }
 
         case .permissionBlocked(_, let grantedJustNow):
             // 预检时刚授权过 → 这里的失败几乎一定是"权限需要重启进程才生效"，
@@ -223,5 +255,15 @@ final class CaptureCoordinator {
             logger.error("截图失败：\(failure.message, privacy: .public)")
             PermissionPrompt.presentFailure(failure)
         }
+    }
+
+    private func makeSaveRequest(for window: WindowInfo?) -> CaptureSaveRequest {
+        CaptureSaveRequest(
+            settings: outputStore.settings(),
+            capturedAt: Date(),
+            sequence: outputStore.consumeSequence(),
+            applicationName: window?.ownerName ?? "",
+            windowTitle: window?.title ?? ""
+        )
     }
 }

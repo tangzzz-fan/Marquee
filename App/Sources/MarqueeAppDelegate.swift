@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import MarqueeCapture
 import MarqueeCore
 
@@ -61,6 +62,13 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         // 存在的理由：覆盖层的行为依赖真实屏幕与 TCC 授权，无法在自动化测试里验证，
         // 但"创建逐屏面板 → 绘制 → 拆解"这条路一旦崩，是每次按快捷键都会立刻撞上的。
         // 这个开关让这条路径至少能被冒烟一次（自动退出 = 不留残影）。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeEditor") {
+            coordinator.presentEditor(image: Self.sampleEditorImage())
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+
         if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeOverlay") {
             coordinator.performCapture()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -87,6 +95,25 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// 用 `open`（LaunchServices）启动时 stdout 不会回到调用方的终端，
     /// 所以这类一次性探针必须落文件才读得到。放在 `~/Library/Logs/Marquee/` 下，位置好记。
+    /// 编辑器冒烟用的固定图，不依赖屏幕采集。
+    private static func sampleEditorImage() -> CGImage {
+        let width = 640
+        let height = 400
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        let context = CGContext(data: nil,
+                                width: width,
+                                height: height,
+                                bitsPerComponent: 8,
+                                bytesPerRow: 0,
+                                space: colorSpace,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(colorSpace: colorSpace, components: [0.12, 0.34, 0.68, 1])!)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(colorSpace: colorSpace, components: [0.95, 0.95, 0.95, 1])!)
+        context.fill(CGRect(x: 70, y: 90, width: 220, height: 140))
+        return context.makeImage()!
+    }
+
     private static func writeProbeReport(_ text: String) {
         let directory = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/Marquee", isDirectory: true)

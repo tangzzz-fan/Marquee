@@ -38,23 +38,28 @@ public final class WindowCaptureFlow {
     /// - Parameter displays: 跨屏时逐屏取片 / 推 backing scale
     public func capture(window: WindowInfo,
                         style: WindowCaptureStyle,
-                        displays: [DisplayGeometry]) async -> CaptureOutcome {
+                        displays: [DisplayGeometry],
+                        save: CaptureSaveRequest? = nil) async -> CaptureOutcome {
         switch style {
         case .visibleOnScreen:
             let region = RegionCaptureFlow(permission: permission,
                                            capturer: capturer,
                                            clipboard: clipboard,
                                            clock: clock)
-            return await region.capture(selection: window.frame, displays: displays)
+            return await region.capture(selection: window.frame, displays: displays, save: save)
 
         case .isolatedWindow(let includeShadow):
-            return await captureIsolated(window, includeShadow: includeShadow, displays: displays)
+            return await captureIsolated(window,
+                                        includeShadow: includeShadow,
+                                        displays: displays,
+                                        save: save)
         }
     }
 
     private func captureIsolated(_ window: WindowInfo,
                                  includeShadow: Bool,
-                                 displays: [DisplayGeometry]) async -> CaptureOutcome {
+                                 displays: [DisplayGeometry],
+                                 save: CaptureSaveRequest?) async -> CaptureOutcome {
         let output = CaptureOutput(clipboard: clipboard, clock: clock)
         let startedAt = output.begin()
 
@@ -75,7 +80,7 @@ public final class WindowCaptureFlow {
             let captured = try await capturer.captureWindow(window,
                                                             includeShadow: includeShadow,
                                                             backingScale: scale)
-            return output.finish(captured.image, startedAt: startedAt)
+            return output.finish(captured.image, startedAt: startedAt, save: save)
         } catch {
             return output.failure(error, grantedJustNow: grantedJustNow)
         }

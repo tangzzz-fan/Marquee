@@ -22,15 +22,36 @@ public struct CaptureOutput {
         clock.now()
     }
 
-    public func finish(_ image: CGImage, startedAt: Double) -> CaptureOutcome {
+    public func finish(_ image: CGImage,
+                       startedAt: Double,
+                       save: CaptureSaveRequest? = nil) -> CaptureOutcome {
         guard let png = ImageEncoding.pngData(from: image) else {
             return .failed(CaptureFailure(message: "截图编码为 PNG 失败"))
         }
+        // 剪贴板先写。落盘失败不能把已经能粘贴的图弄没。
         clipboard.writePNG(png)
+
+        var savedFilePath: String?
+        var saveFailureMessage: String?
+        var savedSequence: Int?
+        if let save {
+            switch ScreenshotArchiver.write(image, request: save) {
+            case .success(let result):
+                savedFilePath = result.url.path
+                savedSequence = result.sequenceUsed
+            case .failure(let failure):
+                saveFailureMessage = failure.message
+            }
+        }
+
         return .copiedToClipboard(CaptureMetrics(
             pixelSize: CGSize(width: image.width, height: image.height),
             pngByteCount: png.count,
-            elapsedMilliseconds: (clock.now() - startedAt) * 1000
+            elapsedMilliseconds: (clock.now() - startedAt) * 1000,
+            savedFilePath: savedFilePath,
+            saveFailureMessage: saveFailureMessage,
+            savedSequence: savedSequence,
+            image: image
         ))
     }
 

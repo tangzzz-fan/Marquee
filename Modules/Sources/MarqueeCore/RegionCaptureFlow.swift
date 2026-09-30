@@ -29,8 +29,11 @@ public final class RegionCaptureFlow {
 
     /// - Parameter selection: **Quartz 全局点坐标**下的选区（调用方负责从 Cocoa 转换）
     /// - Parameter displays: 当前全部显示器
-    public func capture(selection: CGRect, displays: [DisplayGeometry]) async -> CaptureOutcome {
-        let startedAt = clock.now()
+    public func capture(selection: CGRect,
+                        displays: [DisplayGeometry],
+                        save: CaptureSaveRequest? = nil) async -> CaptureOutcome {
+        let output = CaptureOutput(clipboard: clipboard, clock: clock)
+        let startedAt = output.begin()
 
         let grantedJustNow: Bool
         switch await CaptureGateRunner.run(permission) {
@@ -56,21 +59,9 @@ public final class RegionCaptureFlow {
                                                           slices: slices) else {
                 return .failed(CaptureFailure(message: "拼接选区图像失败"))
             }
-            guard let png = ImageEncoding.pngData(from: composed) else {
-                return .failed(CaptureFailure(message: "截图编码为 PNG 失败"))
-            }
-
-            clipboard.writePNG(png)
-            return .copiedToClipboard(CaptureMetrics(
-                pixelSize: CGSize(width: composed.width, height: composed.height),
-                pngByteCount: png.count,
-                elapsedMilliseconds: (clock.now() - startedAt) * 1000
-            ))
+            return output.finish(composed, startedAt: startedAt, save: save)
         } catch {
-            if grantedJustNow {
-                return .failed(CaptureFailure(message: "已获得屏幕录制权限。请退出并重新打开 Marquee，权限才会生效"))
-            }
-            return .failed(CaptureFailure(message: "截图失败：\(error.localizedDescription)"))
+            return output.failure(error, grantedJustNow: grantedJustNow)
         }
     }
 }

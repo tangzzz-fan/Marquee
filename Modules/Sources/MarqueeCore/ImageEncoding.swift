@@ -26,4 +26,52 @@ public enum ImageEncoding {
         guard CGImageDestinationFinalize(destination) else { return nil }
         return buffer as Data
     }
+
+    /// 按输出格式编码。剪贴板始终走 `pngData`；落盘才用 JPEG / HEIC。
+    ///
+    /// `quality` 只对 JPEG / HEIC 生效，范围 0...1。PNG 忽略它。
+    public static func data(from image: CGImage, format: ImageFileFormat, quality: Double) -> Data? {
+        switch format {
+        case .png:
+            return pngData(from: image)
+        case .jpeg, .heic:
+            return lossyData(from: image, type: format.utType, quality: quality)
+        }
+    }
+
+    private static func lossyData(from image: CGImage, type: UTType, quality: Double) -> Data? {
+        let buffer = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            buffer, type.identifier as CFString, 1, nil
+        ) else {
+            return nil
+        }
+        let clamped = min(1, max(0, quality))
+        let properties = [kCGImageDestinationLossyCompressionQuality: clamped] as CFDictionary
+        CGImageDestinationAddImage(destination, image, properties)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return buffer as Data
+    }
+}
+
+public enum ImageFileFormat: String, Codable, Equatable, Sendable, CaseIterable {
+    case png
+    case jpeg
+    case heic
+
+    public var pathExtension: String {
+        switch self {
+        case .png: "png"
+        case .jpeg: "jpg"
+        case .heic: "heic"
+        }
+    }
+
+    var utType: UTType {
+        switch self {
+        case .png: .png
+        case .jpeg: .jpeg
+        case .heic: .heic
+        }
+    }
 }

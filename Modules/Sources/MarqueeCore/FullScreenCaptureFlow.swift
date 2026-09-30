@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// 全屏截图 → 剪贴板的完整编排。
@@ -31,8 +32,9 @@ public final class FullScreenCaptureFlow {
     }
 
     /// 走完一次全屏截图。**任何**失败都会返回携带说明的结果，不会静默什么都不做。
-    public func capture() async -> CaptureOutcome {
-        let startedAt = clock.now()
+    public func capture(save: CaptureSaveRequest? = nil) async -> CaptureOutcome {
+        let output = CaptureOutput(clipboard: clipboard, clock: clock)
+        let startedAt = output.begin()
 
         // ── 1. 权限门 ────────────────────────────────────────────────
         var grantedJustNow = false
@@ -51,22 +53,9 @@ public final class FullScreenCaptureFlow {
         // ── 3. 采集 + 编码 + 写剪贴板 ───────────────────────────────
         do {
             let captured = try await capturer.captureFullScreen(display)
-            guard let png = ImageEncoding.pngData(from: captured.image) else {
-                return .failed(CaptureFailure(message: "截图编码为 PNG 失败"))
-            }
-            clipboard.writePNG(png)
-            return .copiedToClipboard(CaptureMetrics(
-                pixelSize: captured.pixelSize,
-                pngByteCount: png.count,
-                elapsedMilliseconds: (clock.now() - startedAt) * 1000
-            ))
+            return output.finish(captured.image, startedAt: startedAt, save: save)
         } catch {
-            // 刚授权就采集失败，几乎一定是"权限需要重启进程才生效"（见 SPIKE A5）。
-            // 这个提示必须给出来，否则用户会以为是应用坏了。
-            if grantedJustNow {
-                return .failed(CaptureFailure(message: "已获得屏幕录制权限。请退出并重新打开 Marquee，权限才会生效"))
-            }
-            return .failed(CaptureFailure(message: "截图失败：\(error.localizedDescription)"))
+            return output.failure(error, grantedJustNow: grantedJustNow)
         }
     }
 }
@@ -79,11 +68,38 @@ public struct CaptureMetrics: Equatable, Sendable {
     public let pixelSize: CGSize
     public let pngByteCount: Int
     public let elapsedMilliseconds: Double
+    /// `⌘S` 写成的文件路径。没要求落盘时为 `nil`。
+    public let savedFilePath: String?
+    /// 剪贴板已经写上，但落盘失败时的说明。正常复制和落盘成功都是 `nil`。
+    public let saveFailureMessage: String?
+    /// 落盘实际用掉的序号（撞名时会比申请的更大）。
+    public let savedSequence: Int?
+    /// 刚截到的图。编辑器要用它；比较结果时不看这张图（`CGImage` 没有值相等）。
+    public let image: CGImage?
 
-    public init(pixelSize: CGSize, pngByteCount: Int, elapsedMilliseconds: Double) {
+    public init(pixelSize: CGSize,
+                pngByteCount: Int,
+                elapsedMilliseconds: Double,
+                savedFilePath: String? = nil,
+                saveFailureMessage: String? = nil,
+                savedSequence: Int? = nil,
+                image: CGImage? = nil) {
         self.pixelSize = pixelSize
         self.pngByteCount = pngByteCount
         self.elapsedMilliseconds = elapsedMilliseconds
+        self.savedFilePath = savedFilePath
+        self.saveFailureMessage = saveFailureMessage
+        self.savedSequence = savedSequence
+        self.image = image
+    }
+
+    public static func == (lhs: CaptureMetrics, rhs: CaptureMetrics) -> Bool {
+        lhs.pixelSize == rhs.pixelSize
+            && lhs.pngByteCount == rhs.pngByteCount
+            && lhs.elapsedMilliseconds == rhs.elapsedMilliseconds
+            && lhs.savedFilePath == rhs.savedFilePath
+            && lhs.saveFailureMessage == rhs.saveFailureMessage
+            && lhs.savedSequence == rhs.savedSequence
     }
 }
 

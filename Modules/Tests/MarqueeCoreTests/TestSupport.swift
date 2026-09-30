@@ -44,6 +44,19 @@ enum TestImage {
         }
     }
 
+    /// 棋盘格。纯色 JPEG 在高低质量下体积几乎一样，质量断言要用有细节的图。
+    static func checkerboard(width: Int, height: Int) -> CGImage {
+        makeContext(width: width, height: height) { context in
+            for y in 0..<height {
+                for x in 0..<width {
+                    let on = (x + y).isMultiple(of: 2)
+                    context.setFillColor(color(on ? 1 : 0, on ? 0.15 : 0.85, on ? 0.4 : 0.1))
+                    context.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+    }
+
     /// 读像素。**以左上角为原点**（y 向下），与 `targetPixelRect` 同一空间。
     ///
     /// 两条实测出来的硬约束（都踩过）：
