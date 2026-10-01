@@ -37,6 +37,11 @@ public final class SelectionOverlayController {
     private let makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)?
     /// 长截图会话工厂。`nil` 时 `Mode.scrollCapture` 不可用。
     private let makeScrollSession: (@MainActor () -> ScrollCaptureSession)?
+    /// 合成滚轮事件的"手"（ticket 12 自动滚动）。`nil` 时自动滚动不可用，手动滚动不受影响。
+    private let makeScrollWheelEmitter: (@MainActor () -> ScrollWheelEmitting)?
+    /// "往别的应用注入事件"的授权探针（系统设置里的**辅助功能**）。
+    /// 自动滚动是唯一需要它的功能，所以它只用于**按需**申请。
+    private let postEventPermission: PostEventPermissionProbing?
     /// 放大镜取色用的整屏像素来源（ticket 10）。`nil` 时整个放大镜不出现。
     private let lensProvider: LensFrameProviding?
     /// 复制色值用的剪贴板。`nil` 时 `⌥` 点击不复制。
@@ -70,6 +75,13 @@ public final class SelectionOverlayController {
     private var scrollProgress: ScrollCaptureSession.Progress?
     private var scrollRect: CGRect?
 
+    // 自动滚动（ticket 12）
+    /// `nil` = 当前没有在自动滚动（手动模式）
+    private var autoScrollDriver: AutoScrollDriver?
+    private var autoScrollLoop: Task<Void, Never>?
+    /// 自动滚动的一句话状态（等停稳 / 正在抓帧 / 为什么停了）
+    private var autoScrollMessage: String?
+
     // 放大镜取色（ticket 10）
     /// 每块屏一份冻结的整屏像素，按需取、取到就留着（放大镜跟随光标时不再采集）
     private var lensFrames: [UInt32: LensFrame] = [:]
@@ -98,6 +110,8 @@ public final class SelectionOverlayController {
                 onFinish: @escaping (Outcome) -> Void,
                 makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)? = nil,
                 makeScrollSession: (@MainActor () -> ScrollCaptureSession)? = nil,
+                makeScrollWheelEmitter: (@MainActor () -> ScrollWheelEmitting)? = nil,
+                postEventPermission: PostEventPermissionProbing? = nil,
                 lensProvider: LensFrameProviding? = nil,
                 clipboard: ClipboardWriting? = nil) {
         self.regionFlow = regionFlow
@@ -108,6 +122,8 @@ public final class SelectionOverlayController {
         self.onFinish = onFinish
         self.makeSaveRequest = makeSaveRequest
         self.makeScrollSession = makeScrollSession
+        self.makeScrollWheelEmitter = makeScrollWheelEmitter
+        self.postEventPermission = postEventPermission
         self.lensProvider = lensProvider
         self.clipboard = clipboard
     }
@@ -210,6 +226,10 @@ public final class SelectionOverlayController {
     private func resetScroll() {
         scrollDriver?.cancel()
         scrollDriver = nil
+        autoScrollLoop?.cancel()
+        autoScrollLoop = nil
+        autoScrollDriver = nil
+        autoScrollMessage = nil
         scrollSession = nil
         scrollProgress = nil
         scrollRect = nil
@@ -220,10 +240,24 @@ public final class SelectionOverlayController {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 0x35 else { return event }
             MainActor.assumeIsolated {
-                self?.cancel()
+                self?.handleEscape()
             }
             return nil
         }
+    }
+
+    /// `Esc` 的**唯一入口**。
+    ///
+    /// 覆盖层有两条能收到 `Esc` 的路：面板自己的 `keyDown`，以及这个本地监听
+    /// （用它是为了"一次 `Esc` 退出",不必每块屏各消化一次）。
+    /// 两处各写一份判断，就一定会出现"从另一条路进来时漏掉了自动滚动分支"这种事。
+    private func handleEscape() {
+        // 自动滚动中按 `Esc` = 只停自动滚动，画面与已拼好的部分都留着。
+        if autoScrollDriver != nil {
+            stopAutoScroll()
+            return
+        }
+        cancel()
     }
 
     private func removeKeyMonitor() {
@@ -516,6 +550,7 @@ public final class SelectionOverlayController {
         let session = makeScrollSession()
         self.scrollSession = session
         scrollRect = cocoaRect
+        autoScrollMessage = nil
         // 选区状态机也要落点：覆盖层靠它画出被采区域的镂空与描边
         self.session.settle(rect: cocoaRect)
         setPanelsIgnoreMouse(true)
@@ -574,6 +609,9 @@ public final class SelectionOverlayController {
         isFinishing = true
         scrollDriver?.cancel()
         scrollDriver = nil
+        autoScrollLoop?.cancel()
+        autoScrollLoop = nil
+        autoScrollDriver = nil
         let save = saveRequest(for: nil, enabled: saveToDisk)
 
         Task { [weak self] in
@@ -588,6 +626,108 @@ public final class SelectionOverlayController {
         for overlay in overlays {
             overlay.panel.ignoresMouseEvents = ignores
         }
+    }
+
+    // MARK: - 自动滚动（ticket 12）
+
+    /// 空格：开始 / 停止自动滚动。只在长截图进行中有效。
+    private func toggleAutoScroll() {
+        guard !isFinishing, mode == .scrollCapture, hasScrollSession else { return }
+        if autoScrollDriver != nil {
+            stopAutoScroll()
+        } else {
+            startAutoScroll()
+        }
+    }
+
+    /// 开始自动滚动。
+    ///
+    /// **权限只在这里申请** —— 用户真的按了空格才问一次。拒绝的话只是退回手动，
+    /// 不挡任何已有能力：截图、标注、手动长截图全都不需要辅助功能授权。
+    private func startAutoScroll() {
+        guard autoScrollDriver == nil,
+              let session = scrollSession,
+              let makeScrollWheelEmitter,
+              let postEventPermission else { return }
+
+        if postEventPermission.currentPostEventPermission() != .granted,
+           !postEventPermission.requestPostEventPermission() {
+            autoScrollMessage = "自动滚动需要「辅助功能」授权（系统设置 → 隐私与安全性 → 辅助功能）。"
+                + "也可以自己滚 —— 手动模式一样能拼长图"
+            refresh()
+            return
+        }
+
+        // 手动抓帧循环必须先停：它按固定节奏抓帧，会和"等画面停稳"的探测互相踩，
+        // 结果是把惯性未停的糊帧也拼进去。
+        scrollDriver?.cancel()
+        scrollDriver = nil
+
+        let driver = AutoScrollDriver(session: session,
+                                      emitter: makeScrollWheelEmitter(),
+                                      permission: postEventPermission)
+        autoScrollDriver = driver
+        runAutoScrollLoop(driver)
+    }
+
+    /// 停掉自动滚动，**但把会话留着**：用户接着自己滚就能继续拼，按 `⏎` 也能拿到已拼的部分。
+    private func stopAutoScroll() {
+        autoScrollLoop?.cancel()
+        autoScrollLoop = nil
+        autoScrollDriver?.stop(.cancelled)
+        autoScrollDriver = nil
+        autoScrollMessage = nil
+        resumeManualScrollIfNeeded()
+        refresh()
+    }
+
+    /// 循环在**这一层**，判断全在 Core 的驱动器里 —— 那边能脱机单测。
+    /// 与手动模式（`startScrollDriver`）是同一种驱动方式，只是节拍更密：
+    /// 自动滚动要勤看着点画面停没停，不然每步都要多等好几个 0.35 秒。
+    private func runAutoScrollLoop(_ driver: AutoScrollDriver) {
+        autoScrollLoop?.cancel()
+        let interval = driver.policy.tickInterval
+        autoScrollLoop = Task { [weak self] in
+            var status = await driver.start()
+            while true {
+                self?.applyAutoScroll(status)
+                if status.isFinished || Task.isCancelled { break }
+                try? await Task.sleep(for: .seconds(interval))
+                if Task.isCancelled { break }
+                guard let self, !self.isFinishing else { break }
+                status = await driver.step()
+            }
+            self?.autoScrollDidFinish(status)
+        }
+    }
+
+    private func applyAutoScroll(_ status: AutoScrollDriver.Status) {
+        scrollProgress = status.capture
+        autoScrollMessage = status.message
+        refresh()
+    }
+
+    private func autoScrollDidFinish(_ status: AutoScrollDriver.Status) {
+        autoScrollLoop = nil
+        autoScrollDriver = nil
+        guard !isFinishing else { return }
+
+        switch status.stage {
+        case .finished(.atBottom), .finished(.atLimit), .finished(.tooLong):
+            // 滚完了：直接交图。用户按空格要的就是"自己滚完，给我长图"
+            finishScrollCapture(saveToDisk: false)
+        default:
+            // 出问题或被打断：会话留着，用户可以选择结束（拿到已拼的部分）或者接着自己滚
+            autoScrollMessage = status.message
+            resumeManualScrollIfNeeded()
+            refresh()
+        }
+    }
+
+    /// 自动滚动结束后把"用户自己滚也能继续拼"这条退路接回去。
+    private func resumeManualScrollIfNeeded() {
+        guard let session = scrollSession, scrollDriver == nil, !isFinishing else { return }
+        startScrollDriver(session)
     }
 
     // MARK: - 提交
@@ -766,12 +906,23 @@ public final class SelectionOverlayController {
     /// 长截图抓帧中的读数：进度 + 操作提示 + 告警。
     private func scrollPresentation(rect: CGRect?,
                                     progress: ScrollCaptureSession.Progress) -> SelectionPresentation {
-        var status = progress.frameCount <= 1
-            ? "长截图已开始 · 往下滚"
-            : "长截图 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧"
+        let autoScrolling = autoScrollDriver != nil
+        var status: String
+        if autoScrolling {
+            status = "自动滚动中 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧"
+        } else {
+            status = progress.frameCount <= 1
+                ? "长截图已开始 · 往下滚"
+                : "长截图 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧"
+        }
         if let milliseconds = progress.lastRegistrationMilliseconds {
             status += String(format: " · 配准 %.0f ms", milliseconds)
         }
+        // 提示行必须跟着状态走：自动滚动期间用户不需要"自己滚"的提示，
+        // 他需要知道"怎么停"。反之亦然 —— 不写这一条，第一个问题就是"怎么不动了"。
+        let hint = autoScrolling
+            ? "自动滚动中 · 空格停止 · Esc 停止（已拼的保留）· ⏎ 结束"
+            : "继续往下滚，或按空格自动滚 · ⏎ 结束 · ⌘S 结束并保存 · Esc 取消"
         return SelectionPresentation(
             globalRect: rect,
             sizeText: "",
@@ -781,8 +932,8 @@ public final class SelectionOverlayController {
             hoverCornerRadius: 10,
             isScrollCapturing: true,
             scrollStatusText: status,
-            scrollHintText: "继续往下滚；⏎ 结束 · ⌘S 结束并保存 · Esc 取消",
-            scrollWarningText: progress.warning ?? ""
+            scrollHintText: hint,
+            scrollWarningText: progress.warning ?? autoScrollMessage ?? ""
         )
     }
 
@@ -975,7 +1126,14 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         commitWholeScreen(saveToDisk: false)
     }
 
+    func overlayViewDidToggleAutoScroll(_ view: SelectionOverlayView) {
+        toggleAutoScroll()
+    }
+
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView) {
-        cancel()
+        // 自动滚动中按 `Esc` = **只停自动滚动**，不是把整次长截图丢掉：
+        // 画面还在、已经拼好的部分也还在，接着自己滚或按 `⏎` 结束都行。
+        // 再按一次 `Esc`（此时已不在自动滚动）才是取消整次长截图。
+        handleEscape()
     }
 }

@@ -26,6 +26,9 @@ final class CaptureCoordinator {
     private let displays = SystemDisplayLocator()
     private let outputStore = UserDefaultsOutputStore()
     private let magnifierSettings = MagnifierSettingsStore()
+    /// 自动滚动的授权探针（ticket 12）。**按需**使用：
+    /// 只有用户在长截图里按了空格才会问一次，拒绝了就退回手动滚动。
+    private let postEventPermission = SystemPostEventPermission()
 
     private lazy var selectionFlow = RegionCaptureFlow(permission: permission,
                                                        capturer: capturer,
@@ -150,6 +153,13 @@ final class CaptureCoordinator {
                                      registrar: VisionScrollRegistrar(),
                                      clipboard: clipboard)
             },
+            // 自动滚动（ticket 12）：合成滚轮事件的"手" + 它的授权探针。
+            //
+            // ⚠️ 这是本项目唯一需要「辅助功能」授权的功能 —— 往别的进程注入事件
+            // 属于辅助功能授权范围，绕不过去。所以它**只在用户按空格时**才申请：
+            // 截图、标注、手动长截图都不需要它，拒绝了也不影响那些。
+            makeScrollWheelEmitter: { CGEventScrollWheelEmitter() },
+            postEventPermission: postEventPermission,
             // 放大镜取色（ticket 10）：用现成的采集器取一屏像素，覆盖层期间冻结着用。
             // 取不到就只是不显示放大镜，绝不影响选区与采集。
             lensProvider: CapturerLensProvider(capturer: capturer),

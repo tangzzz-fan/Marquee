@@ -147,6 +147,17 @@ public final class ScrollCaptureSession {
     /// 用它区分"用户还没开始滚"和"滚过之后停下来了" —— 前者不该报"到底了"。
     public var hasAppendedContent: Bool { frames.count > 1 }
 
+    /// 本会话采的区域（**Quartz 全局点坐标**，已裁进所在的那块屏）。
+    ///
+    /// 自动滚动（ticket 12）要用它算两件事：每步滚多远（选区高度的比例）、
+    /// 以及把指针对准哪儿 —— 滚轮事件是发给**指针下方**那个窗口的。
+    public var quartzSelection: CGRect { region }
+
+    /// 选区中心（Quartz 全局点）。见 `quartzSelection`。
+    public var quartzSelectionCenter: CGPoint {
+        CGPoint(x: region.midX, y: region.midY)
+    }
+
     // MARK: - 起步
 
     /// - Parameter selection: **Quartz 全局点坐标**下的选区
@@ -291,6 +302,48 @@ public final class ScrollCaptureSession {
             progress.accumulatedRows = updated.accumulatedRows
             progress.warning = nil
             return progress
+        }
+    }
+
+    /// 只探测"画面动没动"，**不进长图**。
+    ///
+    /// 自动滚动（ticket 12）用它做停滚检测：发完滚动事件后惯性还在继续，
+    /// 这时候拍到的帧是糊的。要等画面**真的停下**，再把帧交给 `captureFrame()` 正式入图。
+    ///
+    /// 与 `captureFrame()` 的分工是刻意的 —— 探测**不改动任何会话状态**：
+    /// 不动 `frames`、不动 `stitcher`、不动"连续静止"计数。
+    /// 否则"多看了两眼"会把会话的判定带偏（比如把静止计数推到"到底"）。
+    ///
+    /// - Returns: 相对**最后一帧已入图的帧**的位移；抓帧或配准失败时返回 `nil`
+    public func probeFrame() async -> ScrollShift? {
+        guard progress.phase.isAcceptingFrames,
+              let stitcher,
+              let previous = frames.last,
+              let display = regionDisplay else {
+            return nil
+        }
+
+        let captured: CapturedImage
+        do {
+            captured = try await capturer.captureRegion(region, on: display)
+        } catch {
+            return nil
+        }
+
+        // 尺寸变了说明区域或屏发生了变化。这里不推进状态机 ——
+        // 该怎么处理（停机报警）由下一次 `captureFrame()` 按老规矩判。
+        guard captured.image.width == stitcher.pixelWidth,
+              captured.image.height == stitcher.viewHeight else {
+            return nil
+        }
+
+        let startedAt = clock.now()
+        do {
+            let shift = try await registrar.register(previous: previous, current: captured.image)
+            progress.lastRegistrationMilliseconds = (clock.now() - startedAt) * 1000
+            return shift
+        } catch {
+            return nil
         }
     }
 

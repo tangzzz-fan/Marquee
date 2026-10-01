@@ -95,6 +95,12 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     func overlayViewDidRequestSave(_ view: SelectionOverlayView)
     /// 双击：整屏
     func overlayViewDidRequestWholeScreen(_ view: SelectionOverlayView)
+    /// `空格`：长截图里开始 / 停止**自动滚动**（ticket 12）。
+    ///
+    /// 为什么入口在覆盖层里而不是菜单：菜单栏已经 6 项（PRD 3.1 的上限）——
+    /// 再加就得先合并。而自动滚动本来就只在"长截图进行中"有意义，
+    /// 挂在那个状态自己的提示行里，比多一个随时可点但大部分时候点不动的菜单项更合理。
+    func overlayViewDidToggleAutoScroll(_ view: SelectionOverlayView)
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView)
 }
 
@@ -187,6 +193,8 @@ final class SelectionOverlayView: NSView {
             delegate?.overlayViewDidRequestCommit(self)
         case 0x01 where event.modifierFlags.contains(.command): // kVK_ANSI_S
             delegate?.overlayViewDidRequestSave(self)
+        case 0x31: // kVK_Space —— 长截图：开始 / 停止自动滚动
+            delegate?.overlayViewDidToggleAutoScroll(self)
         case 0x7B: // ←
             delegate?.overlayView(self, nudgeBy: -1, dy: 0)
         case 0x7C: // →
