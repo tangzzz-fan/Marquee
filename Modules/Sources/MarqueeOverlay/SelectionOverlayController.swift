@@ -76,8 +76,10 @@ public final class SelectionOverlayController {
     private var lensRequestsInFlight: Set<UInt32> = []
     /// 当前算好的放大镜内容。`nil` = 不显示。
     private var magnifier: MagnifierPresentation?
-    /// 最近一次取样的像素。用来确认"取样点没变"（避免无谓重建小图）
-    private var lastSample: (displayID: UInt32, pixel: PixelCoordinate)?
+    /// 放大的小图缓存。取样像素没变时复用，避免每次鼠标移动都裁剪 + 放大一次。
+    private var lastLensImage: CGImage?
+    /// 「光标在这一格上吗」的判定（什么才算真的变了）。纯逻辑，在 Core 里单测。
+    private var magnifierTracker = MagnifierTracker()
     /// 当前取样像素的颜色
     private var sampledColor: PixelColor?
     /// 复制反馈文本（1.5 秒后自动清掉）
@@ -282,68 +284,117 @@ public final class SelectionOverlayController {
     /// 按需取一屏像素（取到就缓存），之后所有取样都是**纯内存计算**：
     /// 裁一块方形 → 最近邻放大 → 读中心像素颜色。
     /// 不这么做就只能每次移动都去采集，而那是几十毫秒量级 —— 跟手是不可能的。
+    ///
+    /// ⚠️ **本方法自己负责把结果推给视图**（`pushMagnifier`），不依赖调用方。
+    /// 早先的写法是只改 `magnifier`、指望调用方随后调 `refresh()`，而空闲移动走的是
+    /// `updateHover` —— 那里在"悬停窗口没变"时直接 `return`，于是鼠标在同一个窗口内
+    /// 移动、以及**落点之后**移动时，放大镜会停在原地不动。
     private func updateMagnifier(at cocoaPoint: CGPoint) {
         guard let lensProvider, primaryScreenHeight > 0 else {
-            if magnifier != nil { magnifier = nil }
+            clearMagnifier()
             return
         }
 
         let quartz = ScreenCoordinateConversion.quartzPoint(fromCocoa: cocoaPoint,
                                                             primaryScreenHeight: primaryScreenHeight)
         guard let display = displayGeometries.first(where: { $0.frame.contains(quartz) }) else {
-            if magnifier != nil { magnifier = nil }
+            clearMagnifier()
             return
         }
 
         requestLensFrameIfNeeded(for: display, using: lensProvider)
         guard let lens = lensFrames[display.displayID] else {
             // 这一屏的像素还没取回来：先不显示，取到后会自动补上
-            if magnifier != nil { magnifier = nil }
+            clearMagnifier()
             return
         }
 
-        let imagePoint = MagnifierLayout.imagePixel(forCocoa: cocoaPoint,
-                                                   on: display,
-                                                   primaryScreenHeight: primaryScreenHeight)
         let settings = lensSettings
         let side = max(1, Int((settings.samplePoints * display.backingScale).rounded()))
-        let center = PixelSampling.clampedCenter(imagePoint,
-                                                side: side,
-                                                imageWidth: lens.image.width,
-                                                imageHeight: lens.image.height)
+        let center = PixelSampling.clampedCenter(
+            MagnifierLayout.imagePixel(forCocoa: cocoaPoint,
+                                       on: display,
+                                       primaryScreenHeight: primaryScreenHeight),
+            side: side,
+            imageWidth: lens.image.width,
+            imageHeight: lens.image.height
+        )
 
-        // 取样像素没变就不重建小图。高刷新率下这是唯一值得省的开销：
-        // 2x 屏上光标走 1 点 = 2 像素，一半的移动事件落在同一个像素里。
-        if let lastSample, lastSample.displayID == display.displayID, lastSample.pixel == center,
-           magnifier != nil {
+        let step = magnifierTracker.update(cursor: cocoaPoint,
+                                           center: center,
+                                           displayID: display.displayID,
+                                           settings: settings,
+                                           screenBounds: display.frame)
+
+        switch step {
+        case .idle:
+            // 取样像素与盒子位置都没变（鼠标在同一格内抖动）—— 不重画
             return
-        }
 
-        let zoom = max(1, Int(settings.zoom.rounded()))
-        guard let lensImage = PixelSampling.magnified(lens.image,
-                                                     centeredAt: center,
-                                                     side: side,
-                                                     zoom: zoom),
-              let color = PixelSampling.color(of: lens.image, at: center) else {
-            magnifier = nil
-            return
-        }
+        case .moved(let box):
+            // 取样像素没变、只有盒子挪了：复用已放大的小图。
+            // 这是鼠标移动时最常见的一档，省掉每帧一次裁剪 + 放大。
+            magnifier = makeMagnifier(box: box,
+                                      lensImage: lastLensImage,
+                                      backingScale: display.backingScale)
+            pushMagnifier()
 
-        lastSample = (display.displayID, center)
-        sampledColor = color
-        magnifier = MagnifierPresentation(
+        case .resample(let box, let center):
+            let zoom = max(1, Int(settings.zoom.rounded()))
+            guard let lensImage = PixelSampling.magnified(lens.image,
+                                                         centeredAt: center,
+                                                         side: side,
+                                                         zoom: zoom),
+                  let color = PixelSampling.color(of: lens.image, at: center) else {
+                clearMagnifier()
+                return
+            }
+            lastLensImage = lensImage
+            sampledColor = color
+            magnifier = makeMagnifier(box: box,
+                                      lensImage: lensImage,
+                                      backingScale: display.backingScale)
+            pushMagnifier()
+        }
+    }
+
+    /// 拼出放大镜要画的东西。位置、小图、色值三者独立，所以能分开复用。
+    private func makeMagnifier(box: CGRect,
+                               lensImage: CGImage?,
+                               backingScale: CGFloat) -> MagnifierPresentation {
+        MagnifierPresentation(
             lensImage: lensImage,
-            boxRect: CGRect(origin: MagnifierLayout.origin(cursor: cocoaPoint,
-                                                           settings: settings,
-                                                           screenBounds: display.frame),
-                            size: settings.boxSize),
+            boxRect: box,
             // 一个源像素在盒子里占这么大：盒子边 = samplePoints × zoom（点），
             // 而一个源像素 = 1 / backingScale 点，再放大 zoom 倍
-            sampleMarkerSize: settings.zoom / display.backingScale,
-            colorLines: [(color.hexString, ReadoutStyle.normal),
-                         (color.rgbString, ReadoutStyle.hint)],
+            sampleMarkerSize: lensSettings.zoom / backingScale,
+            colorLines: sampledColor.map {
+                [($0.hexString, ReadoutStyle.normal), ($0.rgbString, ReadoutStyle.hint)]
+            } ?? [],
             statusText: magnifierStatus
         )
+    }
+
+    /// 把放大镜的变化推给视图。
+    ///
+    /// 独立成一步的原因见 `updateMagnifier` 的注释：放大镜的更新发生在**移动事件**里，
+    /// 而"把状态推给视图"原本只在 `refresh()` 里做、靠调用方顺手带一下。
+    /// 落点之后以及悬停在同一个窗口内，那条路径上没有任何东西会调 `refresh()`。
+    private func pushMagnifier() {
+        guard !isFinishing, isPresented else { return }
+        refresh()
+    }
+
+    /// 收起放大镜。**展示状态与跟踪状态必须一起清**。
+    ///
+    /// 只清 `magnifier` 会留下一个"跟踪器还记得取样点"的中间态：
+    /// 光标再回到同一个像素时跟踪器报 `.idle`，放大镜就再也回不来了。
+    private func clearMagnifier() {
+        let wasVisible = magnifier != nil
+        magnifier = nil
+        lastLensImage = nil
+        magnifierTracker.reset()
+        if wasVisible { pushMagnifier() }
     }
 
     private func requestLensFrameIfNeeded(for display: DisplayGeometry, using provider: LensFrameProviding) {
@@ -377,23 +428,38 @@ public final class SelectionOverlayController {
         clipboard.writeText(text)
 
         magnifierStatus = "已复制 \(text)"
-        refresh()
+        refreshMagnifierStatus()
 
         magnifierStatusTask?.cancel()
         magnifierStatusTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.5))
             guard let self, !Task.isCancelled else { return }
             self.magnifierStatus = nil
-            self.refresh()
+            self.refreshMagnifierStatus()
         }
         return true
+    }
+
+    /// 复制反馈变了 → 必须**重建**放大镜。
+    ///
+    /// `statusText` 是烘进 `MagnifierPresentation` 里的，只调 `refresh()` 推的还是
+    /// 已经算好的那一份，反馈要等到下一次鼠标移动才出现。
+    private func refreshMagnifierStatus() {
+        guard let current = magnifier else { return }
+        magnifier = MagnifierPresentation(lensImage: current.lensImage,
+                                          boxRect: current.boxRect,
+                                          sampleMarkerSize: current.sampleMarkerSize,
+                                          colorLines: current.colorLines,
+                                          statusText: magnifierStatus)
+        pushMagnifier()
     }
 
     private func resetMagnifier() {
         lensFrames = [:]
         lensRequestsInFlight = []
         magnifier = nil
-        lastSample = nil
+        lastLensImage = nil
+        magnifierTracker.reset()
         sampledColor = nil
         magnifierStatus = nil
         magnifierStatusTask?.cancel()
@@ -613,8 +679,11 @@ public final class SelectionOverlayController {
             presentation = .empty
         }
 
-        // 放大镜压在一切之上
-        presentation.magnifier = magnifier
+        // 放大镜压在一切之上。
+        //
+        // 长截图期间**不显示**：那一屏像素是开始滚动之前取的，用户滚起来之后
+        // 放大镜里的内容已经和屏幕无关了，摆在那里只会误导（取色在滚动场景也没意义）。
+        presentation.magnifier = hasScrollSession ? nil : magnifier
 
         for overlay in overlays {
             overlay.view.presentation = presentation
