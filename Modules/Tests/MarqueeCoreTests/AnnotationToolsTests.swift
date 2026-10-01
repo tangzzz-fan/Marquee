@@ -376,7 +376,7 @@ struct AnnotationToolTests {
                 session.tool = .text
                 session.pointerDown(at: CGPoint(x: 20, y: 20), shift: false, handleRadius: 6)
                 session.endTextEditing()
-            case .rectangle, .ellipse:
+            case .rectangle, .ellipse, .mosaic, .blur:
                 continue
             }
 

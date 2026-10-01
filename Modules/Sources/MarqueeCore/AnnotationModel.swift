@@ -45,11 +45,20 @@ public struct AnnotationStyle: Equatable, Sendable, Codable {
     public var lineWidth: CGFloat
     /// 字号（原图像素）。默认按截图常见宽度给，2x 屏下大约相当于 18 点的屏幕文字。
     public var fontSize: CGFloat
+    /// 打码强度（原图像素）：马赛克＝块边长、毛玻璃＝模糊半径。
+    ///
+    /// 和 `fontSize` 一样，它是"某一类标注才用得上"的参数 ——
+    /// 界面因此可以只有一排控件，按当前选中的对象决定改的是谁。
+    public var effectStrength: CGFloat
 
-    public init(stroke: AnnotationColor = .red, lineWidth: CGFloat = 4, fontSize: CGFloat = 36) {
+    public init(stroke: AnnotationColor = .red,
+                lineWidth: CGFloat = 4,
+                fontSize: CGFloat = 36,
+                effectStrength: CGFloat = 12) {
         self.stroke = stroke
         self.lineWidth = lineWidth
         self.fontSize = fontSize
+        self.effectStrength = effectStrength
     }
 
     public static let `default` = AnnotationStyle()
@@ -64,6 +73,10 @@ public enum AnnotationKind: Equatable, Sendable, Codable {
     case pen
     /// 文字：内容在 `Annotation.text`，框由 `AnnotationText.measure` 量出来
     case text
+    /// 马赛克：把框内像素化。强度 = 块边长（像素）
+    case mosaic
+    /// 毛玻璃：把框内高斯模糊。强度 = 半径（像素）
+    case blur
 }
 
 /// 一个可再次编辑的标注。坐标在**原图像素**里，原点左上、y 向下。
@@ -109,7 +122,8 @@ public struct Annotation: Equatable, Sendable, Identifiable, Codable {
         let slop = max(style.lineWidth / 2, 3)
         let box = frame.standardized.insetBy(dx: -slop, dy: -slop)
         switch kind {
-        case .rectangle, .text:
+        case .rectangle, .text, .mosaic, .blur:
+            // 打码是按**区域**作用的：它没有"描边"，点哪儿算哪儿就是整个框
             return box.contains(point)
         case .ellipse:
             let radiusX = box.width / 2
@@ -142,7 +156,7 @@ public struct Annotation: Equatable, Sendable, Identifiable, Codable {
     /// - 矩形 / 椭圆：只有框变
     public mutating func applyFrame(_ newFrame: CGRect) {
         switch kind {
-        case .rectangle, .ellipse:
+        case .rectangle, .ellipse, .mosaic, .blur:
             frame = newFrame
         case .arrow, .pen:
             path = AnnotationGeometry.scale(points: path, from: frame, to: newFrame)

@@ -69,10 +69,43 @@ public enum AnnotationRasterizer {
                                     color: color,
                                     at: box.origin,
                                     in: context)
+            case .mosaic, .blur:
+                drawRedaction(annotation, source: cropped, in: context)
             }
         }
 
         return context.makeImage()
+    }
+
+    /// 打码：把框内那一块**源图**抠出来做滤镜，再贴回去。
+    ///
+    /// ⚠️ 这里必须**局部反翻一次 CTM**。当前 CTM 已经是"左上原点、y 向下"，
+    /// 而 `draw(image, in:)` 在 y 向下的上下文里会把图像**上下颠倒**地放进去
+    /// （它的顶行仍然落在 `rect.maxY`，而那已是视觉上的下边）。
+    /// 马赛克因为细节被抹掉了未必看得出来，**模糊会很明显** —— 有一条用
+    /// "上黑下白"底图的回归专门盯它。
+    private static func drawRedaction(_ annotation: Annotation, source: CGImage, in context: CGContext) {
+        let bounds = CGRect(x: 0, y: 0, width: source.width, height: source.height)
+        // 取整：半个像素的区域会让马赛克的格子与整幅的像素网格错开
+        let region = annotation.frame.standardized.integral.intersection(bounds)
+        guard region.width >= 1, region.height >= 1,
+              let patch = source.cropping(to: region) else { return }
+
+        guard let processed = RedactionFilter.apply(annotation.kind,
+                                                    to: patch,
+                                                    strength: annotation.style.effectStrength) else {
+            // 打码失败就**遮死**：宁可糊掉一块，也绝不能把敏感内容原样导出去
+            let colorSpace = context.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+            context.setFillColor(CGColor(colorSpace: colorSpace, components: [0, 0, 0, 1])!)
+            context.fill(region)
+            return
+        }
+
+        context.saveGState()
+        context.translateBy(x: region.minX, y: region.maxY)
+        context.scaleBy(x: 1, y: -1)
+        context.draw(processed, in: CGRect(origin: .zero, size: region.size))
+        context.restoreGState()
     }
 
     /// 按给定色彩空间建一个 8 位 ARGB 上下文。空间不合适（线性 / 16 位等）时返回 nil，

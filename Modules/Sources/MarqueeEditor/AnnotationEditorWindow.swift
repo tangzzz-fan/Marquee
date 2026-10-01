@@ -82,6 +82,11 @@ private struct AnnotationEditorView: View {
     @State private var didFit = false
     @State private var dragging = false
     @State private var canvasSize = CGSize.zero
+    /// 打码结果的缓存。CoreImage 一次 2.6 ms，不能每帧重算 ——
+    /// 键是"框 + 强度 + 类型"，改了才重做。
+    @State private var redactionCache: [UUID: RedactionCacheEntry] = [:]
+    /// 裁切模式下正在拖的东西：某个角，或整框平移
+    @State private var cropDrag: CropDrag?
     /// 正在编辑内容的文字标注（新落的空文字或双击唤起的）
     @State private var editingID: UUID?
     @State private var editingText = ""
@@ -99,6 +104,8 @@ private struct AnnotationEditorView: View {
     private let lineWidths: [CGFloat] = [2, 4, 8]
     /// 字号档位。文字标注的"粗细"就是字号，和线宽共用同一排控件。
     private let fontSizes: [CGFloat] = [24, 36, 56]
+    /// 打码强度档位（马赛克＝块边长、模糊＝半径）。两档之间的差别要一眼看得出来。
+    private let redactionStrengths: [CGFloat] = [8, 16, 32]
 
     init(image: CGImage,
          onCopyPNG: @escaping (Data) -> Void,
@@ -128,6 +135,26 @@ private struct AnnotationEditorView: View {
             toolButton("箭头", tool: .arrow)
             toolButton("画笔", tool: .pen)
             toolButton("文字", tool: .text)
+            toolButton("马赛克", tool: .mosaic)
+            toolButton("模糊", tool: .blur)
+            // 裁切是**模式**不是工具：它不改文档，只是让你调好框再回车
+            Button {
+                if session.isCropping {
+                    session.cancelCrop()
+                } else {
+                    session.beginCrop()
+                }
+            } label: {
+                Text("裁切")
+                    .font(.system(size: 13, weight: .medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(session.isCropping ? Color.white.opacity(0.18) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .help("拖框调整裁切范围，回车应用，Esc 取消")
 
             // 序号是**文字工具的一个预设**，不占独立工具位（PRD：工具栏 ≤ 9 个工具）
             if session.tool == .text {
@@ -174,7 +201,7 @@ private struct AnnotationEditorView: View {
             Button { zoom(by: 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-            Text("Esc 复制并关闭")
+            Text(session.isCropping ? "回车应用裁切 · Esc 取消" : "Esc 复制并关闭")
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.55))
         }
@@ -183,41 +210,63 @@ private struct AnnotationEditorView: View {
         .background(Color(white: 0.16))
     }
 
-    /// 这一排控件按**当前上下文**决定是线宽还是字号。
+    /// 这一排控件按**当前上下文**决定改的是哪个参数：线宽 / 字号 / 打码强度。
     ///
-    /// 文字没有"线宽"，它的粗细就是字号 —— 与其多摆一排按钮（工具栏已经很挤），
-    /// 不如让同一排按钮在选中文字时改字号。判据是"当前工具是文字，或选中的里有文字"。
+    /// 三者互斥（文字没有线宽、打码没有字号），而工具栏已经很挤 ——
+    /// 与其摆三排按钮，不如让同一排按钮改"当前真正相关的那个"。
     private var sizeControls: some View {
-        let showsFontSize = session.tool == .text || selectionContainsText
-        let values = showsFontSize ? fontSizes : lineWidths
-        return ForEach(values, id: \.self) { value in
+        let target = sizeTarget
+        return ForEach(target.values, id: \.self) { value in
             Button {
-                if showsFontSize {
-                    session.setFontSize(value)
-                } else {
-                    session.setLineWidth(value)
+                switch target.kind {
+                case .lineWidth: session.setLineWidth(value)
+                case .fontSize: session.setFontSize(value)
+                case .strength: session.setEffectStrength(value)
                 }
             } label: {
                 Text("\(Int(value))")
                     .font(.system(size: 12, weight: .medium))
                     .frame(width: 26, height: 22)
-                    .background(isActiveSize(value, showsFontSize: showsFontSize)
+                    .background(isActiveSize(value, target: target.kind)
                                 ? Color.white.opacity(0.18)
                                 : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
-            .help(showsFontSize ? "字号 \(Int(value))" : "线宽 \(Int(value))")
+            .help("\(target.label) \(Int(value))")
         }
     }
 
-    private func isActiveSize(_ value: CGFloat, showsFontSize: Bool) -> Bool {
-        showsFontSize ? session.style.fontSize == value : session.style.lineWidth == value
+    private enum SizeTargetKind { case lineWidth, fontSize, strength }
+
+    private var sizeTarget: (kind: SizeTargetKind, values: [CGFloat], label: String) {
+        if session.tool == .mosaic || session.tool == .blur || selectionContainsRedaction {
+            return (.strength, redactionStrengths, "打码强度")
+        }
+        if session.tool == .text || selectionContainsText {
+            return (.fontSize, fontSizes, "字号")
+        }
+        return (.lineWidth, lineWidths, "线宽")
+    }
+
+    private func isActiveSize(_ value: CGFloat, target: SizeTargetKind) -> Bool {
+        switch target {
+        case .lineWidth: session.style.lineWidth == value
+        case .fontSize: session.style.fontSize == value
+        case .strength: session.style.effectStrength == value
+        }
     }
 
     private var selectionContainsText: Bool {
         session.document.annotations.contains { session.selection.contains($0.id) && $0.kind == .text }
+    }
+
+    private var selectionContainsRedaction: Bool {
+        session.document.annotations.contains { annotation in
+            session.selection.contains(annotation.id)
+                && (annotation.kind == .mosaic || annotation.kind == .blur)
+        }
     }
 
     private var counterBinding: Binding<Int> {
@@ -259,11 +308,20 @@ private struct AnnotationEditorView: View {
                                   onPan: { dx, dy in viewport.pan(by: CGPoint(x: dx, y: dy)) },
                                   onZoom: { factor, point in viewport.zoom(by: factor, around: point) },
                                   isEditingText: editingID != nil,
-                                  onCancelTextEditing: { cancelTextEditing() })
+                                  onCancelTextEditing: { cancelTextEditing() },
+                                  isCropping: session.isCropping,
+                                  onCommitCrop: { _ = session.commitCrop() },
+                                  onCancelCrop: { session.cancelCrop() })
                     .allowsHitTesting(false)
             }
             .overlay(alignment: .topLeading) { textEditor }
-            .onAppear { fitIfNeeded(in: geo.size) }
+            .onAppear {
+                fitIfNeeded(in: geo.size)
+                rebuildRedactionCache()
+            }
+            .onChange(of: redactionSignature) { _, _ in
+                rebuildRedactionCache()
+            }
             .onChange(of: geo.size) { _, newSize in
                 canvasSize = newSize
                 fitIfNeeded(in: newSize)
@@ -305,6 +363,10 @@ private struct AnnotationEditorView: View {
                     commitTextEditing()
                     return
                 }
+                if session.isCropping {
+                    handleCropDrag(value)
+                    return
+                }
                 let point = viewport.imagePoint(forView: value.location,
                                                 cropOrigin: session.document.cropRect.origin)
                 if !dragging {
@@ -322,9 +384,48 @@ private struct AnnotationEditorView: View {
                 }
             }
             .onEnded { _ in
+                if session.isCropping {
+                    cropDrag = nil
+                    return
+                }
                 session.pointerUp()
                 dragging = false
             }
+    }
+
+    /// 裁切模式下的拖拽：抓角就改角，抓框内就整体平移。
+    private func handleCropDrag(_ value: DragGesture.Value) {
+        let cropOrigin = session.document.cropRect.origin
+        let point = viewport.imagePoint(forView: value.location, cropOrigin: cropOrigin)
+        guard let previous = cropDrag else {
+            // 第一次进来：这一下抓的是某个角，还是整框
+            cropDrag = CropDrag(handle: cropHandle(near: value.startLocation),
+                                lastImagePoint: point)
+            return
+        }
+        if let handle = previous.handle {
+            session.updateCrop(handle: handle, to: point)
+        } else {
+            session.moveCrop(by: CGPoint(x: point.x - previous.lastImagePoint.x,
+                                         y: point.y - previous.lastImagePoint.y))
+        }
+        cropDrag = CropDrag(handle: previous.handle, lastImagePoint: point)
+    }
+
+    /// 抓的是哪个角（视图坐标，12 点以内）；没抓到就返回 nil（= 拖整框）。
+    private func cropHandle(near viewPoint: CGPoint) -> AnnotationHandle? {
+        guard let draft = session.cropDraft else { return nil }
+        let rect = viewport.viewRect(forImage: draft, cropOrigin: session.document.cropRect.origin)
+        for handle in AnnotationHandle.allCases {
+            let center = handle.point(on: rect)
+            if hypot(viewPoint.x - center.x, viewPoint.y - center.y) <= 12 { return handle }
+        }
+        return nil
+    }
+
+    private struct CropDrag {
+        var handle: AnnotationHandle?
+        var lastImagePoint: CGPoint
     }
 
     private func draw(in context: GraphicsContext) {
@@ -342,6 +443,10 @@ private struct AnnotationEditorView: View {
                 drawAnnotation(annotation, in: layer, crop: crop)
             }
         }
+        if session.isCropping {
+            drawCropOverlay(in: context)
+            return
+        }
         for annotation in session.visibleAnnotations() where session.selection.contains(annotation.id) {
             let rect = viewport.viewRect(forImage: annotation.frame, cropOrigin: crop.origin)
             for handle in AnnotationHandle.allCases {
@@ -350,6 +455,38 @@ private struct AnnotationEditorView: View {
                 context.fill(Path(mark), with: .color(.white))
                 context.stroke(Path(mark), with: .color(.black), lineWidth: 1)
             }
+        }
+    }
+
+    /// 裁切框：外面压暗 + 白边 + 四角握把。
+    ///
+    /// 压暗用 even-odd 填充一次画完（挖个洞），而不是画四条边 ——
+    /// 后者在框贴边时会留下没盖到的一条缝。
+    private func drawCropOverlay(in context: GraphicsContext) {
+        guard let draft = session.cropDraft else { return }
+        let rect = viewport.viewRect(forImage: draft, cropOrigin: session.document.cropRect.origin)
+
+        var mask = Path(CGRect(origin: .zero, size: canvasSize))
+        mask.addPath(Path(rect))
+        context.fill(mask, with: .color(.black.opacity(0.5)), style: FillStyle(eoFill: true))
+
+        context.stroke(Path(rect), with: .color(.white), lineWidth: 1.5)
+        // 三分线：帮着对齐内容
+        for fraction in [1.0 / 3, 2.0 / 3] {
+            var vertical = Path()
+            vertical.move(to: CGPoint(x: rect.minX + rect.width * fraction, y: rect.minY))
+            vertical.addLine(to: CGPoint(x: rect.minX + rect.width * fraction, y: rect.maxY))
+            var horizontal = Path()
+            horizontal.move(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * fraction))
+            horizontal.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * fraction))
+            context.stroke(vertical, with: .color(.white.opacity(0.25)), lineWidth: 0.5)
+            context.stroke(horizontal, with: .color(.white.opacity(0.25)), lineWidth: 0.5)
+        }
+        for handle in AnnotationHandle.allCases {
+            let center = handle.point(on: rect)
+            let mark = CGRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12)
+            context.fill(Path(mark), with: .color(.white))
+            context.stroke(Path(mark), with: .color(.black.opacity(0.6)), lineWidth: 1)
         }
     }
 
@@ -404,6 +541,13 @@ private struct AnnotationEditorView: View {
                                               lineCap: .round,
                                               lineJoin: .round))
 
+        case .mosaic, .blur:
+            // 画的就是 Core 滤镜的输出（与导出同一套），所以编辑器里看到什么导出来就是什么。
+            // 缓存由 `onChange(of: redactionSignature)` 重算；这里只取。
+            guard let patch = redactionCache[annotation.id]?.image else { return }
+            let rect = viewport.viewRect(forImage: annotation.frame, cropOrigin: crop.origin)
+            context.draw(Image(decorative: patch, scale: 1), in: rect)
+
         case .text:
             // 走 CoreText 而不是 SwiftUI 的 `Text`：编辑器与导出必须**同一套排版**，
             // 否则会出现"编辑器里放得下、导出后被裁掉半个字"。
@@ -422,6 +566,41 @@ private struct AnnotationEditorView: View {
                 cg.restoreGState()
             }
         }
+    }
+
+    // MARK: - 打码
+
+    private struct RedactionCacheEntry {
+        var key: String
+        var image: CGImage?
+    }
+
+    /// 打码对象的"身份"：框 + 强度 + 类型。变了才需要重算。
+    private var redactionSignature: [String] {
+        session.visibleAnnotations()
+            .filter { $0.kind == .mosaic || $0.kind == .blur }
+            .map { "\($0.id)|\($0.frame.standardized.integral)|\($0.style.effectStrength)|\($0.kind)" }
+    }
+
+    /// 重算打码缓存。
+    ///
+    /// **必须在 `onChange` 里做，不能在 `Canvas` 的绘制闭包里做** ——
+    /// 在渲染过程中改 `@State` 是 SwiftUI 明令禁止的（会让画面与状态不同步）。
+    private func rebuildRedactionCache() {
+        var next: [UUID: RedactionCacheEntry] = [:]
+        for annotation in session.visibleAnnotations() where annotation.kind == .mosaic || annotation.kind == .blur {
+            let box = annotation.frame.standardized.integral
+            let key = "\(box)|\(annotation.style.effectStrength)|\(annotation.kind)"
+            if let cached = redactionCache[annotation.id], cached.key == key {
+                next[annotation.id] = cached
+                continue
+            }
+            let patch = image.cropping(to: box).flatMap {
+                RedactionFilter.apply(annotation.kind, to: $0, strength: annotation.style.effectStrength)
+            }
+            next[annotation.id] = RedactionCacheEntry(key: key, image: patch)
+        }
+        redactionCache = next
     }
 
     // MARK: - 文字编辑
@@ -519,6 +698,10 @@ private struct EditorEventMonitor: NSViewRepresentable {
     /// 否则退格会被当成"删除标注"，输入法候选也会被吞掉。
     var isEditingText: Bool
     var onCancelTextEditing: () -> Void
+    /// 正在调整裁切框：回车应用、Esc 取消（覆盖层的 Esc 是"复制并关闭"，语义不同）
+    var isCropping: Bool
+    var onCommitCrop: () -> Void
+    var onCancelCrop: () -> Void
 
     func makeNSView(context: Context) -> EditorEventMonitorView {
         let view = EditorEventMonitorView()
@@ -538,7 +721,10 @@ private struct EditorEventMonitor: NSViewRepresentable {
                                        onPan: onPan,
                                        onZoom: onZoom,
                                        isEditingText: isEditingText,
-                                       onCancelTextEditing: onCancelTextEditing)
+                                       onCancelTextEditing: onCancelTextEditing,
+                                       isCropping: isCropping,
+                                       onCommitCrop: onCommitCrop,
+                                       onCancelCrop: onCancelCrop)
     }
 }
 
@@ -552,11 +738,15 @@ private final class EditorEventMonitorView: NSView {
         var onZoom: (CGFloat, CGPoint) -> Void
         var isEditingText: Bool
         var onCancelTextEditing: () -> Void
+        var isCropping: Bool
+        var onCommitCrop: () -> Void
+        var onCancelCrop: () -> Void
     }
 
     var actions = Actions(onEscape: {}, onDelete: {}, onUndo: {}, onRedo: {},
                           onPan: { _, _ in }, onZoom: { _, _ in },
-                          isEditingText: false, onCancelTextEditing: {})
+                          isEditingText: false, onCancelTextEditing: {},
+                          isCropping: false, onCommitCrop: {}, onCancelCrop: {})
     private var monitor: Any?
 
     override var isFlipped: Bool { true }
@@ -605,6 +795,20 @@ private final class EditorEventMonitorView: NSView {
                 return nil
             }
             return event
+        }
+        // 裁切模式：回车应用、Esc 取消；⌘Z 仍可撤销（裁切前可能刚画了东西）
+        if actions.isCropping {
+            switch event.keyCode {
+            case 53:
+                actions.onCancelCrop()
+                return nil
+            case 0x24, 0x4C:
+                actions.onCommitCrop()
+                return nil
+            default:
+                break
+            }
+            guard event.modifierFlags.contains(.command) else { return event }
         }
         switch event.keyCode {
         case 53:

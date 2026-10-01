@@ -45,15 +45,35 @@ enum TestImage {
     }
 
     /// 棋盘格。纯色 JPEG 在高低质量下体积几乎一样，质量断言要用有细节的图。
-    static func checkerboard(width: Int, height: Int) -> CGImage {
-        makeContext(width: width, height: height) { context in
+    /// 棋盘格。`squareSize` 是每格边长（默认 1 像素）。
+    ///
+    /// 加这个参数是因为"细节量"的度量必须与要测的尺度匹配：
+    /// 1 像素的棋盘在任何 ≥2 的块长下都会被平均成纯灰，用它测"块越大越糊"会什么都测不出来。
+    static func checkerboard(width: Int, height: Int, squareSize: Int = 1) -> CGImage {
+        let size = max(1, squareSize)
+        return makeContext(width: width, height: height) { context in
             for y in 0..<height {
                 for x in 0..<width {
-                    let on = (x + y).isMultiple(of: 2)
+                    let on = ((x / size) + (y / size)).isMultiple(of: 2)
                     context.setFillColor(color(on ? 1 : 0, on ? 0.15 : 0.85, on ? 0.4 : 0.1))
                     context.fill(CGRect(x: x, y: y, width: 1, height: 1))
                 }
             }
+        }
+    }
+
+    /// 顶部一条黑带、其余全白。**刻意不对称**。
+    ///
+    /// 用它而不是"上黑下白各一半"：那种图关于**水平中线镜像对称**，
+    /// 上下翻转后与原图逐像素相同 —— 拿它测翻转等于什么都没测
+    /// （这正是"纯色图看不出翻转"的变体，踩过一次）。
+    static func topBandBlack(width: Int, height: Int, bandHeight: Int) -> CGImage {
+        makeContext(width: width, height: height) { context in
+            context.setFillColor(color(1, 1, 1))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            // CG 用户空间 y 向上：想落在"自上而下 0..<bandHeight"行，需要 y = height - bandHeight
+            context.setFillColor(color(0, 0, 0))
+            context.fill(CGRect(x: 0, y: height - bandHeight, width: width, height: bandHeight))
         }
     }
 

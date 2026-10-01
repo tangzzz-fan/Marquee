@@ -32,6 +32,8 @@
 | 构建配置 | **Run 走 Release**（`project.yml` 的 `schemes.Marquee.run.config`）：性能预算只有在优化构建下才有参考价值。test/analyze 仍是 Debug。签名写在 `settings.base`，Release 同样用证书，不会退回 ad-hoc |
 | 确认之后 | 原图立刻进剪贴板（`⌘S` 才落盘）。同时打开标注编辑器。编辑器里 `Esc` 把标注栅格化后再写回剪贴板并关闭。裁切界面在 ticket 09 |
 | 标注对象模型 | **ticket 07 / 08**。`Annotation` 带 `path: [CGPoint]`（箭头＝`[起点,终点]`、画笔＝折线点序列）与 `text: String`；`AnnotationStyle.fontSize`。**路径不塞进 `AnnotationKind` 的关联值**（那样 `kind` 不再是标签，命中/工具栏/序列化都要解包）。**移动必须走 `translated(by:)`**（框与路径一起走，否则"框走了线还在原地"），缩放走 `applyFrame(_:)`（箭头/画笔等比映射路径；文字按高度比缩放字号）。序号是**文字工具的一个预设**（不占独立工具位），**只增不重排** —— 删掉 2 号不会让 3 号变 2 号 |
+| 打码 | **走 CoreImage**（`CIPixellate` / `CIGaussianBlur`，typed filter API），不手写像素化（实测 CoreImage 快 6 倍）。`AnnotationKind.mosaic` / `.blur`，强度在 `AnnotationStyle.effectStrength`（块边长 / 半径，共用一档）。`CIContext` 是**共享常量**（冷启动 46 ms 是建上下文 + 编译着色器；预热后 400×300 补丁 **0.7 / 0.8 ms**）。编辑器画布与导出画**同一份**滤镜输出，缓存键 = 框 + 强度 + 类型，重算放在 `onChange` 里（**不能在 Canvas 绘制闭包里改状态**） |
+| 裁切语义 | `AnnotationEditorSession.beginCrop / updateCrop / moveCrop / commitCrop / cancelCrop`。拖框期间**不进撤销栈**（一次拖动只产生一条命令），回车才落成命令、`Esc` 丢弃、框 <8 像素视为误操作。**裁切外的标注保留不动**（只是暂时看不到）—— 删掉再补回来是"两处状态要对齐"，保留原件只有 `cropRect` 一处状态，撤销天然正确。裁切模式下 `Esc` 的语义是"退出裁切"而不是"复制并关闭" |
 | 文字渲染 | **编辑器与导出共用 `MarqueeCore.AnnotationText`**（CoreText + 系统 UI 字体）。各画各的会出现"编辑器里放得下、导出后被裁掉半个字"。**`Canvas.withCGContext` 的坐标系已实测**（`AnnotationTextCanvasTests` 用 `ImageRenderer` 渲染后读像素）：与 Core 的"左上原点、y 向下"一致，且 `clip` 之后仍能画。CoreText 的局部翻转（平移到基线 + `scaleBy(1,-1)`）不能省，否则文字镜像/跑位 |
 | 编辑器验证入口 | `-marqueeDemoEditor`：**合成图 + 五类标注各一个**，不自动退出、**不需要屏幕录制权限**。链条太长（权限→截图→编辑器）时的第一条验证路径 |
 | 测试目标结构 | `MarqueeCoreTests`（纯逻辑）+ **`MarqueeCaptureTests`**（真实 Vision 的装置自检必须打在真实实现上）+ `MarqueeTestSupport`（**测试专用**库：合成长页 / 位图读取 / MAE，不挂宿主 target）。新测试目标要同时改 `Modules/Package.swift` |
@@ -131,7 +133,9 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 37. **说"某键被占用"之前，先确认它被占用的**相位**。** 我把 `⌥` 取色挪到"已落点"，理由是"避开 ticket 04 的 `⌥`＝无阴影"；但 ticket 04 的 `⌥` 是**落点之后**读的，悬停时它本来就是空档 —— 一个假冲突换来的是放大镜必须赖在落点之后不走，同时违背 PRD F4（「选区时显示」「`⌥` **悬停**即」）与用户参照的微信行为。**冲突要按相位核对，不能按"这个键有没有人用"粗判。**
 38. **"1:1 直通拷贝"也需要对齐设备像素。** 只要目标矩形落在半个像素上（`origin = 光标 + 间距`，光标天然带小数），CG 就会插值一次 —— 平滑档看起来发虚，最近邻档则是**个别格子被拉宽、个别被吃掉一行**（比整片块状更难忍受，也更容易被误当成"锯齿"）。画任何"像素到像素"的图（放大镜、像素对齐的预览）都要把落位按 `backingScale` 取整。
 39. **"坐标空间已对齐"这件事要能实测，不能靠猜。** 编辑器画布走 SwiftUI `Canvas.withCGContext`，导出走自建 CGContext —— 两者的 y 方向若不一致就是**镜像文字**，而"有没有墨"这类断言完全看不出来。解法：用 `ImageRenderer` 把画布离屏渲染成图，再读像素判方向（`AnnotationTextCanvasTests`）。同类需要实测的还有：底图翻转（`AnnotationRasterizer`）、长图拼接的 y（`ScrollStitchRenderer`）。
-40. **"放大"发生的地方要和"画"分开想。** 视图里 `interpolationQuality` 只在**非 1:1** 时起作用；如果图像尺寸与目标矩形严格相等，那个设置形同虚设。放大镜原先把插值质量设在视图（无效位），而真正决定观感的 `PixelSampling.magnified` 却写死 `.none` —— 于是"改插值"改了个寂寞。**问自己：重采样到底发生在哪一步。**
+40. **测"翻转"要用不对称的图。** 我用"上黑下白各一半"验打码补丁有没有被画颠倒 —— 那种图关于**水平中线镜像对称**，翻转后逐像素相同，变异测试（去掉反向翻转）**直接漏网**。换成"顶部一条黑带"立刻抓住。这是"纯色图看不出翻转"的变体：**对称的测试图同样是盲的**。
+41. **区分两种"都能让细节变少"的滤镜，度量要选对。** 马赛克与模糊都能降低细节量，用"变脸次数"或"相邻像素是否相等"都区分不出（大色块模糊后中间会出现**饱和平台**，同样成片相等）。稳定可靠的度量是**相邻像素跳变的最大幅度**：马赛克是台阶（能跳到接近满量程），模糊是斜坡（被摊薄到几十）。**先想清楚两个东西的本质差别是什么，再设计度量。**
+42. **"放大"发生的地方要和"画"分开想。** 视图里 `interpolationQuality` 只在**非 1:1** 时起作用；如果图像尺寸与目标矩形严格相等，那个设置形同虚设。放大镜原先把插值质量设在视图（无效位），而真正决定观感的 `PixelSampling.magnified` 却写死 `.none` —— 于是"改插值"改了个寂寞。**问自己：重采样到底发生在哪一步。**
 
 ## 文档与资产
 

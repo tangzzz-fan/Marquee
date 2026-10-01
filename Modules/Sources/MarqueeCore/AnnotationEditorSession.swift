@@ -61,11 +61,14 @@ public struct AnnotationEditorSession: Sendable {
 
     public mutating func pointerDown(at point: CGPoint, shift: Bool, handleRadius: CGFloat) {
         switch tool {
-        case .rectangle, .ellipse, .arrow:
+        case .rectangle, .ellipse, .arrow, .mosaic, .blur:
+            // 打码与矩形是同一套"拖出一个框"的手势，区别只在落成哪种对象
             let kind: AnnotationKind
             switch tool {
             case .rectangle: kind = .rectangle
             case .ellipse: kind = .ellipse
+            case .mosaic: kind = .mosaic
+            case .blur: kind = .blur
             default: kind = .arrow
             }
             var draft = Annotation(kind: kind,
@@ -180,7 +183,7 @@ public struct AnnotationEditorSession: Sendable {
         switch gesture {
         case .drawing(let start, var draft):
             switch draft.kind {
-            case .rectangle, .ellipse:
+            case .rectangle, .ellipse, .mosaic, .blur:
                 draft.frame = CGRect(x: min(start.x, point.x),
                                      y: min(start.y, point.y),
                                      width: abs(point.x - start.x),
@@ -225,7 +228,12 @@ public struct AnnotationEditorSession: Sendable {
                 selection = [committed.id]
                 // 画笔与文字留在原工具上：连着画几笔 / 连着放几个序号是常态。
                 // 矩形这类"画一个就完事"的回到选择工具，免得想调整时又画出一个框。
-                if committed.kind != .pen, committed.kind != .text {
+                // 画笔、文字、打码都留在原工具上：连着画几笔 / 放几个 / 涂几块是常态。
+                // 矩形这类"画一个就完事"的回到选择工具，免得想调整时又画出一个框。
+                switch committed.kind {
+                case .pen, .text, .mosaic, .blur:
+                    break
+                case .rectangle, .ellipse, .arrow:
                     tool = .select
                 }
             }
@@ -243,7 +251,7 @@ public struct AnnotationEditorSession: Sendable {
     private func committableDraft(_ draft: Annotation) -> Annotation? {
         var committed = draft
         switch draft.kind {
-        case .rectangle, .ellipse:
+        case .rectangle, .ellipse, .mosaic, .blur:
             let box = draft.frame.standardized
             guard box.width >= 2, box.height >= 2 else { return nil }
             committed.frame = box
@@ -291,6 +299,22 @@ public struct AnnotationEditorSession: Sendable {
         replace(after)
     }
 
+    /// 改打码强度（选中马赛克/模糊时工具栏那一排就是它）。
+    public mutating func setEffectStrength(_ strength: CGFloat) {
+        guard gesture == nil else { return }
+        let before = selectedAnnotations().filter { $0.kind == .mosaic || $0.kind == .blur }
+        guard !before.isEmpty else { return }
+        let after = before.map { annotation -> Annotation in
+            var copy = annotation
+            copy.style.effectStrength = RedactionFilter.clampStrength(strength, for: copy.kind)
+            return copy
+        }
+        // 样式也要跟着记，否则下一个打码对象又回到旧强度
+        style.effectStrength = after.first?.style.effectStrength ?? strength
+        push(.update(before: before, after: after))
+        replace(after)
+    }
+
     /// 改字号（选中文字时工具栏的"粗细"就是它）。框按新字号重量，左上角不动。
     public mutating func setFontSize(_ size: CGFloat) {
         guard gesture == nil else { return }
@@ -330,6 +354,55 @@ public struct AnnotationEditorSession: Sendable {
         guard clamped.width >= 1, clamped.height >= 1, clamped != document.cropRect else { return }
         push(.crop(before: document.cropRect, after: clamped))
         document.cropRect = clamped
+    }
+
+    // MARK: - 裁切模式
+
+    /// 正在调整的裁切框（**原图像素**）。非 `nil` 即在裁切模式。
+    ///
+    /// 与 `applyCrop` 分开：拖框期间**不进撤销栈**（一次拖动只该产生一条命令），
+    /// 回车才落成命令、Esc 直接丢弃。
+    public private(set) var cropDraft: CGRect?
+
+    public var isCropping: Bool { cropDraft != nil }
+
+    public mutating func beginCrop() {
+        guard gesture == nil else { return }
+        cropDraft = document.cropRect
+        selection = []
+    }
+
+    /// 拖裁切框的某个角。结果**夹在图像范围内** —— 拖出图外会得到一张带透明边的图。
+    public mutating func updateCrop(handle: AnnotationHandle, to point: CGPoint) {
+        guard let draft = cropDraft else { return }
+        let bounds = CGRect(origin: .zero, size: document.pixelSize)
+        let clamped = CGPoint(x: min(max(bounds.minX, point.x), bounds.maxX),
+                              y: min(max(bounds.minY, point.y), bounds.maxY))
+        cropDraft = AnnotationDocument.resized(draft, handle: handle, to: clamped)
+    }
+
+    /// 整体平移裁切框（拖动框内部）。同样夹在图像范围内。
+    public mutating func moveCrop(by delta: CGPoint) {
+        guard let draft = cropDraft else { return }
+        let bounds = CGRect(origin: .zero, size: document.pixelSize)
+        var moved = draft.offsetBy(dx: delta.x, dy: delta.y)
+        moved.origin.x = min(max(bounds.minX, moved.origin.x), max(bounds.minX, bounds.maxX - moved.width))
+        moved.origin.y = min(max(bounds.minY, moved.origin.y), max(bounds.minY, bounds.maxY - moved.height))
+        cropDraft = moved
+    }
+
+    public mutating func cancelCrop() {
+        cropDraft = nil
+    }
+
+    /// 应用裁切。框太小（<8 像素）视为误操作，返回 `false` 并保持裁切模式。
+    @discardableResult
+    public mutating func commitCrop() -> Bool {
+        guard let draft = cropDraft else { return false }
+        guard draft.width >= 8, draft.height >= 8 else { return false }
+        applyCrop(draft)
+        cropDraft = nil
+        return true
     }
 
     public mutating func undo() {
@@ -449,6 +522,10 @@ public enum AnnotationEditorTool: Equatable, Sendable {
     case pen
     /// 文字；配 `TextPreset.counter` 就是序号标记（**不占独立工具位**）
     case text
+    /// 马赛克（涂抹敏感信息）
+    case mosaic
+    /// 毛玻璃模糊
+    case blur
 
     /// 这个工具画出来的标注类型。`.select` 没有对应类型。
     public var annotationKind: AnnotationKind? {
@@ -459,6 +536,8 @@ public enum AnnotationEditorTool: Equatable, Sendable {
         case .arrow: .arrow
         case .pen: .pen
         case .text: .text
+        case .mosaic: .mosaic
+        case .blur: .blur
         }
     }
 }

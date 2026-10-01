@@ -7,7 +7,8 @@ import MarqueeCore
 ///
 /// 编辑器的渲染（尤其是文字走 CoreText、箭头头部、画笔折线）无法在自动化测试里目视确认，
 /// 而走真实截图流程又要屏幕录制权限 —— 链条太长，验证一次的成本很高。
-/// 这里用一张**合成图**（纯 CoreGraphics，不需要任何权限）把五类标注一次摆全：
+/// 这里用一张**合成图**（纯 CoreGraphics，不需要任何权限）把**七类**标注一次摆全
+/// （矩形 / 椭圆 / 箭头 / 画笔 / 文字 / 序号 / 马赛克 / 模糊）：
 ///
 /// ```bash
 /// Marquee.app/Contents/MacOS/Marquee -marqueeDemoEditor
@@ -76,6 +77,16 @@ enum EditorDemo {
                                          zIndex: 6,
                                          origin: CGPoint(x: 60, y: 140))
 
+        // 打码两块：马赛克压住网格线（块状一眼可见），模糊压住对角斜线（糊没糊一眼可见）
+        let mosaic = Annotation(kind: .mosaic,
+                                frame: CGRect(x: 380, y: 260, width: 200, height: 120),
+                                style: AnnotationStyle(stroke: .red, lineWidth: 1, effectStrength: 16),
+                                zIndex: 7)
+        let blur = Annotation(kind: .blur,
+                              frame: CGRect(x: 620, y: 260, width: 200, height: 120),
+                              style: AnnotationStyle(stroke: .red, lineWidth: 1, effectStrength: 16),
+                              zIndex: 8)
+
         return [
             Annotation(kind: .rectangle,
                        frame: CGRect(x: 380, y: 60, width: 200, height: 120),
@@ -106,6 +117,8 @@ enum EditorDemo {
                               CGPoint(x: 700, y: 500)]),
             text,
             counter,
+            mosaic,
+            blur,
         ]
     }
 }
