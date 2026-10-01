@@ -79,6 +79,24 @@ public struct SelectionSession: Equatable, Sendable {
 
     public var isCancelled: Bool { phase == .cancelled }
 
+    /// 放大镜该不该显示：**只在落点之前**（正在瞄准）。
+    ///
+    /// 选区一旦确定，放大镜就没有用处了 —— 它是用来"对准"的，不是用来"看"的；
+    /// 留在屏幕上只会挡住刚框定的内容。系统截图工具与微信截图都是这个行为
+    /// （PRD F4 的原话也是「**选区时**显示」）。
+    ///
+    /// 取色因此也发生在落点之前：悬停时按住 `⌥` 读色值、点击复制。
+    /// 那时 `⌥` 本来就没有别的用途 —— ticket 04 的「`⌥`＝无阴影」是**落点之后**才生效的，
+    /// 当初把它当成冲突、把取色挪到落点后，是判断错了。
+    public var showsMagnifier: Bool {
+        switch phase {
+        case .awaitingDrag, .dragging:
+            true
+        case .settled, .cancelled:
+            false
+        }
+    }
+
     /// 覆盖层按 `⏎` 时根据当前状态决定动作。
     ///
     /// 窗口不能一按就采集：和拖选区一样要先停住让人确认。

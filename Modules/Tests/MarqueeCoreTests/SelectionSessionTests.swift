@@ -234,3 +234,74 @@ struct SelectionSessionWindowSettleTests {
         #expect(session.isDragging)
     }
 }
+
+@Suite("选区会话：放大镜的可见相位")
+struct SelectionSessionMagnifierVisibilityTests {
+
+    @Test("悬停与拖拽中显示 —— 那时正在瞄准")
+    func visibleWhileAiming() {
+        var session = SelectionSession()
+        #expect(session.showsMagnifier, "刚出现蒙层、还没动手时就要看得见（否则不知道有这东西）")
+
+        session.beginDrag(at: CGPoint(x: 100, y: 100))
+        session.updateDrag(to: CGPoint(x: 300, y: 200))
+        #expect(session.showsMagnifier)
+    }
+
+    /// 这是本次修正的核心：**选区一确定，放大镜就收起**。
+    /// 它是用来"对准"的，不是用来"看"的；留在屏幕上只会挡住刚框定的内容。
+    /// 系统截图工具与微信截图都是这个行为，PRD F4 的原话也是「**选区时**显示」。
+    @Test("落点之后收起 —— 区域与窗口都一样")
+    func hiddenAfterSettling() {
+        var session = SelectionSession()
+        session.beginDrag(at: CGPoint(x: 100, y: 100))
+        session.updateDrag(to: CGPoint(x: 300, y: 200))
+        let settled = session.endDrag(at: CGPoint(x: 300, y: 200))
+        #expect(settled)
+        #expect(session.showsMagnifier == false, "区域落点后不该再显示放大镜")
+
+        var locked = SelectionSession()
+        locked.settleWindow(WindowInfo(windowID: 7,
+                                       frame: CGRect(x: 10, y: 20, width: 400, height: 300),
+                                       layer: 0,
+                                       ownerPID: 100,
+                                       ownerName: "Safari",
+                                       title: "Start",
+                                       alpha: 1),
+                            cocoaRect: CGRect(x: 10, y: 500, width: 400, height: 300))
+        #expect(locked.showsMagnifier == false, "锁定窗口后同理")
+
+        var whole = SelectionSession()
+        whole.settle(rect: CGRect(x: 0, y: 0, width: 100, height: 100))
+        #expect(whole.showsMagnifier == false)
+    }
+
+    @Test("取消之后不显示（覆盖层正在拆掉）")
+    func hiddenAfterCancel() {
+        var session = SelectionSession()
+        session.cancel()
+        #expect(session.showsMagnifier == false)
+    }
+
+    @Test("方向键微调之后仍然不显示 —— 微调是在看尺寸读数，不是重新瞄准")
+    func stillHiddenWhileNudging() {
+        var session = SelectionSession()
+        session.beginDrag(at: CGPoint(x: 100, y: 100))
+        session.updateDrag(to: CGPoint(x: 300, y: 200))
+        _ = session.endDrag(at: CGPoint(x: 300, y: 200))
+        _ = session.nudge(dx: 1, dy: 0)
+        #expect(session.showsMagnifier == false)
+    }
+
+    @Test("落点后重新拖（重新瞄准）→ 又显示")
+    func visibleAgainOnReaim() {
+        var session = SelectionSession()
+        session.beginDrag(at: CGPoint(x: 100, y: 100))
+        session.updateDrag(to: CGPoint(x: 300, y: 200))
+        _ = session.endDrag(at: CGPoint(x: 300, y: 200))
+        #expect(session.showsMagnifier == false)
+
+        session.beginDrag(at: CGPoint(x: 50, y: 50))
+        #expect(session.showsMagnifier)
+    }
+}

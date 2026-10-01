@@ -290,6 +290,11 @@ public final class SelectionOverlayController {
     /// `updateHover` —— 那里在"悬停窗口没变"时直接 `return`，于是鼠标在同一个窗口内
     /// 移动、以及**落点之后**移动时，放大镜会停在原地不动。
     private func updateMagnifier(at cocoaPoint: CGPoint) {
+        // 落点之后 / 长截图抓帧期间不显示放大镜，也就不必维护它（见 `showsMagnifier`）
+        guard session.showsMagnifier, !hasScrollSession else {
+            clearMagnifier()
+            return
+        }
         guard let lensProvider, primaryScreenHeight > 0 else {
             clearMagnifier()
             return
@@ -368,11 +373,24 @@ public final class SelectionOverlayController {
             // 一个源像素在盒子里占这么大：盒子边 = samplePoints × zoom（点），
             // 而一个源像素 = 1 / backingScale 点，再放大 zoom 倍
             sampleMarkerSize: lensSettings.zoom / backingScale,
-            colorLines: sampledColor.map {
-                [($0.hexString, ReadoutStyle.normal), ($0.rgbString, ReadoutStyle.hint)]
-            } ?? [],
+            colorLines: magnifierLines(),
             statusText: magnifierStatus
         )
+    }
+
+    /// 放大镜下方的读数行。
+    ///
+    /// 色值只在**按住 `⌥` 时**出现（PRD F4：「`⌥` 悬停即在放大镜旁显示 HEX/RGB，一键复制」）：
+    /// 不按 `⌥` 时放大镜只负责"对准像素"，多两行数字反而干扰；
+    /// 但仍留一句提示 —— 否则这个能力没人会发现。
+    private func magnifierLines() -> [(text: String, color: NSColor)] {
+        guard let color = sampledColor else { return [] }
+        guard isOptionDown else {
+            return [("按住 ⌥ 取色", ReadoutStyle.hint)]
+        }
+        return [(color.hexString, ReadoutStyle.normal),
+                (color.rgbString, ReadoutStyle.hint),
+                ("点击复制", ReadoutStyle.hint)]
     }
 
     /// 把放大镜的变化推给视图。
@@ -418,9 +436,12 @@ public final class SelectionOverlayController {
 
     /// `⌥` 点击复制取样像素的色值。
     ///
-    /// 只在**已落点且没锁定窗口**时生效。理由：那个相位里点击本来是空操作，
-    /// 插进来零冲突；而拖拽中按 `⌥` 必须仍然只是"拖出一个选区"、
-    /// 悬停中点击必须仍然只是"选中这扇窗"，`⌥` 也不能抢走"无阴影"的含义。
+    /// 生效相位：**落点之前**（悬停或还没开始拖的时候）。PRD F4 的原话是
+    /// 「`⌥` 悬停即在放大镜旁显示 HEX/RGB，一键复制」；那个相位里 `⌥` 本来没有别的用途 ——
+    /// ticket 04 的「`⌥`＝无阴影」是**落点之后**才生效的。
+    ///
+    /// **不带 `⌥` 的点击不受影响**：仍然是"选中这扇窗"，所以两个语义不打架。
+    /// 落点之后放大镜已收起，取色也随之中止（那时 `⌥` 交给 ticket 04）。
     @discardableResult
     private func copySampledColor() -> Bool {
         guard let color = sampledColor, let clipboard else { return false }
@@ -428,28 +449,32 @@ public final class SelectionOverlayController {
         clipboard.writeText(text)
 
         magnifierStatus = "已复制 \(text)"
-        refreshMagnifierStatus()
+        rebuildMagnifier()
 
         magnifierStatusTask?.cancel()
         magnifierStatusTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.5))
             guard let self, !Task.isCancelled else { return }
             self.magnifierStatus = nil
-            self.refreshMagnifierStatus()
+            self.rebuildMagnifier()
         }
         return true
     }
 
-    /// 复制反馈变了 → 必须**重建**放大镜。
+    /// 重建放大镜（用已有的位置与小图，只重算读数行）。
     ///
-    /// `statusText` 是烘进 `MagnifierPresentation` 里的，只调 `refresh()` 推的还是
-    /// 已经算好的那一份，反馈要等到下一次鼠标移动才出现。
-    private func refreshMagnifierStatus() {
+    /// 两处需要它，都不是"移动鼠标"：
+    /// - `⌥` 按下/松开 → 色值行出现/消失
+    /// - 复制反馈的显示与 1.5 秒后的清除
+    ///
+    /// 只调 `refresh()` 是不够的：`colorLines` 与 `statusText` 都是**烘进** presentation 的，
+    /// 推的还是算好的那一份，用户得等到下一次鼠标移动才看得到变化。
+    private func rebuildMagnifier() {
         guard let current = magnifier else { return }
         magnifier = MagnifierPresentation(lensImage: current.lensImage,
                                           boxRect: current.boxRect,
                                           sampleMarkerSize: current.sampleMarkerSize,
-                                          colorLines: current.colorLines,
+                                          colorLines: magnifierLines(),
                                           statusText: magnifierStatus)
         pushMagnifier()
     }
@@ -652,8 +677,8 @@ public final class SelectionOverlayController {
                 hoverRect: nil,
                 hoverLabel: "",
                 hoverCornerRadius: 10,
-                // 落点后才提这一句：那是 `⌥` 点击唯一生效的相位
-                actionHintText: "⌘S 保存到磁盘  ·  ⌥ 点击复制色值  ·  ⏎ 确认  ·  Esc 取消"
+                // 落点后放大镜已收起，取色随之结束（那时 `⌥` 归 ticket 04 的"无阴影"）
+                actionHintText: "⌘S 保存到磁盘  ·  ⏎ 确认  ·  Esc 取消"
             )
         } else if let hovered = hoveredWindow, session.phase == .awaitingDrag {
             let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: hovered.frame,
@@ -679,11 +704,12 @@ public final class SelectionOverlayController {
             presentation = .empty
         }
 
-        // 放大镜压在一切之上。
+        // 放大镜只活在**落点之前**（`SelectionSession.showsMagnifier`）。
         //
-        // 长截图期间**不显示**：那一屏像素是开始滚动之前取的，用户滚起来之后
-        // 放大镜里的内容已经和屏幕无关了，摆在那里只会误导（取色在滚动场景也没意义）。
-        presentation.magnifier = hasScrollSession ? nil : magnifier
+        // 它是用来"对准"的，不是用来"看"的：选区一确定就没有用处，留在屏幕上只会挡住
+        // 刚框定的内容。系统截图工具与微信截图都是这个行为（PRD F4 原话也是「选区时显示」）。
+        // 长截图抓帧期间同理不显示 —— 那屏像素是开始滚动之前取的，滚起来后已与屏幕无关。
+        presentation.magnifier = (session.showsMagnifier && !hasScrollSession) ? magnifier : nil
 
         for overlay in overlays {
             overlay.view.presentation = presentation
@@ -831,13 +857,15 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             return
         }
 
+        // 落点之后点击仍是空操作：放大镜已收起，取色随之结束，
+        // `⌥` 在这里恢复 ticket 04 的"无阴影"语义（在提交时才被读）。
         if session.isSettled {
-            // 落点之后点击本来是**空操作**，所以 `⌥` 点击可以在这里安全地做取色复制。
-            // 为什么不在别的相位也支持：拖拽中 `⌥` 必须仍然只是"拖出一个选区"，
-            // 悬停中点击必须仍然只是"选中这扇窗"，而锁定窗口时 `⌥` 是"无阴影"。
-            if optionDown, session.settledWindow == nil {
-                _ = copySampledColor()
-            }
+            return
+        }
+
+        // 落点之前按住 `⌥` 点击 = 复制取样色值（PRD F4）。
+        // 不带 `⌥` 的点击不受影响，仍然是"选中这扇窗" —— 两个语义不打架。
+        if optionDown, copySampledColor() {
             return
         }
 
@@ -871,7 +899,9 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     func overlayView(_ view: SelectionOverlayView, optionChanged isDown: Bool) {
         guard isOptionDown != isDown else { return }
         isOptionDown = isDown
-        refresh()
+        // `⌥` 是"显示色值 / 点击复制"的修饰键，按下与松开都要**当场**看到变化 ——
+        // 不能等下一次鼠标移动（读数行是烘进 presentation 的，得重建）
+        rebuildMagnifier()
     }
 
     func overlayViewDidRequestCommit(_ view: SelectionOverlayView) {
