@@ -108,3 +108,36 @@ public struct SystemMonotonicClock: MonotonicClock {
         Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
     }
 }
+
+
+/// 记录"最近截图"的接缝（ticket 16）。
+///
+/// ## 为什么协议在 Core、仓库在 `MarqueeHistory`
+///
+/// `CaptureOutput` 在 Core，它是那条"剪贴板 → 落盘 → 收尾"的编排者；
+/// 而真正的仓库要碰文件系统与 `CGImage` 编码，属于实现层。
+/// Core 不能反向依赖 `MarqueeHistory`（那会破坏"只有 Core 无依赖"这条模块规则），
+/// 所以接缝留在 Core、实现留在 History —— 与 `ClipboardWriting` / `ScreenCapturing` 同一套做法。
+public protocol CaptureHistoryWriting: Sendable {
+    /// 记一条。**绝不抛错、也绝不因为失败中断截图** ——
+    /// 历史丢了是小事，为此让用户拿不到图是大事。
+    ///
+    /// - Parameter originalPNG: 调用方**手上已经有**这张原图的 PNG 字节时传进来，
+    ///   省掉一次编码。"没有标注"是最常见的情况，那时拍平后的图**就是**原图、
+    ///   编码结果可以直接复用 —— 重新编码一张 2560×1600 要几十毫秒，
+    ///   而这条路上每一毫秒都在"按下快捷键 → 能粘贴"的预算里。
+    /// - Returns: 新条目的 id（记不下时为 `nil`）。
+    @discardableResult
+    func record(original: CGImage,
+                originalPNG: Data?,
+                annotations: [Annotation],
+                at date: Date) -> UUID?
+}
+
+extension CaptureHistoryWriting {
+    /// 手上没有现成 PNG 字节时用这个（它会自己编码一次）。
+    @discardableResult
+    public func record(original: CGImage, annotations: [Annotation], at date: Date) -> UUID? {
+        record(original: original, originalPNG: nil, annotations: annotations, at: date)
+    }
+}

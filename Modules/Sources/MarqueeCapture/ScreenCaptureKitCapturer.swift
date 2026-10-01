@@ -13,7 +13,25 @@ import ScreenCaptureKit
 /// 最低系统是 15.0，用不上也不能用。
 public struct ScreenCaptureKitCapturer: ScreenCapturing {
 
-    public init() {}
+    /// 截图时是否包含鼠标指针（ticket 15 的偏好）。
+    ///
+    /// ## 为什么是一个闭包，而不是一个 `Bool` 属性或每个方法一个参数
+    ///
+    /// - **属性不行**：采集器要在并发域之间传（`Sendable`），可变开关会带来
+    ///   "这一次截图到底带不带光标取决于谁最后写的"这种竞态 ——
+    ///   症状是"有时候带、有时候不带"，完全无法复现。
+    /// - **每个方法加参数也不行**：`ScreenCapturing` 有三个方法、加上长截图的抓帧循环
+    ///   与放大镜，一共十来处调用 —— 漏掉任何一处都**不会有任何提示**
+    ///   （而长截图漏掉的后果是每一帧都盖一个指针，拼出来好几只手）。
+    /// - **闭包**：每次抓帧**现读**，于是"改了偏好立刻生效"，也天然是 `Sendable`
+    ///   （`@Sendable () -> Bool`）。
+    ///
+    /// 长截图那条路会传 `{ false }`：它要连抓几十帧，带光标就会在长图上盖出几十个指针。
+    private let includesCursor: @Sendable () -> Bool
+
+    public init(includesCursor: @escaping @Sendable () -> Bool = { false }) {
+        self.includesCursor = includesCursor
+    }
 
     public func captureFullScreen(_ display: DisplayGeometry) async throws -> CapturedImage {
         let content = try await SCShareableContent.excludingDesktopWindows(false,
@@ -39,8 +57,8 @@ public struct ScreenCaptureKitCapturer: ScreenCapturing {
         // 分辨率取 best：宁可慢一点点也不要插值模糊（SPIKE 待人工项 M12）。
         configuration.captureResolution = .best
         configuration.scalesToFit = false
-        // 截图不带鼠标指针 —— 指针是"当前状态"，不属于"这一屏的内容"
-        configuration.showsCursor = false
+        // 指针是否入图由偏好决定（默认为**不**带 —— 它挡在内容上）
+        configuration.showsCursor = includesCursor()
 
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter,
                                                                configuration: configuration)
@@ -73,7 +91,7 @@ public struct ScreenCaptureKitCapturer: ScreenCapturing {
         configuration.height = max(1, Int(localPixels.height))
         configuration.captureResolution = .best
         configuration.scalesToFit = false
-        configuration.showsCursor = false
+        configuration.showsCursor = includesCursor()
 
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter,
                                                                configuration: configuration)
@@ -95,7 +113,7 @@ public struct ScreenCaptureKitCapturer: ScreenCapturing {
         let configuration = SCStreamConfiguration()
         configuration.captureResolution = .best
         configuration.scalesToFit = false
-        configuration.showsCursor = false
+        configuration.showsCursor = includesCursor()
         configuration.ignoreShadowsSingleWindow = !includeShadow
         configuration.includeChildWindows = true
 

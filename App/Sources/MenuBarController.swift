@@ -3,14 +3,13 @@ import MarqueeCore
 
 /// 菜单栏入口。
 ///
-/// 约束（PRD 3.1「功能简洁」）：下拉菜单 **≤ 6 项**，当前 6 项
-/// （截屏 / 滚动截屏 / 延时截屏 / 最近截图 / 快捷键… / 退出），已到上限 ——
-/// 再加东西要先合并，别默默变第 7 项。
+/// 约束（PRD 3.1「功能简洁」）：下拉菜单 **≤ 6 项**，当前 **5 项**
+/// （截屏 / 滚动截屏 / 最近截图 / 设置… / ─ / 退出）。
 ///
-/// 「设置…」这一项在 ticket 02 里直接变成了**可用的「快捷键…」**：
-/// 与其摆一个点不动的「设置…」占位、再另开一个只能改快捷键的窗口，
-/// 不如让唯一存在的设置入口直达唯一存在的设置项。
-/// ticket 15 做完整四页偏好设置时，把这一项改回「设置…」即可。
+/// ticket 15 的两处调整：
+/// - **删掉「延时截屏」这个占位项**。延时已经进了「设置 → 截屏」页 ——
+///   同一个功能摆两个入口，用户会以为它们不同步。删掉它顺带给「最近截图」腾出了位置。
+/// - 「快捷键…」改回「设置…」（ticket 02 时它只能改快捷键，所以叫那个名字）。
 ///
 /// ## 回调必须由 init 注入（**不要**改回可选 `var`）
 ///
@@ -25,8 +24,12 @@ final class MenuBarController {
     private let onCapture: () -> Void
     /// 点击「滚动截屏」
     private let onScrollCapture: () -> Void
-    /// 点击「快捷键…」
-    private let onShowShortcuts: () -> Void
+    /// 点击「设置…」
+    private let onShowPreferences: () -> Void
+    /// 造「最近截图」面板（ticket 16）。每次需要时现造一个控制器，
+    /// 内容由它自己在 `viewWillAppear` 里重新读磁盘 —— 于是"刚截的那张"一定在。
+    private let makeRecentPanel: () -> NSViewController
+    private var recentPopover: NSPopover?
 
     private let statusItem: NSStatusItem
     private let captureItem = NSMenuItem(title: "截屏",
@@ -35,10 +38,12 @@ final class MenuBarController {
 
     init(onCapture: @escaping () -> Void,
          onScrollCapture: @escaping () -> Void,
-         onShowShortcuts: @escaping () -> Void) {
+         onShowPreferences: @escaping () -> Void,
+         makeRecentPanel: @escaping () -> NSViewController) {
         self.onCapture = onCapture
         self.onScrollCapture = onScrollCapture
-        self.onShowShortcuts = onShowShortcuts
+        self.onShowPreferences = onShowPreferences
+        self.makeRecentPanel = makeRecentPanel
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let image = NSImage(systemSymbolName: "crop", accessibilityDescription: "Marquee")
         image?.isTemplate = true
@@ -72,16 +77,19 @@ final class MenuBarController {
         scroll.target = self
         menu.addItem(scroll)
 
-        // ticket 15：延时截屏（3 / 5 / 10 秒）
-        menu.addItem(Self.placeholder("延时截屏"))
-        // ticket 16：最近截图面板
-        menu.addItem(Self.placeholder("最近截图"))
+        // ticket 16：最近截图。**不是子菜单**，点了弹一层面板 ——
+        // 子菜单放不下缩略图，而"看不见缩略图"就等于回到"我记不清哪张是哪张"。
+        let recent = NSMenuItem(title: "最近截图",
+                                action: #selector(showRecent),
+                                keyEquivalent: "")
+        recent.target = self
+        menu.addItem(recent)
 
-        let shortcuts = NSMenuItem(title: "快捷键…",
-                                   action: #selector(showShortcuts),
-                                   keyEquivalent: "")
-        shortcuts.target = self
-        menu.addItem(shortcuts)
+        let settings = NSMenuItem(title: "设置…",
+                                  action: #selector(showPreferences),
+                                  keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
 
         menu.addItem(.separator())
 
@@ -118,7 +126,25 @@ final class MenuBarController {
         onScrollCapture()
     }
 
-    @objc private func showShortcuts() {
-        onShowShortcuts()
+    @objc private func showPreferences() {
+        onShowPreferences()
+    }
+
+    @objc private func showRecent() {
+        let popover: NSPopover
+        if let existing = recentPopover {
+            popover = existing
+        } else {
+            let created = NSPopover()
+            // `.transient`：点别处就收起来（它是一层面板，不是窗口）
+            created.behavior = .transient
+            created.contentViewController = makeRecentPanel()
+            recentPopover = created
+            popover = created
+        }
+        guard let button = statusItem.button else { return }
+        // 应用是 accessory（后台）：不激活的话弹层可能开在别的应用窗口后面
+        NSApp.activate()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 }

@@ -39,5 +39,9 @@ let package = Package(
         // 真实 Vision 配准的「装置自检」必须打在真实实现上，所以单独一个测试目标
         .testTarget(name: "MarqueeCaptureTests",
                     dependencies: ["MarqueeCapture", "MarqueeCore", "MarqueeTestSupport"]),
+        // ticket 16 的历史仓库要断言"删完之后文件系统里到底还剩什么"，
+        // 而那是 `MarqueeHistory` 的事 —— 放在 Core 的测试里够不着。
+        .testTarget(name: "MarqueeHistoryTests",
+                    dependencies: ["MarqueeHistory", "MarqueeCore"]),
     ]
 )

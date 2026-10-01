@@ -3,7 +3,7 @@
 > 工作目录：`/Users/tango/Developments/Marquee`（2026-09-30 由 `Snipo` 改名，git 历史连续）。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写任何代码之前先扫一遍 `docs/PITFALLS.md`**（84 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
+> ⚠️ **写任何代码之前先扫一遍 `docs/PITFALLS.md`**（88 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
 > 本文件只记**决策**与**索引**，实现细节在代码注释与 `docs/`。
 
 ## 已固化决策（勿随意推翻）
@@ -35,6 +35,9 @@
 | **标注坐标空间** | 覆盖层里存**选区局部点**（原点＝选区**视觉左上角**，y 向下 ⇒ 取 Cocoa 矩形的 **`maxY`**，写 `minY` 会整体镜像）。到像素只在栅格化那一刻换算一次，**线宽/字号/打码强度要跟位置一起缩放**，否则 Retina 上导出的线细成一半 |
 | 标注对象模型 | `Annotation.path: [CGPoint]`（箭头 2 点 / 画笔折线）+ `text`；**路径不塞进 `AnnotationKind` 关联值**；移动走 `translated(by:)`（框与路径一起走），缩放走 `applyFrame(_:)`。序号是**文字工具的一个预设**，**只增不重排** |
 | **覆盖层里的输入框** | **已实测可用**（探针：`panel.isKeyWindow=true`）⇒ 直接用真 `NSTextField`，中文输入法白拿。**编辑期间键盘必须整条让行**（只拦 `Esc`），否则字被快捷键吞掉。**「结算」≠「丢弃」**：点工具条/别处/`⏎` 都结算，只有 `Esc` 丢；改色/改尺寸/撤销重做**连结算都不做**（`Slot.preservesTextEditing` 有测试钉住）。输入框固定 14 点、不跟标注字号走（它是控件不是预览），位置**夹进屏幕** |
+| **偏好设置（ticket 15）** | 四页（通用 / 截屏 / 输出 / 快捷键），**改一下立刻生效、立刻落盘**（没有「应用」按钮）。延时是**覆盖层出现之前**的那几秒（HUD 点穿）。`includeCursor` 用**闭包**注入采集器（每次抓帧现读，避免竞态）；长截图显式传 `{ false }`。窗口阴影：偏好给默认值、`⌥` 临时取反。**刻意没做"是否自动复制到剪贴板"**（兑现不了）。菜单从 6 项降到 **5 项** |
+| **最近截图（ticket 16）** | 仓库在 `MarqueeHistory`：`index.json` + 原图 PNG + 标注 JSON（**原图与标注分开存**，否则重编辑退化成在成品上再画）。接缝 `CaptureHistoryWriting` **在 Core**（否则循环依赖）。复制＝**重新栅格化**（与导出同一条路径）。上限 20 条、面板 12 条；**只删自己写出来的文件**；淘汰只看数组顺序（不按时间） |
+| **打包分发（ticket 18）** | `scripts/package.sh` 七步出 DMG（**签名核验不过就停下**）；DMG 本身也要签 + 公证 + 装订。更新走**手动指引**（引入 Sparkle 会多一个要签名的可执行文件 + 一套签名密钥，不值） |
 | **钉图（ticket 14）** | 工具栏动作格 → 图钉在屏幕最上层、**钉在原位**（`anchor` = 原始选区）。**两个窗口**：本体 + 控制条 —— 因为穿透用 `ignoresMouseEvents`，开了之后本体**点不到自己**，控制条是唯一出口。滚轮缩放（**锚点左上角**）、四档不透明度循环、多张共存；`canBecomeKey = false`（不抢焦点）；`collectionBehavior` 含 `.canJoinAllSpaces`（跟着切 Space）。状态/几何在 Core 的 `PinState`/`PinGeometry` |
 | **选中标注的控制点（ticket 22）** | 8 个点，与选区控制点**同一套样子与光标**；**只有恰好选中一个**时才出。复用 `SelectionGeometry` 但**必须先过 `SelectionGeometry.YDown.flip`** —— 那套是按 Cocoa 约定写的（`.top` = `maxY`），而标注是 y 向下；不翻的表现是"拖上边动下边"（不崩不报错，只在拖到极限时显得怪）。会话 `beginResize/updateResize/endResize/cancelResize`，基准是**按下那一刻那一版标注**；`⇧` 锁比例；最小 8 点停住；拖回原处与 `Esc` 都不进撤销栈。**`cancelStroke()` 是所有手势收尾的唯一一处** |
 | 打码 / 裁切 | 打码**走 CoreImage**（比手写快 6 倍），`CIContext` 是共享常量。裁切只改 `cropRect`，**裁切外的标注保留不动**（撤销天然正确）；拖框期间不进撤销栈 |
@@ -114,15 +117,16 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **84 条实现陷阱**（写代码前必扫） |
-| **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–O 分组 + SPIKE M1–M20 对应 + 排障速查）。验收与汇报都从这份起 |
+| **`docs/PITFALLS.md`** | **88 条实现陷阱**（写代码前必扫） |
+| **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–R 分组 + SPIKE M1–M20 对应 + 排障速查）。验收与汇报都从这份起 |
 | `docs/PRD.md` | 产品与方案设计 |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单 + 提前验证报告（37 项） |
 | `docs/DEV-NOTES.md` | 开发循环的已知摩擦（签名、沙箱、工程生成、宏插件被杀） |
+| **`docs/RELEASE.md`** | 打包 / 公证 / 更新的复现步骤（`scripts/package.sh` 七步） |
 | `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限完整复盘 |
 | `docs/RENDER-BENCH.md` | 渲染技术实测报告 |
 | `Modules/Sources/MarqueeTestSupport/` | **测试专用**：合成长页 + 位图读取 / MAE |
-| `.scratch/issues/2026-09-30-marquee-mvp/` | **23 条 ticket + INDEX**（本地 tracker，含第二批 19–23） |
+| `.scratch/issues/2026-09-30-marquee-mvp/` | **23 条 ticket + INDEX**；只剩 `17`（玻璃与本地化）未开工 |
 | `Tools/Spikes/`、`Tools/RenderBench/` | 独立验证工具，与产品代码分离 |
 
 ## 工作流约定

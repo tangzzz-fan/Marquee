@@ -18,7 +18,10 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         let menuBar = MenuBarController(
             onCapture: { [weak coordinator] in coordinator?.performCapture() },
             onScrollCapture: { [weak coordinator] in coordinator?.performScrollCapture() },
-            onShowShortcuts: { [weak coordinator] in coordinator?.showShortcutPreferences() }
+            onShowPreferences: { [weak coordinator] in coordinator?.showPreferences() },
+            makeRecentPanel: { [weak coordinator] in
+                coordinator?.makeRecentPanelController() ?? NSViewController()
+            }
         )
         coordinator.onShortcutChanged = { [weak menuBar] combo in menuBar?.updateShortcut(combo) }
 

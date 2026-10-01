@@ -12,9 +12,18 @@ public struct CaptureOutput {
     private let clipboard: ClipboardWriting
     private let clock: MonotonicClock
 
-    public init(clipboard: ClipboardWriting, clock: MonotonicClock = SystemMonotonicClock()) {
+    /// 最近截图（ticket 16）。`nil` = 不记历史（测试与 -marqueeDemoEditor 用得上）。
+    ///
+    /// ⚠️ 这是 `CaptureOutput` **唯一**会碰文件系统之外的副作用 ——
+    /// 记录失败绝不能影响截图本身，所以 `record` 的约定是"永不抛错"。
+    public let history: (any CaptureHistoryWriting)?
+
+    public init(clipboard: ClipboardWriting,
+                clock: MonotonicClock = SystemMonotonicClock(),
+                history: (any CaptureHistoryWriting)? = nil) {
         self.clipboard = clipboard
         self.clock = clock
+        self.history = history
     }
 
     /// 开始计时。放在流程最前面，这样"按下快捷键 → 剪贴板可用"是端到端耗时。
@@ -52,6 +61,20 @@ public struct CaptureOutput {
         }
         // 剪贴板先写。落盘失败不能把已经能粘贴的图弄没。
         clipboard.writePNG(png)
+
+        // 历史（ticket 16）。放在剪贴板**之后**：用户"能粘贴"的那一刻不该等它。
+        //
+        // 没有标注时拍平后的图**就是**原图，直接把刚编码好的 `png` 复用掉 ——
+        // 重新编码一张 2560×1600 要几十毫秒，而这条路上的每一毫秒都在预算里。
+        if let history {
+            let scaled = inline.map {
+                $0.scaled(toPixelSize: CGSize(width: image.width, height: image.height))
+            } ?? []
+            history.record(original: image,
+                           originalPNG: scaled.isEmpty ? png : nil,
+                           annotations: scaled,
+                           at: Date())
+        }
 
         var savedFilePath: String?
         var saveFailureMessage: String?

@@ -16,17 +16,21 @@ public final class FullScreenCaptureFlow {
     private let permission: ScreenRecordingPermissionProbing
     private let capturer: ScreenCapturing
     private let clipboard: ClipboardWriting
+    /// 最近截图（ticket 16）。`nil` = 不记（测试与自检路径）。
+    private let history: (any CaptureHistoryWriting)?
     private let displays: DisplayLocating
     private let clock: MonotonicClock
 
     public init(permission: ScreenRecordingPermissionProbing,
                 capturer: ScreenCapturing,
                 clipboard: ClipboardWriting,
+                history: (any CaptureHistoryWriting)? = nil,
                 displays: DisplayLocating,
                 clock: MonotonicClock = SystemMonotonicClock()) {
         self.permission = permission
         self.capturer = capturer
         self.clipboard = clipboard
+        self.history = history
         self.displays = displays
         self.clock = clock
     }
@@ -38,7 +42,7 @@ public final class FullScreenCaptureFlow {
     ///   一旦有哪条路径开始支持就地标注，不必再改签名。
     public func capture(save: CaptureSaveRequest? = nil,
                         inline: InlineAnnotations? = nil) async -> CaptureOutcome {
-        let output = CaptureOutput(clipboard: clipboard, clock: clock)
+        let output = CaptureOutput(clipboard: clipboard, clock: clock, history: history)
         let startedAt = output.begin()
 
         // ── 1. 权限门 ────────────────────────────────────────────────

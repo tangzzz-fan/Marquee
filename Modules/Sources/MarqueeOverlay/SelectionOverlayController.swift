@@ -193,6 +193,12 @@ public final class SelectionOverlayController {
     private var magnifierStatus: String?
     /// 放大镜尺寸。ticket 15 会把它接到偏好设置上。
     public var lensSettings: MagnifierLayout.Settings = .default
+
+    /// 窗口截图带不带阴影的**默认值**（来自「设置 → 截屏」，ticket 15）。
+    ///
+    /// 覆盖层里按 `⌥` 是"临时反过来"（PRD F4），所以两者是**相乘**的关系：
+    /// `⌥` 按下时取反，松开时回到这个默认值。
+    public var windowShadowDefault = true
     /// 复制色值用的格式。ticket 15 会把它接到偏好设置上。
     public var copyFormat: PixelColor.Format = .hex
     private var magnifierStatusTask: Task<Void, Never>?
@@ -1791,7 +1797,11 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
                 commitRegion(saveToDisk: saveToDisk, after: after)
                 return
             }
-            let style = WindowCaptureStyle.isolatedWindow(includeShadow: !isOptionDown)
+            // `⌥` = 临时反转偏好里的那个选择（PRD F4）。
+            // 写成 `!isOptionDown` 就把它变成了"永远带阴影" —— 而偏好里那一项会失效。
+            let style = WindowCaptureStyle.isolatedWindow(includeShadow: isOptionDown
+                ? !windowShadowDefault
+                : windowShadowDefault)
             commitWindow(window, style: style, saveToDisk: saveToDisk, after: after)
         case .settleHoveredWindow:
             guard let window = hoveredWindow else { return }

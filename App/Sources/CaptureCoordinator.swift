@@ -3,9 +3,11 @@ import CoreGraphics
 import MarqueeCapture
 import MarqueeCore
 import MarqueeEditor
+import MarqueeHistory
 import MarqueeOverlay
 import MarqueeSettings
 import Security
+import ServiceManagement
 import os
 
 /// 把「全局快捷键 → 权限门 → 采集 → 剪贴板」这条链路装配起来，并负责用户反馈。
@@ -21,7 +23,13 @@ final class CaptureCoordinator {
     private let logger = Logger(subsystem: "dev.tango.Marquee", category: "capture")
 
     private let permission = SystemScreenRecordingPermission()
-    private let capturer = ScreenCaptureKitCapturer()
+    /// 用户偏好（ticket 15）。采集器与倒计时都**每次现读**它 ——
+    /// 缓存一份的话"改了偏好没反应"只能靠重启，而界面上看不出任何提示。
+    private let preferences = UserDefaultsPreferencesStore()
+    /// 采集器。光标是否入图由偏好决定，且**每次抓帧现读**（见 `ScreenCaptureKitCapturer`）。
+    private lazy var capturer = ScreenCaptureKitCapturer(
+        includesCursor: { [preferences] in preferences.capture().includeCursor }
+    )
     private let clipboard = SystemClipboard()
     private let displays = SystemDisplayLocator()
     private let outputStore = UserDefaultsOutputStore()
@@ -32,14 +40,17 @@ final class CaptureCoordinator {
 
     private lazy var selectionFlow = RegionCaptureFlow(permission: permission,
                                                        capturer: capturer,
-                                                       clipboard: clipboard)
+                                                       clipboard: clipboard,
+                                                       history: history)
     private lazy var fullScreenFlow = FullScreenCaptureFlow(permission: permission,
                                                             capturer: capturer,
                                                             clipboard: clipboard,
+                                                            history: history,
                                                             displays: displays)
     private lazy var windowFlow = WindowCaptureFlow(permission: permission,
                                                     capturer: capturer,
-                                                    clipboard: clipboard)
+                                                    clipboard: clipboard,
+                                                    history: history)
     private let windowLister = ScreenCaptureKitWindowLister()
 
     /// `lazy` 而不是 `let`：快捷键的 handler 要回调 `self`，
@@ -58,7 +69,11 @@ final class CaptureCoordinator {
     /// 钉图（ticket 14）。持有所有钉住的窗口 —— 多张钉图互不干扰。
     private let pins = PinPresenter()
     private var overlay: SelectionOverlayController?
-    private var preferencesWindow: ShortcutPreferencesWindowController?
+    private var preferencesWindow: PreferencesWindowController?
+    /// 延时截图的倒计时（ticket 15）。
+    private let countdown = CountdownHUD()
+    /// 最近截图（ticket 16）。采集链路往里记，菜单面板从里读。
+    private let history = CaptureHistoryStore()
     /// 防止预检期间连按快捷键叠出两层覆盖层
     private var isPreflighting = false
     /// 本次运行内是否刚授予过权限 —— 用于把"请重启应用"的提示说准
@@ -143,7 +158,23 @@ final class CaptureCoordinator {
         }
     }
 
+    /// 呈现覆盖层。**延时截图的那几秒在这里**（ticket 15）。
+    ///
+    /// 延时放在"覆盖层出现**之前**"是刻意的：覆盖层一旦出现就会吃掉所有鼠标事件，
+    /// 那时候再等几秒，用户反而什么都摆不了（要截的往往是"需要先摆出来的东西"）。
     func presentOverlay(mode: SelectionOverlayController.Mode = .singleShot) {
+        let delay = preferences.capture().delaySeconds
+        guard delay > 0 else {
+            presentOverlayNow(mode: mode)
+            return
+        }
+        logger.info("延时截图：\(delay, privacy: .public) 秒后出现选择框")
+        countdown.run(seconds: delay) { [weak self] in
+            self?.presentOverlayNow(mode: mode)
+        }
+    }
+
+    private func presentOverlayNow(mode: SelectionOverlayController.Mode) {
         guard overlay?.isPresented != true else { return }
 
         let controller = SelectionOverlayController(
@@ -167,10 +198,11 @@ final class CaptureCoordinator {
             // 直接捕获依赖而不是 `[weak self]`：会话工厂在覆盖层呈现时才被调用，
             // 而覆盖层本身由 self 持有 —— 写 `weak` 只会多出一个永远走不到的 nil 分支。
             makeScrollSession: { [permission = self.permission,
-                                  capturer = self.capturer,
                                   clipboard = self.clipboard] in
                 ScrollCaptureSession(permission: permission,
-                                     capturer: capturer,
+                                     // ⚠️ 长截图**显式不带光标**：它要连抓几十帧，
+                                     // 带的话每一帧都盖一个指针，拼出来的长图上有好几只手。
+                                     capturer: ScreenCaptureKitCapturer(includesCursor: { false }),
                                      registrar: VisionScrollRegistrar(),
                                      clipboard: clipboard)
             },
@@ -192,6 +224,9 @@ final class CaptureCoordinator {
         // 尺寸每次呈现都重读：这三个数只能靠眼睛调，改完不该还要重启应用。
         // 界面在 ticket 15；现在用 `defaults write dev.tango.Marquee lens.zoom …` 调。
         controller.lensSettings = magnifierSettings.load()
+        // 窗口截图带不带阴影的**默认值**来自偏好（ticket 15）；
+        // 覆盖层里按 `⌥` 仍然是"临时反过来"（PRD F4），两者不冲突。
+        controller.windowShadowDefault = preferences.capture().includeShadow
         overlay = controller
         controller.present(mode: mode)
         logger.info("覆盖层已呈现（mode=\(String(describing: mode), privacy: .public)）")
@@ -211,17 +246,41 @@ final class CaptureCoordinator {
         editor.present(image: image, seed: seed) { [weak self] png in
             self?.clipboard.writePNG(png)
             self?.logger.info("标注已复制到剪贴板：\(png.count) 字节")
+        } onSave: { [weak self] rendered in
+            self?.saveFromEditor(rendered)
         }
     }
 
-    func showShortcutPreferences() {
-        let controller: ShortcutPreferencesWindowController
+    /// 编辑器里按「保存到磁盘」（或 `⌘S`）：按输出设置落盘。
+    ///
+    /// 与覆盖层那条保存路径**共用同一个归档器**（`ScreenshotArchiver`）与同一个序号源 ——
+    /// 各走一套的话，序号会撞名，而"同名文件太多"的兜底会把名字往后推、
+    /// 表现成"保存出来的名字中间跳号"。
+    private func saveFromEditor(_ image: CGImage) {
+        let request = makeSaveRequest(for: nil)
+        switch ScreenshotArchiver.write(image, request: request) {
+        case .success(let result):
+            outputStore.advanceSequence(to: result.sequenceUsed)
+            logger.info("编辑器保存到磁盘：\(result.url.path, privacy: .public)")
+        case .failure(let failure):
+            logger.error("编辑器保存失败：\(failure.message, privacy: .public)")
+            PermissionPrompt.presentFailure(CaptureFailure(message: failure.message))
+        }
+    }
+
+    func showPreferences() {
+        let controller: PreferencesWindowController
         if let existing = preferencesWindow {
             controller = existing
         } else {
-            let created = ShortcutPreferencesWindowController(service: shortcut)
+            let created = PreferencesWindowController(shortcut: shortcut,
+                                                      preferences: preferences,
+                                                      output: outputStore)
             created.onShortcutChanged = { [weak self] combo in
                 self?.onShortcutChanged?(combo)
+            }
+            created.onPreferencesChanged = { [weak self] in
+                self?.applyLaunchAtLoginIfNeeded()
             }
             preferencesWindow = created
             controller = created
@@ -336,6 +395,9 @@ final class CaptureCoordinator {
             \(metrics.pngByteCount) 字节，耗时 \(metrics.elapsedMilliseconds) ms
             """
             logger.info("\(summary, privacy: .public)")
+            if preferences.general().playSound {
+                CaptureFeedback.playSuccess()
+            }
             if let image = metrics.image {
                 // 钉图**先做**：它是"多留一份"，与后面开不开窗口无关。
                 // 两者可以同时发生（以后若加"钉住并进编辑器"，这里不用改）。
@@ -358,6 +420,82 @@ final class CaptureCoordinator {
         case .failed(let failure):
             logger.error("截图失败：\(failure.message, privacy: .public)")
             PermissionPrompt.presentFailure(failure)
+        }
+    }
+
+    /// 把"开机自启"这个偏好落到系统里（`SMAppService`）。
+    ///
+    /// **失败了必须说清楚并把开关拨回去**：界面上显示"已开启"而系统登录项里没有，
+    /// 用户只能靠重启去发现 —— 那是最难查的一类不一致。
+    /// 开发构建（未签名 / 未公证）注册失败是**正常现象**，提示里要把这一点说出来，
+    /// 否则会被当成"这个功能坏了"。
+    // MARK: - 最近截图（ticket 16）
+
+    /// 造那层面板。菜单每次打开都会重建内容（`viewWillAppear` 里重读磁盘），
+    /// 所以"刚截的那张"一定在列表最上面。
+    func makeRecentPanelController() -> NSViewController {
+        RecentCapturesPanelController(store: history, actions: .init(
+            onCopy: { [weak self] entry in self?.copyHistory(entry) },
+            onEdit: { [weak self] entry in self?.editHistory(entry) },
+            onDelete: { [weak self] entry in
+                self?.history.delete(entry.id)
+                self?.logger.info("历史：删掉一条")
+            }
+        ))
+    }
+
+    /// 把历史里的图放回剪贴板。
+    ///
+    /// **重新栅格化一遍**（原图 + 标注），而不是存一份拍平后的副本：
+    /// ① 磁盘上少一份冗余；② 走的是导出那条完全相同的代码路径，
+    /// 于是"从历史复制出来的"与"当时按 ⏎ 得到的"在结构上就是同一张图。
+    private func copyHistory(_ entry: CaptureHistoryEntry) {
+        guard let snapshot = history.snapshot(for: entry) else {
+            logger.error("历史：取不回这一条（文件可能被外部删了）")
+            PermissionPrompt.presentFailure(CaptureFailure(message: "这张图的文件已经不在了（可能被清理过）"))
+            return
+        }
+        let document = AnnotationDocument(pixelSize: snapshot.originalSize,
+                                          annotations: snapshot.annotations)
+        guard let rendered = AnnotationRasterizer.image(document: document, source: snapshot.original),
+              let png = ImageEncoding.pngData(from: rendered) else {
+            logger.error("历史：重新合成失败")
+            PermissionPrompt.presentFailure(CaptureFailure(message: "这张图没能重新合成出来"))
+            return
+        }
+        clipboard.writePNG(png)
+        logger.info("历史：已复制到剪贴板（\(png.count) 字节）")
+    }
+
+    /// 从历史重新进编辑器。**喂的是原图 + 标注**，所以原有的标注仍可选中、可撤。
+    private func editHistory(_ entry: CaptureHistoryEntry) {
+        guard let snapshot = history.snapshot(for: entry) else {
+            PermissionPrompt.presentFailure(CaptureFailure(message: "这张图的文件已经不在了（可能被清理过）"))
+            return
+        }
+        presentEditor(image: snapshot.original, seed: snapshot.annotations)
+    }
+
+    private func applyLaunchAtLoginIfNeeded() {
+        let wanted = preferences.general().launchAtLogin
+        let service = SMAppService.mainApp
+        do {
+            if wanted {
+                guard service.status != .enabled else {
+                    preferencesWindow?.reportLaunchAtLogin(failure: nil)
+                    return
+                }
+                try service.register()
+            } else if service.status == .enabled {
+                try service.unregister()
+            }
+            logger.info("登录项已同步（想要的：\(wanted, privacy: .public)）")
+            preferencesWindow?.reportLaunchAtLogin(failure: nil)
+        } catch {
+            logger.error("登录项设置失败：\(error.localizedDescription, privacy: .public)")
+            preferencesWindow?.reportLaunchAtLogin(
+                failure: "系统没有接受这个设置（\(error.localizedDescription)）。开发构建通常是签名问题，正式安装包不受影响。"
+            )
         }
     }
 

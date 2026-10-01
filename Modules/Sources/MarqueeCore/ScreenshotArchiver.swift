@@ -139,6 +139,18 @@ public struct UserDefaultsOutputStore: @unchecked Sendable {
         return OutputSettings(directory: directory, format: format, quality: quality, nameTemplate: template)
     }
 
+    /// 写入输出设置（界面在 ticket 15）。
+    ///
+    /// 与 `settings()` 成对放在这里：key 是这一类型自己的私事，
+    /// 让界面去 `defaults.set(_:forKey:)` 就等于把 key 暴露出去 ——
+    /// 那时候"改了没生效"要同时看两处才查得出来。
+    public func save(_ settings: OutputSettings) {
+        defaults.set(settings.directory.path, forKey: Self.directoryKey)
+        defaults.set(settings.format.rawValue, forKey: Self.formatKey)
+        defaults.set(min(1, max(0, settings.quality)), forKey: Self.qualityKey)
+        defaults.set(settings.nameTemplate, forKey: Self.templateKey)
+    }
+
     /// 占下一个序号（从 1 起）并记下来。
     public func consumeSequence() -> Int {
         let next = max(1, defaults.integer(forKey: Self.sequenceKey) + 1)

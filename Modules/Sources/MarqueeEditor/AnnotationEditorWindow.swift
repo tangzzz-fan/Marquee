@@ -20,9 +20,11 @@ public final class AnnotationEditorPresenter {
     /// 把它放后面就没法用尾随闭包语法了（`present(image:seed:) { … }`）。
     public func present(image: CGImage,
                         seed: [Annotation] = [],
-                        onCopyPNG: @escaping @MainActor (Data) -> Void) {
+                        onCopyPNG: @escaping @MainActor (Data) -> Void,
+                        onSave: @escaping @MainActor (CGImage) -> Void) {
         let controller = AnnotationEditorWindowController(image: image,
                                                           onCopyPNG: onCopyPNG,
+                                                          onSave: onSave,
                                                           seed: seed,
                                                           recognizer: recognizer)
         controller.onClosed = { [weak self, weak controller] in
@@ -54,6 +56,7 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
 
     init(image: CGImage,
          onCopyPNG: @escaping @MainActor (Data) -> Void,
+         onSave: @escaping @MainActor (CGImage) -> Void,
          seed: [Annotation] = [],
          recognizer: TextRecognizing? = nil) {
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.defaultSize),
@@ -70,6 +73,7 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
 
         let root = AnnotationEditorView(image: image,
                                         onCopyPNG: onCopyPNG,
+                                        onSave: onSave,
                                         seed: seed,
                                         recognizer: recognizer) { [weak self] in
             self?.close()
@@ -128,6 +132,9 @@ enum SwiftUICanvasBackend: CanvasRendering {
 private struct AnnotationEditorView: View {
     let image: CGImage
     let onCopyPNG: (Data) -> Void
+    /// 保存到磁盘（ticket 23 剩下的一半）。传的是**栅格化后的图** ——
+    /// 落盘的目录 / 格式 / 命名由宿主按输出设置决定，编辑器不碰那些。
+    let onSave: (CGImage) -> Void
     let onClose: () -> Void
 
     /// 文字识别（ticket 13）。`nil` = 宿主没注入，工具栏上就不出现「识别文字」。
@@ -162,11 +169,13 @@ private struct AnnotationEditorView: View {
 
     init(image: CGImage,
          onCopyPNG: @escaping (Data) -> Void,
+         onSave: @escaping (CGImage) -> Void,
          seed: [Annotation] = [],
          recognizer: TextRecognizing? = nil,
          onClose: @escaping () -> Void) {
         self.image = image
         self.onCopyPNG = onCopyPNG
+        self.onSave = onSave
         self.onClose = onClose
         // 识别器只在**首次**建视图时被用一次：`State(initialValue:)` 之后重建视图不会重置它，
         // 否则识别到一半重建一次就会把结果丢掉。
@@ -264,6 +273,9 @@ private struct AnnotationEditorView: View {
 
             toolbarSeparator
 
+            iconButton("保存到磁盘并关闭（⌘S）", systemImage: "square.and.arrow.down") {
+                saveAndClose()
+            }
             iconButton("取消（丢弃刚画的标注，不改剪贴板）", systemImage: "xmark") {
                 onClose()
             }
@@ -452,6 +464,7 @@ private struct AnnotationEditorView: View {
             })
             .background {
                 EditorEventMonitor(onEscape: copyAndClose,
+                                  onSave: saveAndClose,
                                   onDelete: { session.deleteSelection() },
                                   onUndo: { session.undo() },
                                   onRedo: { session.redo() },
@@ -891,6 +904,25 @@ private struct AnnotationEditorView: View {
         onClose()
     }
 
+    /// 保存到磁盘并关闭。
+    ///
+    /// 与覆盖层工具栏上的「保存」是**同一个语义**：落盘 + 复制 + 收场。
+    /// 三条路径（覆盖层保存、这里、长截图的 `⌘S`）行为一致，
+    /// 用户不必记"哪个保存会顺手关掉窗口"。
+    ///
+    /// ⚠️ 栅格化失败时**什么都不做、也不关窗** —— 那样用户还能重试。
+    /// 关掉的话，他的标注跟着没了、图也没落盘，两头空。
+    private func saveAndClose() {
+        guard let rendered = AnnotationRasterizer.image(document: session.document, source: image) else {
+            return
+        }
+        if let png = ImageEncoding.pngData(from: rendered) {
+            onCopyPNG(png)
+        }
+        onSave(rendered)
+        onClose()
+    }
+
     private func swiftUI(_ color: AnnotationColor) -> Color {
         Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
     }
@@ -899,6 +931,7 @@ private struct AnnotationEditorView: View {
 /// 键盘与滚轮不走 SwiftUI 的焦点链：菜单栏应用的窗口经常拿不到第一响应者。
 private struct EditorEventMonitor: NSViewRepresentable {
     var onEscape: () -> Void
+    var onSave: () -> Void
     var onDelete: () -> Void
     var onUndo: () -> Void
     var onRedo: () -> Void
@@ -925,6 +958,7 @@ private struct EditorEventMonitor: NSViewRepresentable {
 
     private var actions: EditorEventMonitorView.Actions {
         EditorEventMonitorView.Actions(onEscape: onEscape,
+                                       onSave: onSave,
                                        onDelete: onDelete,
                                        onUndo: onUndo,
                                        onRedo: onRedo,
@@ -941,6 +975,7 @@ private struct EditorEventMonitor: NSViewRepresentable {
 private final class EditorEventMonitorView: NSView {
     struct Actions {
         var onEscape: () -> Void
+        var onSave: () -> Void
         var onDelete: () -> Void
         var onUndo: () -> Void
         var onRedo: () -> Void
@@ -953,7 +988,7 @@ private final class EditorEventMonitorView: NSView {
         var onCancelCrop: () -> Void
     }
 
-    var actions = Actions(onEscape: {}, onDelete: {}, onUndo: {}, onRedo: {},
+    var actions = Actions(onEscape: {}, onSave: {}, onDelete: {}, onUndo: {}, onRedo: {},
                           onPan: { _, _ in }, onZoom: { _, _ in },
                           isEditingText: false, onCancelTextEditing: {},
                           isCropping: false, onCommitCrop: {}, onCancelCrop: {})
@@ -1029,6 +1064,11 @@ private final class EditorEventMonitorView: NSView {
             return nil
         default:
             break
+        }
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers?.lowercased() == "s" {
+            actions.onSave()
+            return nil
         }
         if event.modifierFlags.contains(.command),
            event.charactersIgnoringModifiers?.lowercased() == "z" {

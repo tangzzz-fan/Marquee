@@ -21,15 +21,19 @@ public final class WindowCaptureFlow {
     private let permission: ScreenRecordingPermissionProbing
     private let capturer: ScreenCapturing
     private let clipboard: ClipboardWriting
+    /// 最近截图（ticket 16）。`nil` = 不记（测试与自检路径）。
+    private let history: (any CaptureHistoryWriting)?
     private let clock: MonotonicClock
 
     public init(permission: ScreenRecordingPermissionProbing,
                 capturer: ScreenCapturing,
                 clipboard: ClipboardWriting,
+                history: (any CaptureHistoryWriting)? = nil,
                 clock: MonotonicClock = SystemMonotonicClock()) {
         self.permission = permission
         self.capturer = capturer
         self.clipboard = clipboard
+        self.history = history
         self.clock = clock
     }
 
@@ -66,7 +70,7 @@ public final class WindowCaptureFlow {
                                  displays: [DisplayGeometry],
                                  save: CaptureSaveRequest?,
                                  inline: InlineAnnotations? = nil) async -> CaptureOutcome {
-        let output = CaptureOutput(clipboard: clipboard, clock: clock)
+        let output = CaptureOutput(clipboard: clipboard, clock: clock, history: history)
         let startedAt = output.begin()
 
         let grantedJustNow: Bool

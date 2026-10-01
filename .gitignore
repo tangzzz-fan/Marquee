@@ -19,3 +19,6 @@ Tools/RenderBench/bench2
 
 # macOS
 .DS_Store
+
+# 打包脚本的中间产物（scripts/package.sh）
+.build-package/
