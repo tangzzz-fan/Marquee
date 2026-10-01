@@ -1,136 +1,109 @@
 # Marquee · 项目长期记忆
 
-> 工作目录：`/Users/tango/Developments/Marquee`（2026-09-30 由 `Snipo` 改名，git 历史连续）。
+> 工作目录 `/Users/tango/Developments/Marquee`（2026-09-30 由 `Snipo` 改名，git 历史连续）；
+> 远端 `git@github.com:tangzzz-fan/Marquee.git`；开发机 **macOS 27**（⇒ 玻璃那条路实际生效）。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写任何代码之前先扫一遍 `docs/PITFALLS.md`**（88 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
-> 本文件只记**决策**与**索引**，实现细节在代码注释与 `docs/`。
+> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（92 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
+> 本文件只记**决策**与**索引**；理由与实现细节在 `docs/` 与 ticket 里。
 
 ## 已固化决策（勿随意推翻）
 
 | 项 | 值 |
 | --- | --- |
-| 产品名 / 最低系统 | **Marquee**（`dev.tango.Marquee`）；**macOS 15.0**，26/27 专属能力走 `if #available` + 降级 |
-| 采集 / 覆盖层 | **ScreenCaptureKit**（不用已弃用的 `CGWindowListCreateImage`）；覆盖层＝**AppKit 逐屏 `NSPanel`**，不铺整屏截图（只做变暗蒙层 + 镂空 + 描边） |
-| 画布渲染 | **SwiftUI Canvas**（实测最优）；CG 只用于导出/剪贴板/降采样，滤镜走 CoreImage；**Metal 首期不引入**，留 `CanvasRendering` 协议边界 |
-| 分发 | Developer ID 公证，**非 MAS**（沙盒会约束滚动截屏等系统级能力） |
-| 工程 | XcodeGen（`project.yml`）+ SPM 本地包 6 模块：Core / Capture / Overlay / Editor / Settings / History；宿主 target `App`。**Run 走 Release**（性能预算只在优化构建下有意义） |
-| 模块依赖方向 | 只有 `MarqueeCore` 无依赖，其余只依赖 Core。**Core 额外持有「接缝（协议/值类型）+ 编排逻辑」**，实现模块只提供 OS 实现 —— 编排要能脱机单测，而 SwiftPM 依赖单向 |
-| 签名 | **由 `project.yml` 负责**（`Apple Development` + `DEVELOPMENT_TEAM: UKXWZ3FS84`），**不是**构建脚本重签 |
+| 产品 / 最低系统 | **Marquee**（`dev.tango.Marquee`），**macOS 15.0**；26/27 专属能力走 `if #available` + 降级 |
+| 采集 / 覆盖层 | ScreenCaptureKit（不用弃用的 `CGWindowListCreateImage`）；覆盖层＝逐屏 `NSPanel`（变暗蒙层 + 镂空 + 描边），**不铺整屏截图** |
+| 画布渲染 | SwiftUI Canvas；CG 只做导出/剪贴板/降采样，滤镜走 CoreImage；**Metal 首期不引入**，留 `CanvasRendering` 协议边界 |
+| 分发 | Developer ID 公证，**非 MAS**（沙盒会约束滚动截屏） |
+| 工程 | XcodeGen（`project.yml`）+ SPM 6 模块 + 宿主 `App`；**Run 走 Release**（性能预算只在优化构建下有意义） |
+| 模块依赖 | 只有 `MarqueeCore` 无依赖，其余只依赖 Core。**Core 持「接缝 + 编排」**，实现模块只给 OS 实现（编排才能脱机单测） |
+| 签名 | **由 `project.yml` 负责**（Apple Development + `DEVELOPMENT_TEAM: UKXWZ3FS84`），不是构建脚本重签 |
 | 任务管理 | matt pocock `to-tickets`；本地 markdown tracker 在 `.scratch/issues/`（**刻意入库**） |
-| 快捷键 | **可配置**（`shortcut.fullScreenCapture`，**默认 `⌃Q`**；⌃⌘A 被微信独占）。入口＝菜单栏「快捷键…」 |
-| 截屏入口 | **选区覆盖层**：拖拽＝区域（松开停住，方向键微调，`⏎` 提交）；单击/`⏎` 高亮窗口＝先停住，再 `⏎` 截这扇窗（`⌥` 去阴影）；无目标时 `⏎`/双击＝整屏、`Esc`＝取消 |
-| **选区几何编辑（ticket 19）** | 落点后出 **8 个控制点**（四角 + 四边中点）。**按下分派顺序「控制点 → 框内 → 框外」不能换**（换了两者都像"生效了"，很难说清哪里不对）；基准矩形取**按下那一刻那一版**、不是上一帧（否则误差累积、`⇧` 锁比例越锁越歪）；最小 8 点**停住不翻转**；`⇧` 锁比例取"位移较大的那一轴"；吸附 6 点、**只取屏幕 + 与选区相邻的窗口**（全丢进去＝160 条线，屏幕上处处都在吸，比不吸还糟）、一个方向**只取最近的一条**、并**画贯穿全屏的提示线**；拖几何时**收起工具栏**（它压着右下角那个控制点） |
-| 滚动截屏入口 | 菜单栏「滚动截屏」（**菜单 6 项已到 PRD 上限，再加要先合并**）。拖区域/点窗口＝**立刻开始抓帧**；`空格`＝开始/停止**自动滚动**；`⏎` 结束、`⌘S` 结束并落盘、`Esc` 取消（自动滚动中 `Esc` 只停滚动）。**已知限制：面板失去 key 焦点后键盘会失效** |
-| **自动滚动要「辅助功能」授权** | **本项目唯一一处**。手动滚动一个事件都不用发；自动滚动必须代发滚轮事件，而 macOS 把"向其它进程注入事件"划进辅助功能。因此**按需**申请（按空格才问），拒绝即退回手动，其余能力一行不受影响 |
-| 滚动到底的判定 | **"没动"只有在"真的滚过"之后才算"到底"**；`atBottom` 只是**提示**，不停抓帧。自动滚动的"到底"另看长图高度有没有增长 |
-| 放大镜取色 | **只活在落点之前**（落点后与长截图抓帧时都收起）。`⌥`＝悬停显示 HEX/RGB、悬停点击复制色值；落点后 `⌥` 归「无阴影」。像素＝覆盖层出现后**取一屏冻结** |
-| 放大镜尺寸 | **采样 40 点 × 3 倍 = 120 点盒子**；`zoom` 是**用户感知倍数**且取整。**"能对准"靠十字线 + 中心像素框，不靠看清像素**。现场调参 `defaults write dev.tango.Marquee lens.zoom -float 4`（下次唤起覆盖层生效） |
-| **确认之后（ticket 21 起改掉）** | 原图立刻进剪贴板（`⌘S` 才落盘），**就地出图、不开任何窗口**。标注在覆盖层里画完后由 `CaptureOutput.finish(inline:)` 栅格化，**栅格化失败必须让整次截图失败**（标注里可能有打码，静默回退＝把没遮住的图发出去）。**编辑器只从长截图进入**（长图放不进一屏，标注不了它）+ `-marqueeDemoEditor` 自检入口 |
-| **覆盖层工具栏＝标注工具条** | 24 格 / **799×40 点**：`[选择][矩形][椭圆][箭头][画笔][文字][马赛克][模糊] │ [色板×6] │ [尺寸×3] │ [识别文字] │ [撤销][重做] │ [保存][✗][✓]`。**OCR 是动作不是工具**（不占工具位），结果**直接写剪贴板**、读数框第三行报「N 行 · M 字 · ms」，识别期间那一格换 hourglass。**「选择」是显式工具**（`.select`，`draws == false`）：不选工具时拖动＝改**选区几何**、选了它拖动＝挪**标注**，靠工具消歧。**没有「编辑」按钮**——用户明确否掉了"点按钮跳进另一个窗口"的方案。`⏎`＝完成、`Esc` 分三级（草稿 → 工具 → 整次取消）。**硬约束：整条必须放得进 1024 点的屏**（再宽就收参数进弹层） |
-| **覆盖层里的对象编辑** | 点选走 `Annotation.contains`（箭头/画笔按**到路径的距离**判）；移动基准是**按下那一刻的完整快照**（不是每帧累加）；点一下不动**不进撤销栈**；`Delete` 删除、`⌘Z`/`⇧⌘Z` 撤销重做；**选了任何工具（含「选择」）都不显示选区控制点**；**`Esc` 退出任何工具**（少了这档，选了「选择」再按 Esc 会直接取消整次截图） |
-| **三个尺寸档按工具换意义** | 画图形＝线宽（**圆点**）/ 画打码＝打码强度（**方块**）。与编辑器同一套做法，**不新增控件**。打码强度用**另一组值**`overlayRedactionStrengths = [4,8,16]` **点** —— 编辑器那三档单位是**原图像素**，直接复用会在 2x 屏差一倍 |
-| **覆盖层打码的底图** | 覆盖层不铺整屏截图，底图复用放大镜的**冻结整屏帧**（`OverlayRedactionSource`），且**必须复用 `SelectionLayout` + `ImageCompositing` 与导出同一套布局**（自己裁一块在跨屏时会与导出错位）。`AnnotationDrawing.sourceScale` ＝底图每点多少像素，**它同时作用于裁图矩形与滤镜强度**；漏掉后者会让 2x 屏的格子小一半。缺任一块屏的帧→**整体放弃**并提示，不给残缺底图 |
-| **标注只在 Core 有一份** | 色板/线宽＝`AnnotationPalette`（编辑器也用）；绘制＝`AnnotationDrawing`（**覆盖层与导出共用**，覆盖层平移+翻 y 后就是同一套代码）；工具条几何＝`OverlayToolbar.layout()`（**尺寸/位置/命中单一来源**）；会话＝`OverlayAnnotationSession` |
-| **标注坐标空间** | 覆盖层里存**选区局部点**（原点＝选区**视觉左上角**，y 向下 ⇒ 取 Cocoa 矩形的 **`maxY`**，写 `minY` 会整体镜像）。到像素只在栅格化那一刻换算一次，**线宽/字号/打码强度要跟位置一起缩放**，否则 Retina 上导出的线细成一半 |
-| 标注对象模型 | `Annotation.path: [CGPoint]`（箭头 2 点 / 画笔折线）+ `text`；**路径不塞进 `AnnotationKind` 关联值**；移动走 `translated(by:)`（框与路径一起走），缩放走 `applyFrame(_:)`。序号是**文字工具的一个预设**，**只增不重排** |
-| **覆盖层里的输入框** | **已实测可用**（探针：`panel.isKeyWindow=true`）⇒ 直接用真 `NSTextField`，中文输入法白拿。**编辑期间键盘必须整条让行**（只拦 `Esc`），否则字被快捷键吞掉。**「结算」≠「丢弃」**：点工具条/别处/`⏎` 都结算，只有 `Esc` 丢；改色/改尺寸/撤销重做**连结算都不做**（`Slot.preservesTextEditing` 有测试钉住）。输入框固定 14 点、不跟标注字号走（它是控件不是预览），位置**夹进屏幕** |
-| **偏好设置（ticket 15）** | 四页（通用 / 截屏 / 输出 / 快捷键），**改一下立刻生效、立刻落盘**（没有「应用」按钮）。延时是**覆盖层出现之前**的那几秒（HUD 点穿）。`includeCursor` 用**闭包**注入采集器（每次抓帧现读，避免竞态）；长截图显式传 `{ false }`。窗口阴影：偏好给默认值、`⌥` 临时取反。**刻意没做"是否自动复制到剪贴板"**（兑现不了）。菜单从 6 项降到 **5 项** |
-| **最近截图（ticket 16）** | 仓库在 `MarqueeHistory`：`index.json` + 原图 PNG + 标注 JSON（**原图与标注分开存**，否则重编辑退化成在成品上再画）。接缝 `CaptureHistoryWriting` **在 Core**（否则循环依赖）。复制＝**重新栅格化**（与导出同一条路径）。上限 20 条、面板 12 条；**只删自己写出来的文件**；淘汰只看数组顺序（不按时间） |
-| **打包分发（ticket 18）** | `scripts/package.sh` 七步出 DMG（**签名核验不过就停下**）；DMG 本身也要签 + 公证 + 装订。更新走**手动指引**（引入 Sparkle 会多一个要签名的可执行文件 + 一套签名密钥，不值） |
-| **钉图（ticket 14）** | 工具栏动作格 → 图钉在屏幕最上层、**钉在原位**（`anchor` = 原始选区）。**两个窗口**：本体 + 控制条 —— 因为穿透用 `ignoresMouseEvents`，开了之后本体**点不到自己**，控制条是唯一出口。滚轮缩放（**锚点左上角**）、四档不透明度循环、多张共存；`canBecomeKey = false`（不抢焦点）；`collectionBehavior` 含 `.canJoinAllSpaces`（跟着切 Space）。状态/几何在 Core 的 `PinState`/`PinGeometry` |
-| **选中标注的控制点（ticket 22）** | 8 个点，与选区控制点**同一套样子与光标**；**只有恰好选中一个**时才出。复用 `SelectionGeometry` 但**必须先过 `SelectionGeometry.YDown.flip`** —— 那套是按 Cocoa 约定写的（`.top` = `maxY`），而标注是 y 向下；不翻的表现是"拖上边动下边"（不崩不报错，只在拖到极限时显得怪）。会话 `beginResize/updateResize/endResize/cancelResize`，基准是**按下那一刻那一版标注**；`⇧` 锁比例；最小 8 点停住；拖回原处与 `Esc` 都不进撤销栈。**`cancelStroke()` 是所有手势收尾的唯一一处** |
-| 打码 / 裁切 | 打码**走 CoreImage**（比手写快 6 倍），`CIContext` 是共享常量。裁切只改 `cropRect`，**裁切外的标注保留不动**（撤销天然正确）；拖框期间不进撤销栈 |
-| **窗口截图 + 就地标注** | **强制 `includeShadow: false`**。带阴影的图比窗口矩形大一圈，标注坐标相对窗口矩形算 ⇒ 整体偏移，且偏移量随阴影大小变 |
-| 文字渲染 | 编辑器与导出**共用 `MarqueeCore.AnnotationText`**（CoreText）—— 各画各的会出现"编辑器放得下、导出被裁半个字"。**文字是点放式**（`OverlayTool.isStrokeBased = draws && self != .text`），不是拖一笔；**三档尺寸的含义由工具决定**（`OverlaySizeMeaning`：线宽 2/4/8 圆点 · 打码强度 4/8/16 方块 · 字号 18/28/44 字母A），三处用户都从它取 |
-| 编辑器验证入口 | `-marqueeDemoEditor`：合成图 + 八类标注各一个，不自动退出、**不需要屏幕录制权限** |
-| 测试目标结构 | `MarqueeCoreTests`（纯逻辑）+ **`MarqueeCaptureTests`**（真实 Vision 装置自检）+ `MarqueeTestSupport`（**测试专用**，不挂宿主 target） |
-| 权限探针 | 返回 granted / notDetermined / **进程内 denied**（问过仍未授权；**不要**写 UserDefaults）。`requestPermission()` 必须碰一次 `SCShareableContent` **枚举**（不要截帧） |
-| 坐标空间 | **覆盖层内部一律用 Cocoa 全局点坐标**，只在提交采集时经 `ScreenCoordinateConversion` 转 Quartz。两者 y 轴相反，混用会静默错位 |
+| 快捷键 | 可配置（`shortcut.fullScreenCapture` 默认 **`⌃Q`**；⌃⌘A 被微信独占）。入口＝菜单栏「快捷键…」 |
+| 截屏入口 | 覆盖层：拖拽＝区域（松开停住，方向键微调，`⏎` 提交）；单击/`⏎` 高亮窗口＝先停住再 `⏎` 截窗（`⌥` 去阴影）；无目标 `⏎`/双击＝整屏、`Esc` 取消 |
+| **选区几何编辑（19）** | 落点后出 **8 控制点**。**按下分派顺序「控制点→框内→框外」不能换**；基准取**按下那一刻**那一版；最小 8 点停住不翻转；`⇧` 锁比例取位移大的轴；吸附 6 点、**只取屏幕 + 与选区相邻的窗口**、一方向只取最近一条、画贯穿全屏提示线 |
+| 滚动截屏 | 菜单「滚动截屏」（**菜单已 5 项，PRD 上限 6，再加要先合并**）。拖区域/点窗口＝立刻抓帧；`空格`＝自动滚动开关；`⏎` 结束、`⌘S` 结束并落盘、`Esc` 取消。**已知限制：面板失去 key 焦点后键盘失效** |
+| 自动滚动要辅助功能授权 | **本项目唯一一处**。按需申请（按空格才问），拒绝即退回手动 |
+| 滚动到底 | **"没动"只有在"真的滚过"之后才算"到底"**；`atBottom` 只是提示、不停抓帧；自动滚动另看长图高度有无增长 |
+| 放大镜取色 | **只活在落点之前**。`⌥`＝悬停显示 HEX/RGB、点击复制；落点后 `⌥` 归「无阴影」。像素＝覆盖层出现后**取一屏冻结**。盒子＝采样 40 点 × 3 倍 = 120 点；能对准靠十字线 + 中心像素框 |
+| **确认之后（21 起）** | 原图立刻进剪贴板（`⌘S` 才落盘），**就地出图、不开窗口**。标注由 `CaptureOutput.finish(inline:)` 栅格化，**失败必须让整次截图失败**（可能含打码）。**编辑器只从长截图进入** + `-marqueeDemoEditor` 自检入口 |
+| **覆盖层工具栏＝标注工具条** | 24 格 / **799×40 点**：`[选择][矩形][椭圆][箭头][画笔][文字][马赛克][模糊] │ [色板×6] │ [尺寸×3] │ [识别文字] │ [撤销][重做] │ [保存][✗][✓]`。**OCR 是动作不是工具**（结果进剪贴板）；**「选择」是显式工具**（不选工具拖动＝改选区几何，选了它＝挪标注）。**没有「编辑」按钮**。`Esc` 分三级。**硬约束：整条必须放得进 1024 点的屏** |
+| 覆盖层里的对象编辑 | 点选走 `Annotation.contains`（箭头/画笔按**到路径距离**）；移动基准＝**按下那一刻的完整快照**；点一下不动不进撤销栈；`Delete` 删、`⌘Z`/`⇧⌘Z`；**选了任何工具都不显示选区控制点**；**`Esc` 退出任何工具** |
+| 三个尺寸档按工具换意义 | 图形＝线宽（圆点）/ 打码＝强度（方块）。强度用**另一组值** `overlayRedactionStrengths = [4,8,16]` **点**（编辑器那三档单位是原图像素，复用会在 2x 屏差一倍） |
+| 覆盖层打码底图 | 复用放大镜的**冻结整屏帧**（`OverlayRedactionSource`），必须复用 `SelectionLayout` + `ImageCompositing`（自己裁会在跨屏错位）。`AnnotationDrawing.sourceScale` **同时作用于裁图矩形与滤镜强度**。缺任一块屏的帧→**整体放弃** |
+| 标注只在 Core 一份 | `AnnotationPalette`（色板/线宽）· `AnnotationDrawing`（**覆盖层与导出共用**）· `OverlayToolbar.layout()`（尺寸/位置/命中单一来源）· `OverlayAnnotationSession`（会话） |
+| 标注坐标空间 | 覆盖层存**选区局部点**（原点＝选区**视觉左上角**，y 向下 ⇒ 取 Cocoa 矩形的 **`maxY`**）。只在栅格化那一刻换算，**线宽/字号/打码强度跟位置一起缩放** |
+| 标注对象模型 | `Annotation.path: [CGPoint]` + `text`；路径不塞进 `AnnotationKind` 关联值；移动 `translated(by:)`、缩放 `applyFrame(_:)`。序号是文字工具的一个预设，只增不重排 |
+| 覆盖层里的输入框 | 已实测可用（`panel.isKeyWindow=true`）⇒ 用真 `NSTextField`，中文输入法白拿。**编辑期间键盘整条让行**（只拦 `Esc`）。**「结算」≠「丢弃」**：点别处/`⏎` 结算，只 `Esc` 丢；改色/改尺寸/撤销连结算都不做（`Slot.preservesTextEditing`）。输入框固定 14 点 |
+| 偏好设置（15） | 四页（通用/截屏/输出/快捷键），**改一下立刻生效、立刻落盘**（无「应用」）。延时＝覆盖层出现**之前**那几秒。`includeCursor` 用**闭包**注入采集器。阴影：偏好给默认、`⌥` 临时取反。**刻意没做"是否自动复制到剪贴板"** |
+| 最近截图（16） | 仓库 `MarqueeHistory`：`index.json` + 原图 PNG + 标注 JSON（**分开存**，否则重编辑退化成在成品上再画）。接缝 `CaptureHistoryWriting` **在 Core**。复制＝重新栅格化。上限 20 / 面板 12；**只删自己写的文件** |
+| 打包分发（18） | `scripts/package.sh` 七步出 DMG（**签名核验不过就停**）；DMG 本身也签 + 公证 + 装订。更新走**手动指引**（引入 Sparkle 不值） |
+| 钉图（14） | 动作格 → 钉在最顶层、**钉在原位**（`anchor`）。**两个窗口**：本体 + 控制条（穿透 `ignoresMouseEvents` 后本体点不到自己）。滚轮缩放（**锚点左上角**）、四档不透明度、多张共存；`canBecomeKey = false`；`.canJoinAllSpaces`。状态在 `PinState`/`PinGeometry` |
+| 选中标注的控制点（22） | 8 点，与选区控制点同一套样子/光标；**只有恰好选中一个**时才出。复用 `SelectionGeometry` 但**必须先过 `YDown.flip`**（不翻的表现是"拖上边动下边"）。`cancelStroke()` 是所有手势收尾的**唯一一处** |
+| 打码 / 裁切 | 打码走 **CoreImage**（比手写快 6 倍）。裁切只改 `cropRect`，**裁切外的标注保留不动**；拖框期间不进撤销栈 |
+| 窗口截图 + 就地标注 | **强制 `includeShadow: false`**（带阴影的图比窗口矩形大一圈 ⇒ 标注整体偏移） |
+| 文字渲染 | 编辑器与导出**共用 `AnnotationText`**（CoreText）。**文字是点放式**（`isStrokeBased = draws && self != .text`）；三档含义由 `OverlaySizeMeaning` 给（线宽 2/4/8 · 打码 4/8/16 · 字号 18/28/44） |
+| 测试目标结构 | `MarqueeCoreTests`（纯逻辑）+ `MarqueeHistoryTests` + `MarqueeCaptureTests`（真实 Vision 自检）+ `MarqueeTestSupport`（**测试专用**） |
+| 权限探针 | granted / notDetermined / **进程内 denied**（**不要**写 UserDefaults）。`requestPermission()` 必须碰一次 `SCShareableContent` **枚举** |
+| 坐标空间 | **覆盖层内部一律用 Cocoa 全局点坐标**，只在提交采集时经 `ScreenCoordinateConversion` 转 Quartz（y 相反，混用静默错位） |
 | 跨屏选区 | 逐屏取交集后拼接，输出 scale 取参与屏里**最大**的 |
-| OCR（ticket 13） | 入口是**动作**不是工具（工具栏 9 个位置被 PRD 列满，OCR 不在其中）；**启动必须预热**（首次 25 s，不热则第一次点像卡死）；结果面板用 `Text` + `textSelection`（可划可 ⌘C）。⚠️ ticket 21 曾因此**把它的唯一入口藏了**（现象与「功能没做」一样，见 PITFALLS 69：删「过渡入口」前先 grep 那个功能的名字）。**ticket 23 已把它接进覆盖层工具栏**（结果直接进剪贴板）；编辑器里那份保留（能划选）。**两处共用同一个识别器实例**，预热只热一份 |
-| 本地 AI / 视觉 | 只做系统级 Vision OCR；Liquid Glass 必须 `if #available(macos 26.0)` |
+| OCR（13） | 入口是**动作**不是工具；**启动必须预热**（首次 25 s）。⚠️ ticket 21 曾因此把它的唯一入口藏了（PITFALLS 69）。**23 已接进覆盖层工具栏**；编辑器里那份保留。**两处共用同一识别器实例** |
+| **悬浮面板材质（17a）** | 覆盖层工具条 / 钉图控制条 / 倒计时 HUD 换系统材质。**决策点＝`ChromeMaterial.resolved(glassAvailable:)`（入参化 ⇒ 可脱机单测）**；参数在 `ChromeStyle`，两分支**同源**。15.x 退 `NSVisualEffectView(.hudWindow)`（深色，浅色模式下白字才不糊）。自检 `defaults write dev.tango.Marquee chrome.forceHUD -bool YES`。**工具条＝两个兄弟子视图**（材质底 + 前景）；读数框/提示框**留平深色**；编辑器窗口不动（PITFALLS 89–92） |
+| **本地化（17b，未开工）** | 现状：**0 处**设施；硬编码中文 **220 处 / 205 唯一 / 25 文件**，**40 处是插值串**。已定：catalog **只有一份**放 `App/Sources/Localizable.xcstrings`（App 是唯一宿主 ⇒ 全模块查 `Bundle.main`）、**key ＝中文原句**、`value: key` 让"漏翻"退化成显示中文而不是显示 key。**插值串必须 `String(format: L10n.t("…%@…"), x)`**，直接包会**静默失效**。`logger` 日志不翻 |
 
 ## 构建与测试（走脚本，不要手敲裸命令）
 
 ```bash
-./scripts/build.sh   # XcodeGen 生成 + xcodebuild；含必需设置的前置检查
-./scripts/test.sh    # swift test --disable-sandbox（参数是必需的）
+./scripts/build.sh   # XcodeGen 生成 + xcodebuild；含必需设置前置检查
+./scripts/test.sh    # swift test --disable-sandbox（参数是必需的）→ 当前 450 全绿
+./scripts/package.sh # 打包公证（七步，需要 Developer ID 证书）
 ```
 
-**必需的一次性设置**（原因见 `docs/DEV-NOTES.md` 4）：
+**必需的一次性设置**（见 `docs/DEV-NOTES.md` 4）：
 ```bash
 defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool YES
 ```
 
-## 不可砍的功能（替代旧版的关键）
+## 不可砍 / 明确砍掉
 
-1. **窗口自动识别 + 悬停高亮**（旧版招牌）
-2. **滚动截屏 / 长截图**（11 手动 → 12 自动，均已实现）
-3. **标注为对象、可反复编辑**（导出时才栅格化）
-
-明确砍掉：QQ 邮箱分享、QQ 邮箱网页插件。
+1. **窗口自动识别 + 悬停高亮**；2. **滚动截屏 / 长截图**；3. **标注为对象、可反复编辑**（导出时才栅格化）。
+砍掉：QQ 邮箱分享、QQ 邮箱网页插件。
 
 ## 设计硬约束（用户明确要求「功能简洁 + 交互流畅」）
 
 菜单栏下拉 ≤ 6 项；编辑器工具栏 ≤ 9 工具；首选项 ≤ 4 页；模式弹窗 0 个。
-**覆盖层工具栏**另有可达性约束：整条必须放得进 1024 点的屏（超出时贴边夹取会把最右边的按钮推出屏幕，而它看起来只是"有点长"）。
-编辑器重绘（≤100 标注）≤ 4 ms；选区拖拽 120 fps；模糊/马赛克 ≤ 5 ms；落点→剪贴板 ≤ 150 ms。
+**覆盖层工具栏整条必须放得进 1024 点的屏**（超出时贴边夹取会把最右按钮推出屏幕，而它看起来只是"有点长"）。
+性能：编辑器重绘（≤100 标注）≤ 4 ms；选区拖拽 120 fps；模糊/马赛克 ≤ 5 ms；落点→剪贴板 ≤ 150 ms。
 
 ## 核心风险
 
 - **R1 滚动截屏**：中（可行性已验证）。剩余全在**真实场景**：sticky header / 惯性 / 动态内容
-- **R10 OCR 首次调用约 25 秒** → 必须启动时后台预热
-- **R11 超长图（1200×9000）画布渲染**：图元数不是瓶颈，画布尺寸可能是
-- ~~R4 全局快捷键~~、~~R7 标注对象模型~~：**已消除**
-
-## 已提前验证的结论（详见 `docs/SPIKE-PLAN.md`）
-
-| 结论 | 细节 |
-| --- | --- |
-| 配准主方案＝Vision | `VNTranslationalImageRegistrationRequest`；自研 SAD 正确但 **258 ms/次太慢** |
-| 端到端拼接 | vs 真值 **MAE 0.000/255**；480×600 帧配准 **8.3 ms/次** → 不需要降采样 |
-| Vision 位移符号 | **`rows = +ty`**（targeted = 上一帧、handler = 当前帧） |
-| 全局快捷键 | Carbon `RegisterEventHotKey`，无需辅助功能权限；冲突码 `-9878` **只在独占注册时**才出得来 |
-| 权限检测 | `CGPreflightScreenCaptureAccess()` / `...ListenEventAccess()` / `...PostEventAccess()` 都能在 Swift 里直接调（**头文件没声明**，符号在 `CoreGraphics.tbd`） |
-| Liquid Glass | `NSGlassEffectView` = macos 26.0+（`effectIsInteractive` = 27.0） |
-| 合成滚轮事件 | `CGEvent(scrollWheelEvent2Source:units:.pixel,wheelCount:1,wheel1:…)` + `.post(tap: .cghidEventTap)`；**向下滚 `wheel1` 是负值** |
+- **R10 OCR 首次约 25 s** → 启动预热；**R11 超长图（1200×9000）画布渲染**（瓶颈可能是画布尺寸）
+- ~~R4 全局快捷键~~、~~R7 标注对象模型~~：已消除
 
 ## 最狠的几条陷阱（全量见 `docs/PITFALLS.md`）
 
-- **不崩不报错、只悄悄错**那一类：位图行序/CTM 翻转（图上下颠倒、位移符号反转）、`bytesPerRow` 未对齐、P3 vs sRGB、拼接取行区间与 `floor`。
-- **用户说"点了没反应"时，第一件事是验入口通不通**（可选回调漏接线＝静默 no-op），再看下游渲染。
-- **误判不能做成终局**：自动判定触发时降级为"提示 + 可恢复"，别停机。
-- **判定要先验前提**："没动"只有在"真的滚过"之后才算"到底"。
-- **谁改谁推**：改了状态要自己推给视图，别依赖调用方顺手 `refresh()`。
-- **瞬时标志位不许决定常驻 UI 的可见性**：只在某个事件里被重置的标志（"鼠标按着吗"），
-  只要有一条分支漏了收尾，依赖它的东西就会**永远不出现** —— 而现象与"功能没做"一样。
-  收尾只能有一处（一个 `defer`），判据只用**会话状态**。（PITFALLS 66：我这样丢过一次工具栏）
-- **断言要写「意图」**，不能只写不能违反的边界；对称的测试图与纯色测试图都是盲的。
-  *（实测：把工具条组间距从 9 改成 1，只断言"不重叠/不越界"的测试**全绿通过**；补上"组间间距必须明显大于组内"才抓住。）*
-- **变异测试**是"断言有没有空跑"的唯一证据（改坏一处 → 必须变红）。
-  *（但变异要**模拟真实会写错的实现**：我改过一个"改不出错误"的变异 → 全绿，差点误判断言是盲的。见 PITFALLS 65。）
-  *（已两次踩到：变异没变红时，先问**这个变异有没有产生用户可见的错误**，再问**用例有没有覆盖到那条路径**。见 PITFALLS 65/68/73。）*
-- **阈值触发的辅助功能要先算触发点数量**：吸附线 160 条 × 6 点阈值 ⇒ 屏幕上处处在吸，比不吸还糟（PITFALLS 64）。
+- **不崩不报错、只悄悄错**：位图行序/CTM 翻转、`bytesPerRow` 未对齐、P3 vs sRGB、拼接取行区间与 `floor`；AppKit 里**子视图永远盖在父视图自己画的东西之上**（PITFALLS 89）。
+- **用户说"点了没反应"**：先验入口通不通（可选回调漏接线＝静默 no-op），再看下游渲染。
+- **瞬时标志位不许决定常驻 UI 的可见性**：收尾只能有一处（一个 `defer`），判据只用会话状态（PITFALLS 66：我这样丢过一次工具栏）。
+- **误判不能做成终局**：降级为"提示 + 可恢复"；判定先验前提（"没动"只有在"真的滚过"之后才算"到底"）。
+- **断言要写「意图」**：只写边界的测试是盲的（组间距 9→1 全绿通过，补"组间明显大于组内"才抓住）。
+- **变异测试**是"断言有没有空跑"的唯一证据；变异要**模拟真实会写错的实现**（PITFALLS 65/68/73）。
 
 ## 文档与资产
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **88 条实现陷阱**（写代码前必扫） |
-| **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–R 分组 + SPIKE M1–M20 对应 + 排障速查）。验收与汇报都从这份起 |
-| `docs/PRD.md` | 产品与方案设计 |
-| `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单 + 提前验证报告（37 项） |
-| `docs/DEV-NOTES.md` | 开发循环的已知摩擦（签名、沙箱、工程生成、宏插件被杀） |
-| **`docs/RELEASE.md`** | 打包 / 公证 / 更新的复现步骤（`scripts/package.sh` 七步） |
-| `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限完整复盘 |
-| `docs/RENDER-BENCH.md` | 渲染技术实测报告 |
+| **`docs/PITFALLS.md`** | **92 条实现陷阱**（写代码前必扫） |
+| **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–S 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |
+| `docs/PRD.md` / `docs/SPIKE-PLAN.md` | 产品与方案设计 / 坑点清单 + 提前验证报告（37 项） |
+| `docs/DEV-NOTES.md` / `docs/RELEASE.md` | 开发循环的已知摩擦 / 打包公证更新的复现步骤 |
+| `docs/SCREEN-RECORDING-PERMISSION.md` / `docs/RENDER-BENCH.md` | 权限完整复盘 / 渲染技术实测 |
 | `Modules/Sources/MarqueeTestSupport/` | **测试专用**：合成长页 + 位图读取 / MAE |
-| `.scratch/issues/2026-09-30-marquee-mvp/` | **23 条 ticket + INDEX**；只剩 `17`（玻璃与本地化）未开工 |
+| `.scratch/issues/2026-09-30-marquee-mvp/` | **24 条 ticket + INDEX**；`17` 拆成 `17a`（已完成）/ `17b`（**唯一未开工**） |
 | `Tools/Spikes/`、`Tools/RenderBench/` | 独立验证工具，与产品代码分离 |
 
 ## 工作流约定
 
-沿用既有门禁：**spec → solution → test plan → impl → delivery**，逐段确认；
-TDD 红→实现→绿，测试永久留仓 + 变异测试。**未经明确指令不 commit/push。**
-变更记录到 `docs/`。用户偏好极简编号指令（"1 提交 2 继续下一步"）。
+门禁 **spec → solution → test plan → impl → delivery**，逐段确认；TDD 红→绿 + 变异测试，测试永久留仓。
+**未经明确指令不 commit/push。** 用户偏好极简编号指令（"1 提交 2 继续下一步"）。

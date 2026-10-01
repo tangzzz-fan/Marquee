@@ -248,7 +248,49 @@ final class SelectionOverlayView: NSView {
             } else {
                 needsDisplay = true
             }
+            syncToolbarChrome()
         }
+    }
+
+    // MARK: - 工具条背景（ticket 17）
+
+    /// 工具条的材质底。**必须是与前景并列的子视图**，不能挂在覆盖层自己身上 ——
+    /// AppKit 里子视图永远画在父视图自己的 `draw` 之上（见 `ChromeForegroundView`）。
+    private var toolbarChrome: NSView?
+    /// 工具条的前景（描边 / 分隔线 / 图标）。
+    private var toolbarForeground: ChromeForegroundView?
+
+    /// 把工具条的两个子视图摆到当前位置。
+    ///
+    /// **不在 `draw` 里懒创建**：绘制过程中改视图树会让本次绘制作废，
+    /// 表现是工具条第一次出现时闪一下。
+    private func syncToolbarChrome() {
+        guard let toolbar = presentation.toolbar else {
+            toolbarChrome?.isHidden = true
+            toolbarForeground?.isHidden = true
+            return
+        }
+
+        if toolbarChrome == nil {
+            let chrome = ChromeBackground.makeBackgroundView(cornerRadius: OverlayToolbar.cornerRadius)
+            chrome.isHidden = true
+            addSubview(chrome)
+            toolbarChrome = chrome
+
+            let foreground = ChromeForegroundView()
+            foreground.isHidden = true
+            // 前景自己不做几何判断：矩形就是它的 bounds，内部按工具条布局画。
+            foreground.render = { [weak self] rect in self?.drawToolbarForeground(in: rect) }
+            addSubview(foreground)
+            toolbarForeground = foreground
+        }
+
+        let box = globalToLocal(toolbar.frame)
+        toolbarChrome?.frame = box
+        toolbarChrome?.isHidden = false
+        toolbarForeground?.frame = box
+        toolbarForeground?.isHidden = false
+        toolbarForeground?.needsDisplay = true
     }
 
     /// 放大镜占的脏区（局部坐标）。色值框贴在盒子上下、文字还可能很宽，保守地多扩一圈。
@@ -415,11 +457,8 @@ final class SelectionOverlayView: NSView {
             if presentation.showsSelectionHandles {
                 drawSelectionHandles(on: localSelection)
             }
-            // 工具栏画在读数之后（更靠上），但**仍在**这个提前 return 之前 ——
-            // 选区一旦存在就走这条分支，漏掉这一句工具栏就永远不出现。
-            if let toolbar = presentation.toolbar {
-                drawToolbar(toolbar)
-            }
+            // 工具条**不在这里画**：它是两个子视图（背景 + 前景），
+            // 由 `syncToolbarChrome()` 摆位。见那段注释。
             return
         }
 
@@ -436,9 +475,6 @@ final class SelectionOverlayView: NSView {
             }
             if presentation.showsSelectionHandles {
                 drawSelectionHandles(on: localHover)
-            }
-            if let toolbar = presentation.toolbar {
-                drawToolbar(toolbar)
             }
             return
         }
@@ -557,17 +593,17 @@ final class SelectionOverlayView: NSView {
 
     // MARK: - 浮动工具栏（ticket 20/21）
 
-    /// 画浮动工具栏。
+    /// 画浮动工具栏的**前景**：描边、组间分隔线、图标。
+    ///
+    /// 背景（玻璃 / 材质）由 `toolbarChrome` 这个兄弟子视图负责，不在这里画 ——
+    /// 在这里画的话会被那个子视图盖住（AppKit 的绘制顺序）。
     ///
     /// 所有坐标一律来自 `OverlayToolbar.layout()` —— **绘制与命中同一个来源**。
     /// 各画各的必然偏出去几个点，而那种偏差的表现是"按钮看着在这儿、点它没反应"，
     /// 极难联想到是布局算错了。
-    private func drawToolbar(_ presentation: OverlayToolbarPresentation) {
-        let box = globalToLocal(presentation.frame)
+    private func drawToolbarForeground(in box: NSRect) {
+        guard let state = presentation.toolbar else { return }
         let layout = OverlayToolbar.layout()
-
-        NSColor.black.withAlphaComponent(0.78).setFill()
-        Self.roundedPath(box, radius: OverlayToolbar.cornerRadius).fill()
 
         let outline = Self.roundedPath(box.insetBy(dx: 0.5, dy: 0.5), radius: OverlayToolbar.cornerRadius)
         outline.lineWidth = 1
@@ -585,7 +621,7 @@ final class SelectionOverlayView: NSView {
         for item in layout.items {
             draw(toolbarItem: item.slot,
                  in: item.frame.offsetBy(dx: box.minX, dy: box.minY),
-                 state: presentation)
+                 state: state)
         }
     }
 
@@ -841,7 +877,9 @@ final class SelectionOverlayView: NSView {
         let clamped = CGPoint(x: min(max(bounds.minX + 6, origin.x), bounds.maxX - box.size.width - 6),
                               y: min(max(bounds.minY + 6, origin.y), bounds.maxY - box.size.height - 6))
         let rect = NSRect(origin: clamped, size: box.size)
-        NSColor.black.withAlphaComponent(0.72).setFill()
+        // 刻意用平的深色而不是材质：这是贴着选区的小读数，尺寸随内容变、位置跟着光标跑，
+        // 做成视图既难对齐也不划算；系统自带的截图工具在同一位置也是平的深色小条。
+        NSColor.black.withAlphaComponent(ChromeStyle.readoutAlpha).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
         box.text.draw(at: NSPoint(x: rect.minX + box.padding.width, y: rect.minY + box.padding.height))
     }

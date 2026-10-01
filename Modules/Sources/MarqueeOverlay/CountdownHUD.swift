@@ -82,22 +82,29 @@ public final class CountdownHUD {
         // 点穿：等待期间用户还能操作下面（这也是"不能中止"的补偿）
         panel.ignoresMouseEvents = true
 
-        let background = NSView(frame: CGRect(origin: .zero, size: frame.size))
-        background.wantsLayer = true
-        background.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.72).cgColor
-        background.layer?.cornerRadius = 18
+        // 深色底不自己画（ticket 17）：交给统一的材质层（26+ 玻璃 / 15 的 HUD 材质）。
+        // 直接自绘 `black 0.72` 的话，26 上会是一块扁平的黑方块 —— 与系统风格不搭。
+        let container = NSView(frame: CGRect(origin: .zero, size: frame.size))
+        let background = ChromeBackground.makeBackgroundView(cornerRadius: Self.cornerRadius)
+        background.frame = container.bounds
+        background.autoresizingMask = [.width, .height]
+        container.addSubview(background)
 
         let field = NSTextField(labelWithString: "")
         field.font = .monospacedDigitSystemFont(ofSize: 64, weight: .semibold)
         field.textColor = .white
         field.alignment = .center
         field.frame = CGRect(x: 0, y: frame.height / 2 - 40, width: frame.width, height: 80)
-        background.addSubview(field)
+        // 数字加在材质**之后** —— 顺序反了会被材质盖住。
+        container.addSubview(field)
 
-        panel.contentView = background
+        panel.contentView = container
         label = field
         return panel
     }
+
+    /// HUD 的圆角。材质层与任何自绘都要用它，避免两边各写一个数字。
+    static let cornerRadius: CGFloat = 18
 
     private func teardown() {
         panel?.orderOut(nil)

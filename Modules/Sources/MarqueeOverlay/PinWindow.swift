@@ -101,6 +101,12 @@ final class PinImageView: NSView {
 
 // MARK: - 控制条
 
+/// 控制条的视觉常量。放在一处：背景由 `ChromeBackground` 造、前景在这里画，
+/// 两边的圆角必须对得上，否则 26 上是圆角、15 上是方的。
+enum PinStripStyle {
+    static let cornerRadius: CGFloat = 7
+}
+
 /// 三个按钮：穿透 / 不透明度 / 关闭。整条还可以当**拖动把手**。
 final class PinStripView: NSView, NSViewToolTipOwner {
 
@@ -147,9 +153,8 @@ final class PinStripView: NSView, NSViewToolTipOwner {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.black.withAlphaComponent(0.72).setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
-
+        // 深色底不在这里画（ticket 17）：它还挂在 `ChromeBackground` 造的那层材质上，
+        // 那层是先加的子视图 —— 在这里再铺一层黑会把材质**整个盖掉**。
         for button in Button.allCases {
             let box = frame(of: button)
             switch button {

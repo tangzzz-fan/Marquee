@@ -49,7 +49,15 @@ final class PinController {
         stripView = PinStripView(frame: CGRect(origin: .zero, size: PinGeometry.stripSize))
 
         imagePanel.contentView = imageView
-        stripPanel.contentView = stripView
+        // 控制条的深色底由材质层负责（ticket 17），**必须排在 `stripView` 前面** ——
+        // AppKit 里后加的子视图盖在前面那个上面，顺序反了三个按钮就全被糊没了。
+        let stripBackground = ChromeBackground.makeBackgroundView(cornerRadius: PinStripStyle.cornerRadius)
+        stripBackground.frame = CGRect(origin: .zero, size: PinGeometry.stripSize)
+        stripBackground.autoresizingMask = [.width, .height]
+        let stripContainer = NSView(frame: CGRect(origin: .zero, size: PinGeometry.stripSize))
+        stripContainer.addSubview(stripBackground)
+        stripContainer.addSubview(stripView)
+        stripPanel.contentView = stripContainer
         imageView.setImage(image, displaySize: size)
 
         wire()
