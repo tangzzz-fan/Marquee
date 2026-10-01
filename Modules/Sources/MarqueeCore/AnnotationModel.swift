@@ -3,8 +3,7 @@ import Foundation
 
 /// 标注颜色。放在 Core 里，不依赖 SwiftUI / AppKit 的 `Color`。
 ///
-/// 组件是 0...1 的 sRGB。栅格化时必须用命名的 sRGB 色彩空间来建 `CGColor`，
-/// 否则在 P3 屏上 `CGColor(red:green:blue:alpha:)` 会偏色（见 MEMORY 陷阱 11）。
+/// 组件语义是 **sRGB**（用户在工具栏里挑的是一组固定颜色，与屏幕色彩空间无关）。
 public struct AnnotationColor: Equatable, Sendable, Hashable {
     public var red: Double
     public var green: Double
@@ -20,8 +19,19 @@ public struct AnnotationColor: Equatable, Sendable, Hashable {
 
     public static let red = AnnotationColor(red: 1, green: 0.23, blue: 0.19)
 
+    /// 转成指定色彩空间的 `CGColor`。
+    ///
+    /// **必须做一次转换，不能直接把 sRGB 分量塞进目标空间**：
+    /// `CGColor(colorSpace: p3, components: [1, 0.23, 0.19])` 表示的是 **P3 里**的那个颜色，
+    /// 而 P3 色域比 sRGB 大 —— 同样一组数字在 P3 下看起来更艳。
+    /// 于是"同一个红色"在 P3 截图上会突然变成另一个红。
+    ///
+    /// 转换的语义才是对的：用户挑的是"这个颜色"，它在哪个色彩空间里都该是同一个颜色。
     public func cgColor(in colorSpace: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!) -> CGColor {
-        CGColor(colorSpace: colorSpace, components: [red, green, blue, alpha])!
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB) ?? colorSpace
+        let base = CGColor(colorSpace: srgb, components: [red, green, blue, alpha])!
+        guard colorSpace != srgb else { return base }
+        return base.converted(to: colorSpace, intent: .defaultIntent, options: nil) ?? base
     }
 }
 

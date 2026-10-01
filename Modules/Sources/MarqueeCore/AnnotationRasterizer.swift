@@ -25,16 +25,17 @@ public enum AnnotationRasterizer {
 
         let width = Int(crop.width)
         let height = Int(crop.height)
-        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? cropped.colorSpace ?? CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(data: nil,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: 0,
-                                      space: colorSpace,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        // 保留来源色彩空间：**截图是 P3 时不该在导出这一步被悄悄转成 sRGB** ——
+        // 超出 sRGB 色域的颜色会被裁掉，成品与屏幕上看到的就不是一回事了。
+        // 建不出 8 位上下文的空间（线性 / 扩展空间等）退回 sRGB，不让整张图导不出来。
+        let fallback = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = makeContext(space: cropped.colorSpace, width: width, height: height)
+                ?? makeContext(space: fallback, width: width, height: height) else { return nil }
+        // 标注颜色按**上下文实际拿到的**空间转换（见 `AnnotationColor.cgColor(in:)`）
+        let colorSpace = context.colorSpace ?? fallback
 
         // ① 底图：默认 y 向上坐标系，rect 恰好铺满（画布尺寸 == 裁剪尺寸）
+        //    上下文与底图同色彩空间，所以这一步是纯拷贝，不做任何转换。
         context.draw(cropped, in: CGRect(x: 0, y: 0, width: crop.width, height: crop.height))
 
         // ② 翻成左上原点、y 向下，这样标注坐标（原图像素、原点左上）可以直接用
@@ -72,6 +73,21 @@ public enum AnnotationRasterizer {
         }
 
         return context.makeImage()
+    }
+
+    /// 按给定色彩空间建一个 8 位 ARGB 上下文。空间不合适（线性 / 16 位等）时返回 nil，
+    /// 由调用方回退 —— 这比"直接崩掉或静默给出错色的图"好。
+    private static func makeContext(space: CGColorSpace?,
+                                    width: Int,
+                                    height: Int) -> CGContext? {
+        guard let space else { return nil }
+        return CGContext(data: nil,
+                         width: width,
+                         height: height,
+                         bitsPerComponent: 8,
+                         bytesPerRow: 0,
+                         space: space,
+                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
     }
 
     /// 箭头 = 线段 + 实心三角头部。
