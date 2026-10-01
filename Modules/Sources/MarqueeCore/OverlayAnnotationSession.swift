@@ -60,6 +60,21 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     }
     private var moveAnchor: MoveAnchor?
 
+    /// 正在拖动的那一次**缩放**：按下那一刻的整个标注 + 抓的是哪个控制点。
+    ///
+    /// 存整个标注快照（而不是只存框）是因为 `Annotation.applyFrame` 对箭头 / 画笔
+    /// 要"从旧框缩到新框"——每帧以**快照**为基准才不累积误差（与移动同一条理由）。
+    private struct ResizeAnchor: Equatable {
+        var before: Annotation
+        var handle: SelectionGeometry.Handle
+    }
+    private var resizeAnchor: ResizeAnchor?
+
+    /// `⇧` 是否按着（拖角时锁宽高比）。
+    ///
+    /// 由控制层推进来：标注会话在 Core 里，**不认识 `NSEvent`** —— 自己读修饰键就没法脱机测。
+    public var isShiftDown: Bool = false
+
     /// 下一个标注用的样式（颜色 / 线宽）。改它**不入撤销栈** —— 它不影响已有内容。
     public var style: AnnotationStyle
 
@@ -186,6 +201,107 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
 
     public var isMovingAnnotations: Bool { moveAnchor != nil }
 
+    // MARK: - 拖控制点缩放（ticket 22 收尾）
+
+    /// 选中标注的 8 个控制点（**选区局部点**，与 `annotations` 同一坐标系）。
+    ///
+    /// 只有**恰好选中一个**时才给：多个选中时"缩哪一个"没有明确答案，
+    /// 而缩"整体的包围盒"会让每个对象各自被拉伸 —— 那是另一个功能。
+    /// 视图只负责把这些矩形画出来，换算留在这里（翻错 y 的表现是"拖上边动下边"，视图里看不出来）。
+    public var selectedHandles: [(handle: SelectionGeometry.Handle, frame: CGRect)] {
+        guard let box = resizableframe else { return [] }
+        // 标注是 y 向下，`Handle` 是 Cocoa 那套 —— 进去与出来都翻一次
+        let flipped = SelectionGeometry.YDown.flip(box)
+        return SelectionGeometry.Handle.allCases.map { handle in
+            (handle, SelectionGeometry.YDown.flip(SelectionGeometry.handleFrame(handle, on: flipped)))
+        }
+    }
+
+    /// 能被缩放的那个标注的框（恰好选中一个时）。
+    private var resizableframe: CGRect? {
+        let selected = selectedAnnotations
+        guard selected.count == 1, let only = selected.first else { return nil }
+        return only.frame.standardized
+    }
+
+    public var isResizingAnnotations: Bool { resizeAnchor != nil }
+
+    /// 按下：抓在控制点上就开始缩放。
+    ///
+    /// - Returns: 是否真的开始了。
+    @discardableResult
+    public mutating func beginResize(at point: CGPoint) -> Bool {
+        let selected = selectedAnnotations
+        guard selected.count == 1, let target = selected.first,
+              let handle = handle(at: point, on: target.frame.standardized) else { return false }
+        cancelStroke()
+        moveAnchor = nil
+        resizeAnchor = ResizeAnchor(before: target, handle: handle)
+        return true
+    }
+
+    /// 拖到哪。
+    ///
+    /// 基准永远是**按下那一刻那一版**（`anchor.before`），不是上一帧 ——
+    /// `applyFrame` 对箭头 / 画笔是"从旧框缩到新框"，按上一帧算会累积误差。
+    public mutating func updateResize(to point: CGPoint) {
+        guard let anchor = resizeAnchor,
+              let index = annotations.firstIndex(where: { $0.id == anchor.before.id }) else { return }
+        let box = anchor.before.frame.standardized
+        let aspect = isShiftDown ? box.width / max(1, box.height) : nil
+        let next = SelectionGeometry.resized(SelectionGeometry.YDown.flip(box),
+                                            handle: anchor.handle,
+                                            to: SelectionGeometry.YDown.flip(point),
+                                            aspect: aspect)
+        var updated = anchor.before
+        updated.applyFrame(SelectionGeometry.YDown.flip(next))
+        annotations[index] = updated
+    }
+
+    /// 松手。
+    ///
+    /// - Returns: 是否真的改过（拖回原处不算一步改动 —— 与移动同一条规则）。
+    @discardableResult
+    public mutating func endResize(to point: CGPoint) -> Bool {
+        guard let anchor = resizeAnchor else { return false }
+        updateResize(to: point)
+        resizeAnchor = nil
+        return commitResize(from: anchor.before)
+    }
+
+    /// 放弃这次缩放，退回按下时那一版（`Esc` 拖到一半用）。没在缩放时是空操作。
+    public mutating func cancelResize() {
+        guard let anchor = resizeAnchor else { return }
+        resizeAnchor = nil
+        guard let index = annotations.firstIndex(where: { $0.id == anchor.before.id }) else { return }
+        annotations[index] = anchor.before
+    }
+
+    /// 缩放一步的收尾：把那一版（按下前的）进撤销栈。
+    ///
+    /// - Returns: 是否真的变了。
+    private mutating func commitResize(from before: Annotation) -> Bool {
+        guard let index = annotations.firstIndex(where: { $0.id == before.id }) else { return false }
+        guard annotations[index] != before else {
+            // 拖回原处：显式写回，免得留下浮点残差（"看起来一样但比不出来"）
+            annotations[index] = before
+            return false
+        }
+        var previous = annotations
+        previous[index] = before
+        commit(previous, replacing: annotations)
+        return true
+    }
+
+    /// 点上的控制点（`nil` = 不在任何控制点上）。
+    ///
+    /// 走 `selectedHandles`（而不是自己再算一遍中心）—— 命中与绘制必须是同一份几何，
+    /// 各算各的会偏出去几个点，而那种偏差的表现是"控制点看着在这儿、拖它没反应"。
+    private func handle(at point: CGPoint,
+                        on frame: CGRect) -> SelectionGeometry.Handle? {
+        selectedHandles.first { $0.frame.contains(point) }?.handle
+    }
+
     /// 拖到哪。整框平移 —— 框与路径一起走（`translated(by:)` 已经处理了这一点）。
     public mutating func updateMove(to point: CGPoint) {
         guard let anchor = moveAnchor else { return }
@@ -281,10 +397,15 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
         return true
     }
 
-    /// 丢掉正在画的那一笔（`Esc` / 工具被换掉时用）。已提交的标注不动。
+    /// 丢掉正在进行的那一笔**或那一次缩放**（`Esc` / 工具被换掉时用）。已提交的标注不动。
+    ///
+    /// 收尾只留这一处：`toggle` / `clearTool` / `undo` / `redo` / `deleteSelected` /
+    /// `beginMove` / `beginResize` 都走它 —— 各写各的话，加第三种手势时一定会漏一处，
+    /// 而漏掉的表现是"某个东西一直挂着"（PITFALLS 66 的同一族）。
     public mutating func cancelStroke() {
         draft = nil
         strokeStart = nil
+        cancelResize()
     }
 
     // MARK: - 文字输入（ticket 22）
@@ -382,6 +503,7 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
         strokeStart = nil
         selection = []
         moveAnchor = nil
+        resizeAnchor = nil
         undoStack = []
         redoStack = []
     }

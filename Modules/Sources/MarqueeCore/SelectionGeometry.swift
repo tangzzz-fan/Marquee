@@ -16,6 +16,28 @@ import CoreGraphics
 /// "拖上边"变成"拖下边"，而且**只在拖到极限或看吸附线时**才显得不对。
 public enum SelectionGeometry {
 
+    /// 把"原点左上、y 向下"的矩形 / 点换成 Cocoa 那一套（y 向上）。
+    ///
+    /// ## 为什么需要这一层
+    ///
+    /// `Handle` 是按 **Cocoa 约定**命名的：`.top` = **`maxY`**（`movingEdges` 同理）。
+    /// 而**标注**的坐标系是"原点左上、y 向下"（`Annotation` 的约定）。
+    /// 把标注的框直接喂给上面的函数，用户拖"上边"动的是**下边** ——
+    /// 不崩、不报错，而且**只在拖到极限或锁比例时**才显得怪（PITFALLS 59 的同一族）。
+    ///
+    /// 翻转是**对合**的（`flip(flip(x)) == x`），所以进去翻一次、出来翻一次就还原。
+    /// 有一对测试专门钉住"拖左上角动的确实是视觉左上角"。
+    public enum YDown {
+        public static func flip(_ rect: CGRect) -> CGRect {
+            let box = rect.standardized
+            return CGRect(x: box.minX, y: -box.maxY, width: box.width, height: box.height)
+        }
+
+        public static func flip(_ point: CGPoint) -> CGPoint {
+            CGPoint(x: point.x, y: -point.y)
+        }
+    }
+
     /// 控制点的命中半径（点）。与编辑器的 `AnnotationHandle` 同一量级，手感一致。
     public static let handleHitRadius: CGFloat = 6
     /// 控制点画出来的边长（点）。比命中区小 —— 画 12 点的方块太抢眼，

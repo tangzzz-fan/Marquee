@@ -156,6 +156,10 @@ public enum OverlayToolbar {
         /// 是**动作**不是工具：它不改文档、只产出一份文本，与编辑器里的做法一致
         /// （PRD 3.1 把 9 个工具位列满了，OCR 本来就不在其中）。
         case ocr
+        /// 把这张图钉在屏幕上（ticket 14）。
+        ///
+        /// 与 OCR 同一类：动作，不占工具位。它**不改这张图**，只是多留一份在屏幕上。
+        case pin
         case undo
         case redo
         case save
@@ -174,7 +178,7 @@ public enum OverlayToolbar {
         public var preservesTextEditing: Bool {
             switch self {
             case .color, .lineWidth, .undo, .redo: true
-            case .tool, .ocr, .save, .cancel, .confirm: false
+            case .tool, .ocr, .pin, .save, .cancel, .confirm: false
             }
         }
 
@@ -184,7 +188,7 @@ public enum OverlayToolbar {
             case .tool: 0
             case .color: 1
             case .lineWidth: 2
-            case .ocr: 3
+            case .ocr, .pin: 3
             case .undo, .redo: 4
             case .save, .cancel, .confirm: 5
             }
@@ -211,7 +215,7 @@ public enum OverlayToolbar {
         OverlayTool.allCases.map(Slot.tool)
         + AnnotationPalette.colors.indices.map(Slot.color)
         + AnnotationPalette.lineWidths.indices.map(Slot.lineWidth)
-        + [.ocr]
+        + [.ocr, .pin]
         + [.undo, .redo]
         + [.save, .cancel, .confirm]
 

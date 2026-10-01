@@ -55,6 +55,8 @@ final class CaptureCoordinator {
     private let textRecognizer = VisionTextRecognizer()
     private lazy var ocrPreheater = TextRecognitionPreheater(recognizer: textRecognizer)
     private lazy var editor = AnnotationEditorPresenter(recognizer: textRecognizer)
+    /// 钉图（ticket 14）。持有所有钉住的窗口 —— 多张钉图互不干扰。
+    private let pins = PinPresenter()
     private var overlay: SelectionOverlayController?
     private var preferencesWindow: ShortcutPreferencesWindowController?
     /// 防止预检期间连按快捷键叠出两层覆盖层
@@ -304,17 +306,18 @@ final class CaptureCoordinator {
         switch outcome {
         case .cancelled:
             logger.info("选区已取消")
-        case .completed(let capture, let openEditor):
-            handle(capture, openEditor: openEditor)
+        case .completed(let capture, let after, let anchor):
+            handle(capture, after: after, anchor: anchor)
         }
     }
 
-    /// - Parameter openEditor: 要不要把图送进编辑器窗口。
+    /// - Parameter after: 采集完成后还要做什么（编辑器 / 钉图 / 什么都不做）。
     ///
-    ///   普通截图从 ticket 20 起**就地完成**（`false`）—— 用户要的"不阻断"就是这条：
+    ///   普通截图从 ticket 20 起**就地完成**（空集）—— 用户要的"不阻断"就是这条：
     ///   拖完选区按 `⏎` 直接得到图，不弹任何窗口。
-    ///   长截图与工具栏上的「编辑」才是 `true`。
-    private func handle(_ outcome: CaptureOutcome, openEditor: Bool) {
+    ///   长截图要编辑器；工具栏上的「钉图」要钉在屏幕上。
+    /// - Parameter anchor: 原始选区（Cocoa 全局点）。钉图据它**钉在原位**。
+    private func handle(_ outcome: CaptureOutcome, after: SelectionOverlayController.AfterCapture, anchor: CGRect?) {
         switch outcome {
         case .copiedToClipboard(let metrics):
             // 正常复制不弹窗。落盘失败才说一声，因为图已经在剪贴板里，不能装成整次失败。
@@ -334,9 +337,15 @@ final class CaptureCoordinator {
             """
             logger.info("\(summary, privacy: .public)")
             if let image = metrics.image {
-                if openEditor {
+                // 钉图**先做**：它是"多留一份"，与后面开不开窗口无关。
+                // 两者可以同时发生（以后若加"钉住并进编辑器"，这里不用改）。
+                if after.contains(.pin) {
+                    pins.pin(image, anchor: anchor)
+                    logger.info("已钉在屏幕上，当前共 \(self.pins.count) 张")
+                }
+                if after.contains(.openEditor) {
                     presentEditor(image: image)
-                } else {
+                } else if !after.contains(.pin) {
                     logger.info("就地完成：不开编辑器窗口（ticket 20 起普通截图不再弹窗口）")
                 }
             }

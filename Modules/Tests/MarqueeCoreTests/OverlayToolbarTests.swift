@@ -159,13 +159,13 @@ struct OverlayToolbarTests {
         }
     }
 
-    @Test("工具条内容与用户预期一致：7 个工具 + 色板 + 尺寸三档 + 识别 + 撤销重做 + 保存取消完成")
+    @Test("工具条内容与用户预期一致：7 个工具 + 色板 + 尺寸三档 + 识别/钉图 + 撤销重做 + 保存取消完成")
     func slotInventory() {
         #expect(OverlayToolbar.slots.count
                 == OverlayTool.allCases.count
                 + AnnotationPalette.colors.count
                 + AnnotationPalette.lineWidths.count
-                + 6)
+                + 7)
         // 「选择」在最左（与编辑器一致）：它是"不动手画"的那个，摆在最前面最不容易误点
         #expect(OverlayToolbar.slots.first == .tool(.select))
         #expect(OverlayToolbar.slots.last == .confirm)
@@ -307,7 +307,7 @@ struct OverlayToolbarTests {
         for slot in [OverlayToolbar.Slot.color(0), .lineWidth(1), .undo, .redo] {
             #expect(slot.preservesTextEditing, "\(slot) 属于「改这一行」，不该把输入结算掉")
         }
-        for slot in [OverlayToolbar.Slot.tool(.rectangle), .ocr, .save, .cancel, .confirm] {
+        for slot in [OverlayToolbar.Slot.tool(.rectangle), .ocr, .pin, .save, .cancel, .confirm] {
             #expect(!slot.preservesTextEditing, "\(slot) 会离开「写文字」这件事，必须先结算输入")
         }
     }

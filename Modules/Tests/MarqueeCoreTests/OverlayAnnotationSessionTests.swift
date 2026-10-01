@@ -685,6 +685,223 @@ struct OverlayAnnotationSessionTests {
         #expect(AnnotationPalette.overlayFontSizes.contains(subject.style.fontSize))
     }
 
+    // MARK: - 拖控制点缩放标注（ticket 22 收尾）
+
+    /// 选中第一个矩形（10,10–50,40，标注坐标系 y 向下）
+    private func selectedShapeSession() -> OverlayAnnotationSession {
+        var subject = sessionWithShapes()
+        subject.toggle(tool: .select)
+        subject.select(at: CGPoint(x: 30, y: 25))
+        return subject
+    }
+
+    private func handleRects(_ subject: OverlayAnnotationSession)
+        -> [SelectionGeometry.Handle: CGRect] {
+        Dictionary(uniqueKeysWithValues: subject.selectedHandles.map { ($0.handle, $0.frame) })
+    }
+
+    private func mid(_ rect: CGRect) -> CGPoint {
+        CGPoint(x: rect.midX, y: rect.midY)
+    }
+
+    @Test("控制点按**标注的坐标系**摆（原点左上、y 向下）—— 拖「左上角」动的必须是视觉左上角")
+    func handlePositionsUseTheAnnotationCoordinateSpace() {
+        // ⚠️ 这条是整个缩放里最容易悄悄错的一处：`SelectionGeometry.Handle` 是按
+        // **Cocoa 约定**命名的（`.top` = `maxY`，y 向上），而标注是 y 向下。
+        // 直接把标注的框喂进去，用户拖"上边"动的会是**下边** ——
+        // 不崩、不报错，只在拖到极限或锁比例时才显得怪。
+        let subject = selectedShapeSession()
+        let handles = handleRects(subject)
+
+        let topLeft = mid(handles[.topLeft]!)
+        let bottomRight = mid(handles[.bottomRight]!)
+        #expect(topLeft == CGPoint(x: 10, y: 10), "视觉左上角就是原点那一角")
+        #expect(bottomRight == CGPoint(x: 50, y: 40))
+        #expect(mid(handles[.top]!) == CGPoint(x: 30, y: 10), "上边中点该在 y 小的那一侧")
+        #expect(mid(handles[.left]!) == CGPoint(x: 10, y: 25))
+    }
+
+    @Test("没选中 / 选中多个时不摆控制点 —— 「缩哪一个」没有明确答案")
+    func handlesRequireExactlyOneSelection() {
+        var subject = sessionWithShapes()
+        subject.toggle(tool: .select)
+        #expect(subject.selectedHandles.isEmpty, "没选中任何东西")
+
+        subject.select(at: CGPoint(x: 30, y: 25))
+        #expect(subject.selectedHandles.count == SelectionGeometry.Handle.allCases.count)
+    }
+
+    @Test("拖左上角：右下角**不动**，左上角跟着走")
+    func draggingTopLeftKeepsTheOppositeCorner() {
+        var subject = selectedShapeSession()
+
+        subject.beginResize(at: CGPoint(x: 10, y: 10))
+        subject.updateResize(to: CGPoint(x: 20, y: 22))
+        let changed = subject.endResize(to: CGPoint(x: 20, y: 22))
+
+        let frame = subject.annotations[0].frame
+        #expect(changed)
+        #expect(frame.minX == 20)
+        #expect(frame.minY == 22)
+        #expect(frame.maxX == 50, "对边（右）必须纹丝不动")
+        #expect(frame.maxY == 40, "对边（下）必须纹丝不动")
+    }
+
+    @Test("拖上边中点：只有上边动，下边与左右都不动")
+    func draggingTopEdgeMovesOnlyThatEdge() {
+        var subject = selectedShapeSession()
+
+        subject.beginResize(at: CGPoint(x: 30, y: 10))
+        subject.endResize(to: CGPoint(x: 30, y: 15))
+
+        let frame = subject.annotations[0].frame
+        #expect(frame.minY == 15)
+        #expect(frame.maxY == 40)
+        #expect(frame.minX == 10)
+        #expect(frame.maxX == 50)
+    }
+
+    @Test("拖过头缩到最小就**停住**，不翻转")
+    func resizeStopsRatherThanFlipping() {
+        var subject = selectedShapeSession()
+
+        // 左上角一路拖到右下角外面去
+        subject.beginResize(at: CGPoint(x: 10, y: 10))
+        subject.endResize(to: CGPoint(x: 200, y: 200))
+
+        let frame = subject.annotations[0].frame
+        // 翻转的话，左上角会跑到 (200,200)、框整体跳到另一边 ——
+        // 而用户以为自己只是拖到了极限。
+        #expect(frame.width == SelectionGeometry.minimumSide)
+        #expect(frame.height == SelectionGeometry.minimumSide)
+        #expect(frame.maxX == 50)
+        #expect(frame.maxY == 40)
+    }
+
+    @Test("拖动的基准是**按下那一刻那一版**，不是上一帧（否则误差累积）")
+    func resizeUsesTheAnchorNotThePreviousFrame() {
+        var subject = selectedShapeSession()
+
+        subject.beginResize(at: CGPoint(x: 10, y: 10))
+        subject.updateResize(to: CGPoint(x: 0, y: 0))
+        subject.updateResize(to: CGPoint(x: 20, y: 20))       // 再拖回来一点
+        subject.endResize(to: CGPoint(x: 20, y: 20))
+
+        let frame = subject.annotations[0].frame
+        // 按上一帧累加的话，这里会得到 50-10-... 之类的漂移值
+        #expect(frame.minX == 20)
+        #expect(frame.minY == 20)
+        #expect(frame.maxX == 50)
+        #expect(frame.maxY == 40)
+    }
+
+    @Test("`⇧` 锁宽高比：拖角时两个方向一起变")
+    func shiftLocksTheAspectRatio() {
+        var subject = selectedShapeSession()          // 40 × 30
+        subject.isShiftDown = true
+
+        subject.beginResize(at: CGPoint(x: 10, y: 10))
+        subject.endResize(to: CGPoint(x: 10, y: 10 - 30))   // 只往上拖 30
+
+        let frame = subject.annotations[0].frame
+        let ratio = frame.width / frame.height
+        #expect(abs(ratio - 40.0 / 30.0) < 0.01, "比例必须锁住，实际 \(ratio)")
+        #expect(frame.maxX == 50)
+        #expect(frame.maxY == 40)
+    }
+
+    @Test("缩放之后撤销，回到按下前的大小")
+    func undoingAResizeRestoresTheSize() {
+        var subject = selectedShapeSession()
+        let original = subject.annotations[0].frame
+
+        subject.beginResize(at: CGPoint(x: 10, y: 10))
+        subject.endResize(to: CGPoint(x: 20, y: 20))
+        #expect(subject.annotations[0].frame != original)
+
+        subject.undo()
+
+        #expect(subject.annotations[0].frame == original)
+    }
+
+    @Test("拖回原处不算一步改动（不该进撤销栈）")
+    func resizingBackToTheOriginalIsNotUndoable() {
+        var subject = selectedShapeSession()
+        let original = subject.annotations[0].frame
+        let couldUndoBefore = subject.canUndo
+
+        subject.beginResize(at: CGPoint(x: 10, y: 10))
+        subject.updateResize(to: CGPoint(x: 20, y: 20))
+        let changed = subject.endResize(to: CGPoint(x: 10, y: 10))
+
+        #expect(!changed)
+        #expect(subject.annotations[0].frame == original)
+        #expect(subject.canUndo == couldUndoBefore)
+    }
+
+    @Test("拖到一半按 `Esc`：退回按下时那一版")
+    func cancellingAResizeRestoresTheAnchor() {
+        var subject = selectedShapeSession()
+        let original = subject.annotations[0].frame
+
+        subject.beginResize(at: CGPoint(x: 10, y: 10))
+        subject.updateResize(to: CGPoint(x: 30, y: 30))
+        #expect(subject.annotations[0].frame != original)
+
+        subject.cancelResize()
+
+        #expect(subject.annotations[0].frame == original)
+        #expect(!subject.isResizingAnnotations)
+    }
+
+    @Test("不在控制点上按下就**不开始缩放** —— 否则点哪儿都在改大小")
+    func pressingOutsideHandlesDoesNotResize() {
+        var subject = selectedShapeSession()
+
+        let began = subject.beginResize(at: CGPoint(x: 30, y: 25))   // 框正中
+
+        #expect(!began)
+        #expect(!subject.isResizingAnnotations)
+    }
+
+    @Test("缩放箭头：路径跟着一起缩（只改框的话，线还留在原地）")
+    func resizingAnArrowScalesItsPath() {
+        var subject = session()
+        subject.toggle(tool: .arrow)
+        subject.beginStroke(at: CGPoint(x: 0, y: 0))
+        subject.endStroke(at: CGPoint(x: 40, y: 40))
+        subject.clearTool()
+        subject.toggle(tool: .select)
+        subject.select(at: CGPoint(x: 20, y: 20))
+
+        subject.beginResize(at: CGPoint(x: 40, y: 40))     // 右下角
+        subject.endResize(to: CGPoint(x: 80, y: 80))
+
+        let arrow = subject.annotations[0]
+        #expect(arrow.path[1] == CGPoint(x: 80, y: 80), "终点必须跟着走")
+        #expect(arrow.path[0] == CGPoint(x: 0, y: 0), "起点是对角，不动")
+    }
+
+    @Test("缩放文字：改的是字号（拖它就是在把字放大）")
+    func resizingTextChangesItsFontSize() {
+        var subject = session()
+        subject.style.fontSize = 20
+        subject.toggle(tool: .text)
+        subject.beginText(at: CGPoint(x: 0, y: 0))
+        subject.commitText("两倍")
+        subject.clearTool()
+        subject.toggle(tool: .select)
+
+        let before = subject.annotations[0]
+        subject.select(at: CGPoint(x: before.frame.midX, y: before.frame.midY))
+        // 把下边往下拖一倍
+        subject.beginResize(at: CGPoint(x: before.frame.midX, y: before.frame.maxY))
+        subject.endResize(to: CGPoint(x: before.frame.midX, y: before.frame.maxY * 2))
+
+        #expect(subject.annotations[0].style.fontSize > before.style.fontSize,
+                "字号没变大——拖文字就白拖了")
+    }
+
     @Test("改字号之后输入的文字用新字号 —— 用户先在工具条上挑字号再落字")
     func fontSizeAppliesToTheNewText() {
         var subject = session()

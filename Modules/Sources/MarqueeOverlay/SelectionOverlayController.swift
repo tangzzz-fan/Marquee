@@ -23,13 +23,29 @@ public final class SelectionOverlayController {
         case scrollCapture
     }
 
+    /// 采集成功之后**还要做什么**。
+    ///
+    /// 做成选项集而不是几个 `Bool`：调用点有六七处，而 `openEditor: false, pin: false`
+    /// 这种字面量在所有地方长得一模一样 —— 加第三个标志时没人看得懂哪个 `false` 是什么。
+    /// 选项集写出来是 `.pin` / `.openEditor` / `[]`，一眼看得出这一处想干什么。
+    public struct AfterCapture: OptionSet, Sendable {
+        public let rawValue: Int
+        public init(rawValue: Int) { self.rawValue = rawValue }
+
+        /// 把图送进**编辑器窗口**。只有长截图用它 —— 长图放不进一屏，
+        /// 在覆盖层里既看不到全貌也没法标注（ticket 23 的结论）。
+        public static let openEditor = AfterCapture(rawValue: 1 << 0)
+        /// 把图**钉在屏幕上**（ticket 14）。
+        public static let pin = AfterCapture(rawValue: 1 << 1)
+    }
+
     public enum Outcome: Sendable {
-        /// - Parameter openEditor: 采集完成后要不要把图送进**编辑器窗口**。
-        ///
-        ///   普通截图从 ticket 20 起在覆盖层里就地完成，所以是 `false` ——
-        ///   这正是用户要的"不阻断"：拖完选区按 `⏎` 直接出图，不弹任何窗口。
-        ///   长截图（图放不进一屏）与工具栏上的「编辑」按钮才是 `true`。
-        case completed(CaptureOutcome, openEditor: Bool)
+        /// - Parameters:
+        ///   - after: 采集完成后还要做什么（见 `AfterCapture`）。普通截图是 `[]` ——
+        ///     这正是用户要的"不阻断"：拖完选区按 `⏎` 直接出图，不弹任何窗口。
+        ///   - anchor: 原始选区（**Cocoa 全局点**）。钉图用它"**钉在原位**" ——
+        ///     用户刚才盯着哪儿，图就出现在哪儿。整屏截图时为 `nil`。
+        case completed(CaptureOutcome, after: AfterCapture, anchor: CGRect?)
         case cancelled
     }
 
@@ -115,6 +131,8 @@ public final class SelectionOverlayController {
         case resize(handle: SelectionGeometry.Handle, anchor: CGRect)
         /// 画一笔标注
         case stroke
+        /// 拖选中标注的控制点改大小（ticket 22 收尾）
+        case annotationResize
 
         /// 日志用。不带它的话，"状态没收尾"那条 warning 只能说"非空"，
         /// 而想知道是哪一类拖拽漏了收尾还得回去读代码。
@@ -125,6 +143,7 @@ public final class SelectionOverlayController {
             case .move: "move(移动整框)"
             case .resize: "resize(改大小)"
             case .stroke: "stroke(画一笔)"
+            case .annotationResize: "annotationResize(缩标注)"
             }
         }
     }
@@ -239,7 +258,7 @@ public final class SelectionOverlayController {
         guard !displayGeometries.isEmpty,
               let height = ScreenCoordinateConversion.primaryScreenHeight(in: displayGeometries) else {
             onFinish(.completed(.failed(CaptureFailure(message: "没找到可用的显示器")),
-                                openEditor: false))
+                                after: [], anchor: nil))
             return
         }
         primaryScreenHeight = height
@@ -475,6 +494,13 @@ public final class SelectionOverlayController {
         //   ③ 其它       → 取消整次截图
         // 少了前两级的话，用户画了五个箭头想退出画标注模式，
         // 一下 `Esc` 全部作废，而这张图可能已经很难再复现。
+        if case .annotationResize = dragMode {
+            // 缩放到一半按 Esc = 退回按下时那一版（与拖选区几何一致）
+            dragMode = .none
+            annotationSession.cancelResize()
+            refresh()
+            return
+        }
         if case .move(let anchor) = dragMode {
             // 移动/缩放拖到一半按 Esc = 退回按下时那一版几何（与系统截图工具一致）
             dragMode = .none
@@ -819,11 +845,11 @@ public final class SelectionOverlayController {
                 self.teardown()
                 self.onFinish(.completed(.permissionBlocked(blockedBy: decision,
                                                            grantedJustNow: grantedJustNow),
-                                        openEditor: false))
+                                        after: [], anchor: nil))
 
             case .failed(let failure):
                 self.teardown()
-                self.onFinish(.completed(.failed(failure), openEditor: false))
+                self.onFinish(.completed(.failed(failure), after: [], anchor: nil))
             }
         }
     }
@@ -867,7 +893,7 @@ public final class SelectionOverlayController {
             self.teardown()
             // 长截图**仍然进编辑器**：长图可能几千像素高，放不进一屏 ——
             // 在覆盖层里既看不到全貌也没法滚动，没法在它上面标注（见 ticket 23）。
-            self.onFinish(.completed(outcome, openEditor: true))
+            self.onFinish(.completed(outcome, after: .openEditor, anchor: nil))
         }
     }
 
@@ -981,10 +1007,10 @@ public final class SelectionOverlayController {
 
     // MARK: - 提交
 
-    private func commitRegion(saveToDisk: Bool) {
+    private func commitRegion(saveToDisk: Bool, after: AfterCapture) {
         guard !isFinishing else { return }
         guard let cocoaRect = session.rect else {
-            commitWholeScreen(saveToDisk: saveToDisk)
+            commitWholeScreen(saveToDisk: saveToDisk, after: after)
             return
         }
         isFinishing = true
@@ -1004,14 +1030,14 @@ public final class SelectionOverlayController {
                                                         save: save,
                                                         inline: inline)
             self.teardown()
-            // 普通截图**一律就地完成**，不开任何窗口（要的"不阻断"就是这条）。
-            // 唯一的例外是长截图：长图几千像素高放不进一屏，只能进编辑器 ——
-            // 那个例外在 `finishScrollCapture` 里显式写死，不从这里走。
-            self.onFinish(.completed(outcome, openEditor: false))
+            self.onFinish(.completed(outcome, after: after, anchor: cocoaRect))
         }
     }
 
-    private func commitWindow(_ window: WindowInfo, style: WindowCaptureStyle, saveToDisk: Bool) {
+    private func commitWindow(_ window: WindowInfo,
+                              style: WindowCaptureStyle,
+                              saveToDisk: Bool,
+                              after: AfterCapture) {
         guard !isFinishing else { return }
         isFinishing = true
         let geometries = displayGeometries
@@ -1038,14 +1064,12 @@ public final class SelectionOverlayController {
                                                         save: save,
                                                         inline: inline)
             self.teardown()
-            // 普通截图**一律就地完成**，不开任何窗口（要的"不阻断"就是这条）。
-            // 唯一的例外是长截图：长图几千像素高放不进一屏，只能进编辑器 ——
-            // 那个例外在 `finishScrollCapture` 里显式写死，不从这里走。
-            self.onFinish(.completed(outcome, openEditor: false))
+            // 锚点取"覆盖层画出那一版"的矩形（Cocoa 全局），钉图据此**钉在原位**
+            self.onFinish(.completed(outcome, after: after, anchor: self.settledCocoaRect))
         }
     }
 
-    private func commitWholeScreen(saveToDisk: Bool) {
+    private func commitWholeScreen(saveToDisk: Bool, after: AfterCapture) {
         guard !isFinishing else { return }
         isFinishing = true
         let save = saveRequest(for: nil, enabled: saveToDisk)
@@ -1055,10 +1079,7 @@ public final class SelectionOverlayController {
             guard let self else { return }
             let outcome = await self.fullScreenFlow.capture(save: save, inline: inline)
             self.teardown()
-            // 普通截图**一律就地完成**，不开任何窗口（要的"不阻断"就是这条）。
-            // 唯一的例外是长截图：长图几千像素高放不进一屏，只能进编辑器 ——
-            // 那个例外在 `finishScrollCapture` 里显式写死，不从这里走。
-            self.onFinish(.completed(outcome, openEditor: false))
+            self.onFinish(.completed(outcome, after: after, anchor: nil))
         }
     }
 
@@ -1292,6 +1313,7 @@ public final class SelectionOverlayController {
         // 选区几何编辑（ticket 19）：控制点只在"能改几何"的时候出现 ——
         // 选了标注工具时拖动是画标注，这时还摆着控制点会让人以为能拖角。
         presentation.selectedAnnotationFrames = annotationSession.selectedAnnotations.map(\.frame)
+        presentation.selectedAnnotationHandles = annotationHandleFrames()
         // 控制点只在"没选任何工具"时出现：选了任何工具（含「选择」）之后，
         // 拖动都属于工具自己的语义，这时还摆着控制点会让人以为能拖角改大小。
         presentation.showsSelectionHandles = session.isSettled && !hasScrollSession
@@ -1470,13 +1492,23 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         //   工具语义属于控制层 —— 视图那边多一份"什么时候算画标注"迟早跟这里对不上。）
         // 「选择」工具：拖动 = 挪已有的标注，不是画新东西，也不改选区几何。
         if annotationSession.isSelecting, !hasScrollSession {
-            dragMode = .stroke          // 复用同一条"按下→拖→松"的通道
             lastDragPoint = globalPoint
             let point = localAnnotationPoint(globalPoint)
-            if !annotationSession.beginMove(at: point) {
-                // 点在空白处：清掉选择。与几乎所有工具的直觉一致 ——
-                // 不清的话，用户"点一下别的地方"之后那个框还亮着，会以为没点中。
-                annotationSession.select(at: point)
+            // 三种按下，**顺序不能换**（与 ticket 19 的选区同一条原则：最"尖"的先判）：
+            //   ① 控制点   → 缩放
+            //   ② 标注身上 → 移动
+            //   ③ 空白     → 清空选择
+            // ①② 调过来的话，用户想拖角改大小、结果整个标注被挪走 ——
+            // 而两者都是"图形跟着鼠标动"，看起来都像生效了。
+            if annotationSession.beginResize(at: point) {
+                dragMode = .annotationResize       // 复用同一条"按下→拖→松"的通道
+            } else {
+                dragMode = .stroke
+                if !annotationSession.beginMove(at: point) {
+                    // 点在空白处：清掉选择。与几乎所有工具的直觉一致 ——
+                    // 不清的话，用户"点一下别的地方"之后那个框还亮着，会以为没点中。
+                    annotationSession.select(at: point)
+                }
             }
             refresh()
             return
@@ -1530,6 +1562,11 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         lastDragPoint = globalPoint
 
         switch dragMode {
+        case .annotationResize:
+            guard let local = annotationPoint(globalPoint) else { return }
+            annotationSession.updateResize(to: local)
+            refresh()
+
         case .stroke:
             guard let local = annotationPoint(globalPoint) else { return }
             // 两种 `.stroke`：画一笔（`isDrawing`）或拖动已选中的标注（`isSelecting`）。
@@ -1600,6 +1637,18 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         }
 
         switch drag {
+        case .annotationResize:
+            if let local = annotationPoint(globalPoint) {
+                if annotationSession.endResize(to: local) {
+                    logger.info("标注缩放：已改大小")
+                }
+            } else {
+                // 拿不到坐标系（选区没了）：退回按下前那一版，别把它留在半路上。
+                annotationSession.cancelStroke()
+            }
+            refresh()
+            return
+
         case .stroke:
             guard let local = annotationPoint(globalPoint) else { return }
             if annotationSession.isMovingAnnotations {
@@ -1673,12 +1722,17 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     func overlayView(_ view: SelectionOverlayView, shiftChanged isDown: Bool) {
         session.setShiftDown(isDown)
+        annotationSession.isShiftDown = isDown
         // 拖控制点时按 `⇧` 必须**当场**变形状，不能等下一次鼠标移动 ——
         // 用户按了键却看不到任何变化，只会以为这个键没生效（PITFALLS：谁改谁推）。
         if case .resize(let handle, let anchor) = dragMode, let point = lastDragPoint {
             apply(resizedRect(anchor: anchor, handle: handle, to: point),
                   edges: handle.movingEdges)
             return
+        }
+        if case .annotationResize = dragMode, let point = lastDragPoint,
+           let local = annotationPoint(point) {
+            annotationSession.updateResize(to: local)
         }
         refresh()
     }
@@ -1699,7 +1753,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         performCommit(saveToDisk: true)
     }
 
-    private func performCommit(saveToDisk: Bool) {
+    private func performCommit(saveToDisk: Bool, after: AfterCapture = []) {
         guard !isFinishing else { return }
 
         // 工具栏的「完成 / 保存」会走到这里，而输入框里可能还有没敲完的字 ——
@@ -1731,19 +1785,19 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
         switch session.commitAction(hasHoveredWindow: hoveredWindow != nil) {
         case .commitRegion:
-            commitRegion(saveToDisk: saveToDisk)
+            commitRegion(saveToDisk: saveToDisk, after: after)
         case .commitWindow:
             guard let window = session.settledWindow else {
-                commitRegion(saveToDisk: saveToDisk)
+                commitRegion(saveToDisk: saveToDisk, after: after)
                 return
             }
             let style = WindowCaptureStyle.isolatedWindow(includeShadow: !isOptionDown)
-            commitWindow(window, style: style, saveToDisk: saveToDisk)
+            commitWindow(window, style: style, saveToDisk: saveToDisk, after: after)
         case .settleHoveredWindow:
             guard let window = hoveredWindow else { return }
             settleOnWindow(window)
         case .commitWholeScreen:
-            commitWholeScreen(saveToDisk: saveToDisk)
+            commitWholeScreen(saveToDisk: saveToDisk, after: after)
         }
     }
 
@@ -1756,7 +1810,8 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             performCommit(saveToDisk: false)
             return
         }
-        commitWholeScreen(saveToDisk: false)
+        // 双击整屏走的就是"完成"那条路：图进剪贴板、就地收场
+        commitWholeScreen(saveToDisk: false, after: [])
     }
 
     func overlayViewDidToggleAutoScroll(_ view: SelectionOverlayView) {
@@ -1828,6 +1883,14 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         case .ocr:
             runTextRecognition()
             return     // runTextRecognition 自己会刷新（它要先显示"正在识别…"）
+
+        case .pin:
+            // 钉图 = 「完成」+ 多留一份在屏幕上。图**照样进剪贴板** ——
+            // 每条提交路径都写剪贴板是这套设计的不变量，钉图不该是例外
+            //（否则用户按了钉图会发现剪贴板没变，而他会以为截图没成）。
+            logger.info("工具栏：钉图")
+            performCommit(saveToDisk: false, after: .pin)
+            return
 
         case .save:
             logger.info("工具栏：完成并保存到磁盘")
@@ -1945,6 +2008,33 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         logger.info("文字输入已取消（这一下 Esc 没有丢掉整次截图）")
         refresh()
     }
+
+    /// 选中标注的控制点，从**选区局部点**换成 **Cocoa 全局点**。
+    ///
+    /// 这是唯一一处做这个换算的地方 —— 视图拿到的直接是全局坐标，它只管画与命中。
+    /// 两个坐标系 y 方向相反（标注原点左上、y 向下；Cocoa 原点左下、y 向上），
+    /// 所以取的是 `origin.y - local.maxY`（把"局部下边"映到"全局上边"）。
+    /// 写成 `+ local.minY` 不会崩，只会让控制点**上下镜像**地画在标注的另一侧。
+    private func annotationHandleFrames() -> [AnnotationHandlePresentation] {
+        guard let origin = annotationOrigin() else { return [] }
+        return annotationSession.selectedHandles.map { item in
+            let local = item.frame
+            return AnnotationHandlePresentation(
+                handle: item.handle,
+                frame: CGRect(x: origin.x + local.minX,
+                              y: origin.y - local.maxY,
+                              width: local.width,
+                              height: local.height)
+            )
+        }
+    }
+
+    /// "覆盖层画出那一版"的选中矩形（**Cocoa 全局点**）。没有落点时是 `nil`。
+    ///
+    /// 单独抽出来是因为窗口落点要看的是**用户看到的那一圈**（`session.rect`），
+    /// 而不是窗口自己的矩形 —— 两者在"带阴影/贴边"时会差一点，
+    /// 而钉图按它定位，差一点就是"钉出来的位置跟刚才框的不是一处"。
+    private var settledCocoaRect: CGRect? { session.rect }
 
     /// 点落在**哪块屏**的覆盖层上。
     ///

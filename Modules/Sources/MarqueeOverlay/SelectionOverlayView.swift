@@ -50,6 +50,13 @@ struct SelectionPresentation: Equatable {
     /// 就地标注（含正在画的那一笔草稿）。
     var annotations: [Annotation] = []
 
+    /// 选中标注身上的控制点（**Cocoa 全局点**）。
+    ///
+    /// 与选区的控制点同一套画法与光标 —— 用户不该为"缩选区"和"缩标注"学两套手感。
+    /// 但两者的坐标来源不同：选区控制点直接用 `globalRect`，标注控制点得从
+    /// **选区局部点**换算过来（控制层做，那里才有 `annotationOrigin`）。
+    var selectedAnnotationHandles: [AnnotationHandlePresentation] = []
+
     /// 被选中的标注的包围盒（**选区局部点**，与 `annotations` 同一坐标系）。
     ///
     /// 没有它的话，用户点完一个标注**看不出到底选中了没有** ——
@@ -99,6 +106,16 @@ struct RedactionBackdropPresentation: Equatable {
     static func == (lhs: RedactionBackdropPresentation, rhs: RedactionBackdropPresentation) -> Bool {
         lhs.image === rhs.image && lhs.scale == rhs.scale
     }
+}
+
+/// 选中标注身上的一个控制点（ticket 22 收尾）。
+///
+/// 具名结构而不是元组：元组不能被 `Equatable` 合成，而 `SelectionPresentation` 是 `Equatable` 的
+///（PITFALLS 71 踩过这一点）。
+struct AnnotationHandlePresentation: Equatable {
+    var handle: SelectionGeometry.Handle
+    /// **Cocoa 全局点**
+    var frame: CGRect
 }
 
 /// 浮动工具栏要画的东西（ticket 21/22）。
@@ -211,10 +228,13 @@ final class SelectionOverlayView: NSView {
     var presentation: SelectionPresentation = .empty {
         didSet {
             guard presentation != oldValue else { return }
-            // 控制点 / 选区变了就得重算光标区，否则"看着有控制点、拖起来却是十字"
+            // 控制点 / 选区变了就得重算光标区，否则"看着有控制点、拖起来却是十字"。
+            // 标注身上那 8 个控制点同理 —— 漏掉它的话，刚选中一个标注时
+            // 控制点画出来了，但把鼠标移上去还是十字（要等下一次别的变化才刷新）。
             if presentation.showsSelectionHandles != oldValue.showsSelectionHandles
                 || presentation.globalRect != oldValue.globalRect
-                || presentation.hoverRect != oldValue.hoverRect {
+                || presentation.hoverRect != oldValue.hoverRect
+                || presentation.selectedAnnotationHandles != oldValue.selectedAnnotationHandles {
                 window?.invalidateCursorRects(for: self)
             }
             // 只有放大镜在动时只重画它那一小块。
@@ -340,6 +360,11 @@ final class SelectionOverlayView: NSView {
         addCursorRect(bounds, cursor: .crosshair)
         // 控制点上换成对应的缩放光标（ticket 19）。这是"这里能拖"的唯一提示 ——
         // 没有它，用户得先试一下才知道能不能拖角。
+        // 选中标注身上的控制点（ticket 22 收尾）—— 同样是"这里能拖"的唯一提示。
+        for item in presentation.selectedAnnotationHandles {
+            addCursorRect(globalToLocal(item.frame), cursor: Self.cursor(for: item.handle))
+        }
+
         guard presentation.showsSelectionHandles,
               let global = presentation.globalRect ?? presentation.hoverRect else { return }
         let local = globalToLocal(global)
@@ -588,6 +613,8 @@ final class SelectionOverlayView: NSView {
                        in: rect,
                        tint: .white,
                        dimmed: state.isRecognizing)
+        case .pin:
+            drawSymbol("pin", in: rect, tint: .white)
         case .undo:
             drawSymbol("arrow.uturn.backward", in: rect, tint: .white, dimmed: !state.canUndo)
         case .redo:
@@ -734,6 +761,11 @@ final class SelectionOverlayView: NSView {
             cgContext.setLineDash(phase: 0, lengths: [])
         }
         cgContext.restoreGState()
+
+        // 控制点画在**视图坐标**里（不跟着上面那次翻转）：
+        // 它们来自"全局 → 局部"的换算，本来就不在标注坐标系里，
+        // 混进那个翻转过的上下文反而会多一层镜像要维护。
+        drawAnnotationHandles()
     }
 
     // MARK: - 选区控制点与吸附提示（ticket 19）
@@ -912,6 +944,19 @@ final class SelectionOverlayView: NSView {
         guard manager.canUndo else { return false }
         manager.undo()
         return true
+    }
+
+    /// 画选中标注身上的 8 个控制点。样式与选区控制点**一致**（白底 + 强调色描边）。
+    private func drawAnnotationHandles() {
+        for item in presentation.selectedAnnotationHandles {
+            let box = globalToLocal(item.frame)
+            let path = NSBezierPath(roundedRect: box, xRadius: 1.5, yRadius: 1.5)
+            NSColor.white.setFill()
+            path.fill()
+            NSColor.controlAccentColor.setStroke()
+            path.lineWidth = 1.5
+            path.stroke()
+        }
     }
 
     /// 输入框里当前的文本（没有输入框时为 `nil`）。

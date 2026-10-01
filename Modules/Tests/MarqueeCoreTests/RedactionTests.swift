@@ -115,25 +115,32 @@ struct RedactionFilterTests {
         _ = RedactionFilter.apply(.mosaic, to: patch, strength: 12)
         _ = RedactionFilter.apply(.blur, to: patch, strength: 12)
 
-        let mosaicClock = ContinuousClock()
-        let mosaicTime = mosaicClock.measure {
-            _ = RedactionFilter.apply(.mosaic, to: patch, strength: 12)
-        }
-        let blurClock = ContinuousClock()
-        let blurTime = blurClock.measure {
-            _ = RedactionFilter.apply(.blur, to: patch, strength: 12)
-        }
-
         func milliseconds(_ duration: Duration) -> Double {
             Double(duration.components.seconds) * 1000
                 + Double(duration.components.attoseconds) / 1e15
         }
-        let mosaicMS = milliseconds(mosaicTime)
-        let blurMS = milliseconds(blurTime)
-        print("打码实测（400×300）：马赛克 \(String(format: "%.2f", mosaicMS)) ms，模糊 \(String(format: "%.2f", blurMS)) ms")
 
-        #expect(mosaicMS < 50, "马赛克单次耗时 \(mosaicMS) ms")
-        #expect(blurMS < 50, "模糊单次耗时 \(blurMS) ms")
+        /// 取**多次里最快的一次**，而不是随便抽一次。
+        ///
+        /// ⚠️ 这条用例曾因为"跑测试的同时还在编译别的东西"而偶发变红（实测抖动到 >50 ms，
+        /// 而单独跑是 0.2 ms）。墙钟断言在别人机器上忙的时候一定会红，
+        /// 而"红了一次又自己变绿"会让人开始不信任整个测试套件 —— 那比少一条用例糟得多。
+        /// 取最小值是微基准的通行做法：最小值里没有"被打断"的成分。
+        func fastest(_ body: () -> Void, rounds: Int = 5) -> Double {
+            var best = Double.greatestFiniteMagnitude
+            for _ in 0..<rounds {
+                let clock = ContinuousClock()
+                best = min(best, milliseconds(clock.measure(body)))
+            }
+            return best
+        }
+
+        let mosaicMS = fastest { _ = RedactionFilter.apply(.mosaic, to: patch, strength: 12) }
+        let blurMS = fastest { _ = RedactionFilter.apply(.blur, to: patch, strength: 12) }
+        print("打码实测（400×300，取 5 次最快）：马赛克 \(String(format: "%.2f", mosaicMS)) ms，模糊 \(String(format: "%.2f", blurMS)) ms")
+
+        #expect(mosaicMS < 50, "马赛克单次最快耗时 \(mosaicMS) ms")
+        #expect(blurMS < 50, "模糊单次最快耗时 \(blurMS) ms")
     }
 }
 
