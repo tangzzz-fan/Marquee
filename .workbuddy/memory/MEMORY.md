@@ -39,6 +39,7 @@
 | 最近截图（16） | 仓库 `MarqueeHistory`：`index.json` + 原图 PNG + 标注 JSON（**分开存**，否则重编辑退化成在成品上再画）。接缝 `CaptureHistoryWriting` **在 Core**。复制＝重新栅格化。上限 20 / 面板 12；**只删自己写的文件** |
 | 打包分发（18） | `scripts/package.sh` 七步出 DMG（**签名核验不过就停**）；DMG 本身也签 + 公证 + 装订。更新走**手动指引**（引入 Sparkle 不值） |
 | 钉图（14） | 动作格 → 钉在最顶层、**钉在原位**（`anchor`）。**两个窗口**：本体 + 控制条（穿透 `ignoresMouseEvents` 后本体点不到自己）。滚轮缩放（**锚点左上角**）、四档不透明度、多张共存；`canBecomeKey = false`；`.canJoinAllSpaces`。状态在 `PinState`/`PinGeometry` |
+| **鼠标光标（26）** | 规则在 Core `OverlayCursor.kind(at:in:)` + `kind(for:)`，**按点分派、不用 cursor rect**（cursor rect 只能表达矩形，而"压着标注"要按形状判）。分派顺序＝`mouseDown` 那条：拖拽中→弹层→工具条（**灰格给箭头**）→文字输入框→控制点→长截图(箭头)→选了工具(内十字/外箭头)→没选工具(框内 openHand / 框外 crosshair)。视图在 **三处**问一次：`mouseMoved`、**`mouseDragged`**（拖拽期没有 mouseMoved）、presentation 变化时用 `NSEvent.mouseLocation` 补一次；多屏时**只由包含该点的那个视图**设，且同一值不重复 `set()` |
 | 选中标注的控制点（22） | 8 点，与选区控制点同一套样子/光标；**只有恰好选中一个**时才出。复用 `SelectionGeometry` 但**必须先过 `YDown.flip`**（不翻的表现是"拖上边动下边"）。`cancelStroke()` 是所有手势收尾的**唯一一处** |
 | 打码 / 裁切 | 打码走 **CoreImage**（比手写快 6 倍）。裁切只改 `cropRect`，**裁切外的标注保留不动**；拖框期间不进撤销栈 |
 | 窗口截图 + 就地标注 | **强制 `includeShadow: false`**（带阴影的图比窗口矩形大一圈 ⇒ 标注整体偏移） |
@@ -94,13 +95,13 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **104 条实现陷阱**（写代码前必扫） |
+| **`docs/PITFALLS.md`** | **110 条实现陷阱**（写代码前必扫） |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–U 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |
 | `docs/PRD.md` / `docs/SPIKE-PLAN.md` | 产品与方案设计 / 坑点清单 + 提前验证报告（37 项） |
 | `docs/DEV-NOTES.md` / `docs/RELEASE.md` | 开发循环的已知摩擦 / 打包公证更新的复现步骤 |
 | `docs/SCREEN-RECORDING-PERMISSION.md` / `docs/RENDER-BENCH.md` | 权限完整复盘 / 渲染技术实测 |
 | `Modules/Sources/MarqueeTestSupport/` | **测试专用**：合成长页 + 位图读取 / MAE |
-| `.scratch/issues/2026-09-30-marquee-mvp/` | **25 条 ticket + INDEX**；**全部落地**（`17` 拆成 `17a` 玻璃 / `17b` 本地化；`24` 工具条对齐参考），只剩人工验收 |
+| `.scratch/issues/2026-09-30-marquee-mvp/` | **26 条 ticket + INDEX**；**全部落地**（`17` 拆成 `17a` 玻璃 / `17b` 本地化；`24`–`26` 工具条/回归/光标），只剩人工验收 |
 | `Tools/Spikes/`、`Tools/RenderBench/` | 独立验证工具，与产品代码分离 |
 
 ## 工作流约定

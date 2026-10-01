@@ -251,6 +251,9 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
 
     public var isResizingAnnotations: Bool { resizeAnchor != nil }
 
+    /// 正在拖的那个控制点（`nil` = 没在缩）。给光标用：拖着哪个角就该显示哪个角的箭头。
+    public var resizingHandle: SelectionGeometry.Handle? { resizeAnchor?.handle }
+
     /// 按下：抓在控制点上就开始缩放。
     ///
     /// - Returns: 是否真的开始了。

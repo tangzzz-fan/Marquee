@@ -74,6 +74,16 @@ struct SelectionPresentation: Equatable {
     /// 那时拖动是画标注，摆着控制点会让人以为能拖角。
     var showsSelectionHandles: Bool = false
 
+    /// 鼠标该显示成什么样（ticket 26）。
+    ///
+    /// 几何在这里、**规则在 Core**（`OverlayCursor.kind(at:in:)`）：视图只负责
+    /// 拿当前点问一次、然后把答案换成 `NSCursor`。
+    ///
+    /// 为什么不继续用 `resetCursorRects`：光标要按**标注自己的形状**判（箭头是斜的、
+    /// 包围盒里大半是空白），而 cursor rect 只能表达矩形。近似成包围盒的结果是
+    /// "箭头旁边的空白处也伸出一只可拖的手"，点下去却什么都没选中。
+    var cursor: OverlayCursorContext = .empty
+
     /// 吸附命中的提示线（**Cocoa 全局坐标**，各是一条贯穿全屏的线）。
     /// 没有提示线的话，用户只会觉得"这里有点顿"，说不上来在吸什么。
     var snapGuideVertical: CGFloat?
@@ -250,15 +260,6 @@ final class SelectionOverlayView: NSView {
     var presentation: SelectionPresentation = .empty {
         didSet {
             guard presentation != oldValue else { return }
-            // 控制点 / 选区变了就得重算光标区，否则"看着有控制点、拖起来却是十字"。
-            // 标注身上那 8 个控制点同理 —— 漏掉它的话，刚选中一个标注时
-            // 控制点画出来了，但把鼠标移上去还是十字（要等下一次别的变化才刷新）。
-            if presentation.showsSelectionHandles != oldValue.showsSelectionHandles
-                || presentation.globalRect != oldValue.globalRect
-                || presentation.hoverRect != oldValue.hoverRect
-                || presentation.selectedAnnotationHandles != oldValue.selectedAnnotationHandles {
-                window?.invalidateCursorRects(for: self)
-            }
             // 只有放大镜在动时只重画它那一小块。
             //
             // 放大镜跟着光标走，鼠标一动就要重画；整屏重绘在 5K 屏上是实打实的开销，
@@ -271,6 +272,9 @@ final class SelectionOverlayView: NSView {
                 needsDisplay = true
             }
             syncToolbarChrome()
+            // 内容变了光标也可能变（选区落点、弹出面板、选中标注…），而**鼠标可能一动没动** ——
+            // 只靠 `mouseMoved` 更新的话，用户会看到"控制点出来了、光标还是十字"。
+            applyCursor(at: NSEvent.mouseLocation)
         }
     }
 
@@ -407,7 +411,11 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        delegate?.overlayView(self, draggedTo: cocoaPoint(of: event))
+        let point = cocoaPoint(of: event)
+        delegate?.overlayView(self, draggedTo: point)
+        // ⚠️ 拖拽中**不会**有 `mouseMoved`（走的是这条），而拖拽恰恰是最需要光标反馈的时候：
+        // 拖控制点时手型/箭头要一直跟着，松手前不能跳回十字。
+        applyCursor(at: point)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -416,7 +424,9 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        delegate?.overlayView(self, movedTo: cocoaPoint(of: event))
+        let point = cocoaPoint(of: event)
+        delegate?.overlayView(self, movedTo: point)
+        applyCursor(at: point)
     }
 
     override func updateTrackingAreas() {
@@ -477,21 +487,46 @@ final class SelectionOverlayView: NSView {
         delegate?.overlayView(self, optionChanged: event.modifierFlags.contains(.option))
     }
 
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .crosshair)
-        // 控制点上换成对应的缩放光标（ticket 19）。这是"这里能拖"的唯一提示 ——
-        // 没有它，用户得先试一下才知道能不能拖角。
-        // 选中标注身上的控制点（ticket 22 收尾）—— 同样是"这里能拖"的唯一提示。
-        for item in presentation.selectedAnnotationHandles {
-            addCursorRect(globalToLocal(item.frame), cursor: Self.cursor(for: item.handle))
-        }
+    // MARK: - 光标（ticket 26）
 
-        guard presentation.showsSelectionHandles,
-              let global = presentation.globalRect ?? presentation.hoverRect else { return }
-        let local = globalToLocal(global)
-        for handle in SelectionGeometry.Handle.allCases {
-            addCursorRect(SelectionGeometry.handleFrame(handle, on: local),
-                          cursor: Self.cursor(for: handle))
+    /// 上一次设上去的光标。
+    ///
+    /// 同一个值不重复 `set()`：鼠标移动是每帧都来的，每帧重设一次光标会让它**闪**，
+    /// 而且这种闪烁看起来像是系统卡了一下。
+    private var appliedCursor: OverlayCursorKind?
+
+    /// 按当前位置更新光标。
+    ///
+    /// ⚠️ 这里**不能**退回 `resetCursorRects` 那套：规则里有一条是"压着某个标注"
+    /// （要按标注自己的形状判），而 cursor rect 只能表达矩形 ——
+    /// 近似成包围盒之后，斜箭头旁边的空白处也会伸出一只可拖的手，点下去却什么都没选中。
+    ///
+    /// - Parameter globalPoint: **Cocoa 全局点**。
+    private func applyCursor(at globalPoint: CGPoint) {
+        // 不在这块屏上就什么都不做：别的屏的视图会管。多屏时每块屏一个视图，
+        // 而光标是系统级的 —— 不挡住的话会变成"最后刷新的一块屏说了算"。
+        guard bounds.contains(globalToLocal(globalPoint)) else { return }
+
+        var context = presentation.cursor
+        // 输入框的矩形只有视图自己知道（它按内容与屏幕边缘夹过），补进来。
+        // 少了它，光标会在输入框上显示成十字 —— 而那里是可以选字的。
+        context.textField = textInput.map { localToGlobal($0.frame) }
+
+        let kind = OverlayCursor.kind(at: globalPoint, in: context)
+        guard kind != appliedCursor else { return }
+        appliedCursor = kind
+        Self.cursor(for: kind).set()
+    }
+
+    private static func cursor(for kind: OverlayCursorKind) -> NSCursor {
+        switch kind {
+        case .arrow: .arrow
+        case .crosshair: .crosshair
+        case .pointingHand: .pointingHand
+        case .openHand: .openHand
+        case .closedHand: .closedHand
+        case .iBeam: .iBeam
+        case .resize(let handle): cursor(for: handle)
         }
     }
 
@@ -1078,6 +1113,12 @@ final class SelectionOverlayView: NSView {
     private func globalToLocal(_ point: CGPoint) -> CGPoint {
         let origin = window?.frame.origin ?? .zero
         return CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+    }
+
+    /// 本视图坐标 → Cocoa 全局坐标。光标规则吃的是全局点，输入框的矩形得换过去。
+    private func localToGlobal(_ rect: CGRect) -> CGRect {
+        let origin = window?.frame.origin ?? .zero
+        return rect.offsetBy(dx: origin.x, dy: origin.y)
     }
 
     // MARK: - 文字输入框（ticket 22）

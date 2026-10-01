@@ -1317,12 +1317,12 @@ public final class SelectionOverlayController {
         return CGPoint(x: rect.minX, y: rect.maxY)
     }
 
-    /// 与 `annotationPoint` 同义，但**不会因为"还没有画布"而返回 nil**。
+    /// 把鼠标位置（Cocoa 全局点）换成标注坐标系里的点（原点＝选区左上角、y 向下）。
     ///
-    /// 选择工具要拿到点去命中测试；此时若 `annotationRect()` 为 nil，
-    /// 说明状态本身就不对（选中工具却还没有选区），当作原点处理即可 ——
-    /// 返回 nil 会把调用方逼成"静默什么都不做"，那种失败没人查得出来。
-    /// 把鼠标位置（Cocoa 全局点）换成标注坐标系里的点。
+    /// - Returns: `nil` = **现在还没有画布**（还没落点）。调用方必须显式处理它 ——
+    ///   曾经有个 `?? .zero` 的兜底把"没有画布"变成了"画布左上角"，
+    ///   于是"按在空白处"这类判据在任何状态下都成立，**自由框选整条路被堵死**
+    ///   （见 PITFALLS 101）。所以这里永远返回 `nil`，不兜底。
     private func annotationPoint(_ globalPoint: CGPoint) -> CGPoint? {
         guard let rect = annotationRect() else { return nil }
         return CGPoint(x: globalPoint.x - rect.minX, y: rect.maxY - globalPoint.y)
@@ -1418,6 +1418,10 @@ public final class SelectionOverlayController {
         presentation.redactionBackdrop = redactionBackdrop.map {
             RedactionBackdropPresentation(image: $0.image, scale: $0.scale)
         }
+
+        // 光标（ticket 26）**必须最后算**：它要读上面刚挂好的工具条 / 控制点几何，
+        // 提前算的话拿到的是上一帧的位置 —— 表现是"工具条移过去了、手型还留在原处"。
+        presentation.cursor = cursorContext(for: presentation)
 
         for overlay in overlays {
             overlay.view.presentation = presentation
@@ -2191,6 +2195,79 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
                               width: local.width,
                               height: local.height)
             )
+        }
+    }
+
+    // MARK: - 光标（ticket 26）
+
+    /// 光标规则要吃的那份上下文。
+    ///
+    /// 几何**全部在这里算好**（Cocoa 全局点），Core 那条规则只做判断 ——
+    /// 与"视图不做几何判断"是同一条约定，好处是规则可以脱机单测、
+    /// 而多屏 / 翻转这类容易错的地方仍然只有一处。
+    ///
+    /// - Parameter presentation: **正在拼的那一版**。传进来而不是读一个属性 ——
+    ///   它在 `refresh()` 里是局部的，读属性会拿到上一帧的几何。
+    private func cursorContext(for presentation: SelectionPresentation) -> OverlayCursorContext {
+        var context = OverlayCursorContext()
+        context.drag = cursorDrag
+        context.isSettled = session.isSettled
+        context.isScrollCapturing = hasScrollSession
+        // 落点前是 `nil`（正在拖的那个选区不算画布），落点后才是能标注的区域。
+        // 两者混用的话，拖着找选区的时候光标会提前变成"可以画标注"。
+        context.canvas = session.isSettled ? annotationRect() : nil
+        context.tool = annotationSession.tool
+        context.toolbar = presentation.toolbar?.frame
+        context.palette = presentation.toolbar?.palette?.frame
+
+        // 选区控制点：`handleFrame` 只跟中心点有关，所以直接拿全局矩形算，
+        // 不必先换算到局部再换回来（少一次转换就少一次翻错 y 的机会）。
+        if presentation.showsSelectionHandles, let rect = annotationRect() {
+            context.selectionHandles = SelectionGeometry.Handle.allCases.map {
+                OverlayCursorContext.HandleRegion(handle: $0,
+                                                  frame: SelectionGeometry.handleFrame($0, on: rect))
+            }
+        }
+        context.annotationHandles = presentation.selectedAnnotationHandles.map {
+            OverlayCursorContext.HandleRegion(handle: $0.handle, frame: $0.frame)
+        }
+
+        // 标注的包围盒：从**选区局部点**（原点左上、y 向下）换成 Cocoa 全局点。
+        // 这也是唯一一处做这个换算的地方（`annotationHandleFrames` 同款），
+        // 写成 `origin.y + local.minY` 不会崩，只会让"压着标注"的判定上下镜像。
+        if let origin = annotationOrigin() {
+            context.annotationFrames = annotationSession.annotations.map { annotation in
+                let box = annotation.frame.standardized
+                return CGRect(x: origin.x + box.minX,
+                              y: origin.y - box.maxY,
+                              width: box.width,
+                              height: box.height)
+            }
+        }
+
+        var disabled: Set<OverlayToolbarSlot> = []
+        if !annotationSession.canUndo { disabled.insert(.undo) }
+        if !annotationSession.canRedo { disabled.insert(.redo) }
+        // 识别进行中那一格换成了沙漏的样子，再点一次不会有新的事情发生
+        if textRecognition?.isRunning == true { disabled.insert(.ocr) }
+        context.disabledSlots = disabled
+
+        return context
+    }
+
+    /// 这次拖拽对应哪种光标。
+    ///
+    /// `.stroke` 要分两义（画一笔 / 挪一个标注），判据与会话里那条完全一样 ——
+    /// 各写各的话，迟早出现"手上是合上的手、图里却在画新矩形"。
+    private var cursorDrag: OverlayCursorContext.Drag {
+        switch dragMode {
+        case .none: .none
+        case .select: .selection
+        case .move: .movingSelection
+        case .resize(let handle, _): .resizingSelection(handle)
+        case .stroke: annotationSession.isMovingAnnotations ? .movingAnnotation : .drawingAnnotation
+        case .annotationResize:
+            annotationSession.resizingHandle.map { .resizingAnnotation($0) } ?? .none
         }
     }
 
