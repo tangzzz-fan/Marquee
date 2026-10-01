@@ -137,11 +137,11 @@ public enum CaptureError: Error, Equatable, Sendable {
     public var localizedDescription: String {
         switch self {
         case .displayNotFound(let id):
-            "没找到 ID 为 \(id) 的显示器"
+            L10n.t("没找到 ID 为 \(id) 的显示器")
         case .windowNotFound(let id):
-            "没找到窗口 \(id)，它可能已经关掉了"
+            L10n.t("没找到窗口 \(id)，它可能已经关掉了")
         case .notImplemented(let detail):
-            "尚未实现：\(detail)"
+            L10n.t("尚未实现：\(detail)")
         }
     }
 }

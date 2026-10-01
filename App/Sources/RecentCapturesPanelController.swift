@@ -99,7 +99,7 @@ final class RecentCapturesPanelController: NSViewController {
     // MARK: - 行
 
     private func emptyLabel() -> NSView {
-        let label = NSTextField(labelWithString: "还没有截图。按 ⌃Q 截一张，它会出现在这里。")
+        let label = NSTextField(labelWithString: L10n.t("还没有截图。按 ⌃Q 截一张，它会出现在这里。"))
         label.font = .systemFont(ofSize: 12)
         label.textColor = .secondaryLabelColor
         label.maximumNumberOfLines = 2
@@ -117,7 +117,7 @@ final class RecentCapturesPanelController: NSViewController {
         thumbnail.image = Self.thumbnail(at: store.directoryURL.appendingPathComponent(entry.originalFileName))
         thumbnail.imageScaling = .scaleProportionallyUpOrDown
         thumbnail.identifier = NSUserInterfaceItemIdentifier(entry.id.uuidString)
-        thumbnail.toolTip = "点击复制到剪贴板"
+        thumbnail.toolTip = L10n.t("点击复制到剪贴板")
         thumbnail.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             thumbnail.widthAnchor.constraint(equalToConstant: Self.thumbnailSize.width),
@@ -135,10 +135,10 @@ final class RecentCapturesPanelController: NSViewController {
         texts.alignment = .leading
         texts.spacing = 2
 
-        let edit = smallButton("编辑", action: #selector(editEntry(_:)), tag: entry.id)
-        edit.toolTip = "在编辑器里打开（原有的标注仍可编辑）"
-        let remove = smallButton("删除", action: #selector(deleteEntry(_:)), tag: entry.id)
-        remove.toolTip = "从历史里删掉（连磁盘上的文件一起清）"
+        let edit = smallButton(L10n.t("编辑"), action: #selector(editEntry(_:)), tag: entry.id)
+        edit.toolTip = L10n.t("在编辑器里打开（原有的标注仍可编辑）")
+        let remove = smallButton(L10n.t("删除"), action: #selector(deleteEntry(_:)), tag: entry.id)
+        remove.toolTip = L10n.t("从历史里删掉（连磁盘上的文件一起清）")
 
         let row = NSStackView(views: [thumbnail, texts, NSView(), edit, remove])
         row.orientation = .horizontal
@@ -190,14 +190,14 @@ final class RecentCapturesPanelController: NSViewController {
 
     private static func describe(_ entry: CaptureHistoryEntry) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "M月d日 HH:mm"
+        formatter.dateFormat = "M月d日 HH:mm"   // L10N-EXEMPT: DateFormatter 的格式串，该走 dateFormatFromTemplate，不是文案
         return formatter.string(from: entry.capturedAt)
     }
 
     private static func describeDetail(_ entry: CaptureHistoryEntry) -> String {
         let size = "\(Int(entry.pixelSize.width))×\(Int(entry.pixelSize.height))"
         guard entry.annotationCount > 0 else { return "\(size) px" }
-        return "\(size) px · \(entry.annotationCount) 个标注"
+        return L10n.t("\(size) px · \(entry.annotationCount) 个标注")
     }
 
     /// 按目标尺寸解码，**不解码整图**（见类型文档）。

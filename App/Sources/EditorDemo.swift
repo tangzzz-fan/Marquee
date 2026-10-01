@@ -65,12 +65,12 @@ enum EditorDemo {
                                     fontSize: 36)
 
         let text = Annotation(kind: .text,
-                              frame: AnnotationText.frame(text: "文字标注 ABC",
+                              frame: AnnotationText.frame(text: L10n.t("文字标注 ABC"),
                                                           fontSize: red.fontSize,
                                                           origin: CGPoint(x: 60, y: 60)),
                               style: red,
                               zIndex: 5,
-                              text: "文字标注 ABC")
+                              text: L10n.t("文字标注 ABC"))
 
         let counter = Annotation.counter(number: 1,
                                          style: blue,

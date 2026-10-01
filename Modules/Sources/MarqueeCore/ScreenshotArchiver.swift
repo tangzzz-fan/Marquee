@@ -79,13 +79,13 @@ public enum ScreenshotArchiver {
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         } catch {
-            return .failure(ArchiveFailure(message: "无法创建保存目录 \(directory.path)：\(error.localizedDescription)。剪贴板里的图仍然可用"))
+            return .failure(ArchiveFailure(message: L10n.t("无法创建保存目录 \(directory.path)：\(error.localizedDescription)。剪贴板里的图仍然可用")))
         }
 
         guard let data = ImageEncoding.data(from: image,
                                             format: request.settings.format,
                                             quality: request.settings.quality) else {
-            return .failure(ArchiveFailure(message: "截图编码为 \(request.settings.format.rawValue.uppercased()) 失败，剪贴板里的图仍然可用"))
+            return .failure(ArchiveFailure(message: L10n.t("截图编码为 \(request.settings.format.rawValue.uppercased()) 失败，剪贴板里的图仍然可用")))
         }
 
         var sequence = max(0, request.sequence)
@@ -103,12 +103,12 @@ public enum ScreenshotArchiver {
                     try data.write(to: url, options: .withoutOverwriting)
                     return .success(ArchiveWriteResult(url: url, sequenceUsed: sequence))
                 } catch {
-                    return .failure(ArchiveFailure(message: "无法写入 \(url.path)：\(error.localizedDescription)。剪贴板里的图仍然可用"))
+                    return .failure(ArchiveFailure(message: L10n.t("无法写入 \(url.path)：\(error.localizedDescription)。剪贴板里的图仍然可用")))
                 }
             }
             sequence += 1
         }
-        return .failure(ArchiveFailure(message: "保存失败：\(directory.path) 里同名文件太多，剪贴板里的图仍然可用"))
+        return .failure(ArchiveFailure(message: L10n.t("保存失败：\(directory.path) 里同名文件太多，剪贴板里的图仍然可用")))
     }
 }
 

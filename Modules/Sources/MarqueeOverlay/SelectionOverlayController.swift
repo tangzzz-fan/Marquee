@@ -136,6 +136,7 @@ public final class SelectionOverlayController {
 
         /// 日志用。不带它的话，"状态没收尾"那条 warning 只能说"非空"，
         /// 而想知道是哪一类拖拽漏了收尾还得回去读代码。
+        // L10N-EXEMPT-START: 手势档位名，写进日志用来自证「是哪一类拖拽」，不是给用户读的
         var label: String {
             switch self {
             case .none: "none"
@@ -146,6 +147,7 @@ public final class SelectionOverlayController {
             case .annotationResize: "annotationResize(缩标注)"
             }
         }
+        // L10N-EXEMPT-END
     }
     private var dragMode: DragMode = .none
     /// 一次泄漏只报一条日志（探针挂在 `refresh` 上，不拦着会刷屏）。
@@ -263,7 +265,7 @@ public final class SelectionOverlayController {
 
         guard !displayGeometries.isEmpty,
               let height = ScreenCoordinateConversion.primaryScreenHeight(in: displayGeometries) else {
-            onFinish(.completed(.failed(CaptureFailure(message: "没找到可用的显示器")),
+            onFinish(.completed(.failed(CaptureFailure(message: L10n.t("没找到可用的显示器"))),
                                 after: [], anchor: nil))
             return
         }
@@ -447,7 +449,7 @@ public final class SelectionOverlayController {
             let isRedo = event.modifierFlags.contains(.shift)
             let changed = isRedo ? annotationSession.redo() : annotationSession.undo()
             if changed {
-                let action = isRedo ? "重做" : "撤销"
+                let action = isRedo ? L10n.t("重做") : L10n.t("撤销")
                 logger.info("快捷键：\(action, privacy: .public)")
             }
             refresh()
@@ -709,11 +711,11 @@ public final class SelectionOverlayController {
     private func magnifierLines() -> [(text: String, color: NSColor)] {
         guard let color = sampledColor else { return [] }
         guard isOptionDown else {
-            return [("按住 ⌥ 取色", ReadoutStyle.hint)]
+            return [(L10n.t("按住 ⌥ 取色"), ReadoutStyle.hint)]
         }
         return [(color.hexString, ReadoutStyle.normal),
                 (color.rgbString, ReadoutStyle.hint),
-                ("点击复制", ReadoutStyle.hint)]
+                (L10n.t("点击复制"), ReadoutStyle.hint)]
     }
 
     /// 把放大镜的变化推给视图。
@@ -771,7 +773,7 @@ public final class SelectionOverlayController {
         let text = color.string(in: copyFormat)
         clipboard.writeText(text)
 
-        magnifierStatus = "已复制 \(text)"
+        magnifierStatus = L10n.t("已复制 \(text)")
         rebuildMagnifier()
 
         magnifierStatusTask?.cancel()
@@ -933,8 +935,8 @@ public final class SelectionOverlayController {
 
         if postEventPermission.currentPostEventPermission() != .granted,
            !postEventPermission.requestPostEventPermission() {
-            autoScrollMessage = "自动滚动需要「辅助功能」授权（系统设置 → 隐私与安全性 → 辅助功能）。"
-                + "也可以自己滚 —— 手动模式一样能拼长图"
+            autoScrollMessage = L10n.t("自动滚动需要「辅助功能」授权（系统设置 → 隐私与安全性 → 辅助功能）。")
+                + L10n.t("也可以自己滚 —— 手动模式一样能拼长图")
             refresh()
             return
         }
@@ -1214,10 +1216,12 @@ public final class SelectionOverlayController {
         }
         guard !hasWarnedAboutDragLeak else { return }
         hasWarnedAboutDragLeak = true
+    // L10N-EXEMPT-START: 拖拽状态没收尾的警告日志
         logger.warning("""
         拖拽状态没收尾：鼠标已松开，dragMode 仍是 \(self.dragMode.label, privacy: .public) \
         —— 注意先确认它是在**哪个时刻**被读到的（`endedDragAt` 里分派与 `refresh()` 的先后）
         """)
+    // L10N-EXEMPT-END
     }
 
     /// 标注坐标系的**原点**（Cocoa 全局点）：选区的**视觉左上角**。
@@ -1296,7 +1300,7 @@ public final class SelectionOverlayController {
                 hoverLabel: "",
                 hoverCornerRadius: 12,
                 hintAnchor: NSEvent.mouseLocation,
-                hintText: "长截图：拖出要滚动的区域，或单击要滚动的窗口"
+                hintText: L10n.t("长截图：拖出要滚动的区域，或单击要滚动的窗口")
             )
         } else {
             presentation = .empty
@@ -1349,21 +1353,21 @@ public final class SelectionOverlayController {
         // 识别完会在几秒后自动让位（见 `setOCRStatus`）。
         if let ocrStatus { return ocrStatus }
         if annotationSession.isEditingText {
-            return "输入文字 · ⏎ 确认 · Esc 放弃"
+            return L10n.t("输入文字 · ⏎ 确认 · Esc 放弃")
         }
         if annotationSession.isSelecting {
             let count = annotationSession.selectedAnnotations.count
             return count > 0
-                ? "已选中 \(count) 个标注  ·  拖动移动  ·  Delete 删除  ·  Esc 取消选择"
-                : "点一个标注选中它  ·  再点一次工具图标退出  ·  Esc 取消工具"
+                ? L10n.t("已选中 \(count) 个标注  ·  拖动移动  ·  Delete 删除  ·  Esc 取消选择")
+                : L10n.t("点一个标注选中它  ·  再点一次工具图标退出  ·  Esc 取消工具")
         }
         if annotationSession.isDrawing {
             if annotationSession.usesRedaction, redactionBackdrop == nil {
-                return "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图"
+                return L10n.t("⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图")
             }
-            return "在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具"
+            return L10n.t("在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具")
         }
-        return "拖角改大小 · 框内拖动移动  ·  选个工具可直接标注  ·  ⏎ 确认  ·  Esc 取消"
+        return L10n.t("拖角改大小 · 框内拖动移动  ·  选个工具可直接标注  ·  ⏎ 确认  ·  Esc 取消")
     }
 
     private func updateHover(at cocoaPoint: CGPoint) {
@@ -1387,10 +1391,10 @@ public final class SelectionOverlayController {
                                     locked: Bool) -> SelectionPresentation {
         var hint = ""
         if locked {
-            hint += "  ·  ⏎ 确认"
+            hint += L10n.t("  ·  ⏎ 确认")
         }
         if isOptionDown {
-            hint += "  ·  ⌥ 无阴影"
+            hint += L10n.t("  ·  ⌥ 无阴影")
         }
         return SelectionPresentation(
             globalRect: nil,
@@ -1408,20 +1412,20 @@ public final class SelectionOverlayController {
         let autoScrolling = autoScrollDriver != nil
         var status: String
         if autoScrolling {
-            status = "自动滚动中 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧"
+            status = L10n.t("自动滚动中 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧")
         } else {
             status = progress.frameCount <= 1
-                ? "长截图已开始 · 往下滚"
-                : "长截图 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧"
+                ? L10n.t("长截图已开始 · 往下滚")
+                : L10n.t("长截图 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧")
         }
         if let milliseconds = progress.lastRegistrationMilliseconds {
-            status += String(format: " · 配准 %.0f ms", milliseconds)
+            status += String(format: L10n.t(" · 配准 %.0f ms"), milliseconds)
         }
         // 提示行必须跟着状态走：自动滚动期间用户不需要"自己滚"的提示，
         // 他需要知道"怎么停"。反之亦然 —— 不写这一条，第一个问题就是"怎么不动了"。
         let hint = autoScrolling
-            ? "自动滚动中 · 空格停止 · Esc 停止（已拼的保留）· ⏎ 结束"
-            : "继续往下滚，或按空格自动滚 · ⏎ 结束 · ⌘S 结束并保存 · Esc 取消"
+            ? L10n.t("自动滚动中 · 空格停止 · Esc 停止（已拼的保留）· ⏎ 结束")
+            : L10n.t("继续往下滚，或按空格自动滚 · ⏎ 结束 · ⌘S 结束并保存 · Esc 取消")
         return SelectionPresentation(
             globalRect: rect,
             sizeText: "",
@@ -1664,7 +1668,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
                 return
             }
             let committed = annotationSession.endStroke(at: local)
-            let verdict = committed ? "已落一个" : "太短，丢弃"
+            let verdict = committed ? L10n.t("已落一个") : L10n.t("太短，丢弃")
             logger.info("标注收笔：\(verdict, privacy: .public)，当前共 \(self.annotationSession.annotations.count) 个")
             refresh()
             return
@@ -1851,7 +1855,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         switch slot {
         case .tool(let tool):
             annotationSession.toggle(tool: tool)
-            let current = annotationSession.tool?.rawValue ?? "无"
+            let current = annotationSession.tool?.rawValue ?? L10n.t("无")
             logger.info("工具栏：点了工具 \(tool.rawValue, privacy: .public) → 当前选中 \(current, privacy: .public)")
 
         case .color(let index):
@@ -2074,12 +2078,12 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     /// （鼠标事件都被覆盖层吃了），所以对识别来说没有实际影响。
     private func runTextRecognition() {
         guard let recognition = textRecognition else {
-            setOCRStatus("这台机器上没有可用的文字识别（Vision 不可用）")
+            setOCRStatus(L10n.t("这台机器上没有可用的文字识别（Vision 不可用）"))
             return
         }
         guard !recognition.isRunning else { return }
         guard !hasScrollSession, let rect = session.rect, rect.width >= 1, rect.height >= 1 else {
-            setOCRStatus("先框出一块区域，再点识别")
+            setOCRStatus(L10n.t("先框出一块区域，再点识别"))
             return
         }
 
@@ -2090,13 +2094,13 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
                                                        displays: displayGeometries,
                                                        frames: lensFrames.mapValues(\.image)) else {
             // 冻结帧还没到（跨屏时会按需去取）。**说清楚**，别让用户以为功能坏了。
-            setOCRStatus("还没拿到这块区域的像素 —— 稍等一下再点一次")
+            setOCRStatus(L10n.t("还没拿到这块区域的像素 —— 稍等一下再点一次"))
             return
         }
 
         // 不自动消失：识别可能很久（没预热时首次约 25 秒），
         // 中途被清掉的话用户只会看到"点了没反应"。
-        setOCRStatus("正在识别文字…", autoClearAfter: nil)
+        setOCRStatus(L10n.t("正在识别文字…"), autoClearAfter: nil)
 
         Task { [weak self] in
             guard let self else { return }
@@ -2104,10 +2108,10 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             guard !self.isFinishing else { return }
             if case .ready = recognition.state {
                 self.clipboard?.writeText(recognition.text)
-                self.setOCRStatus((recognition.message ?? "识别完成") + " · 已复制到剪贴板")
+                self.setOCRStatus((recognition.message ?? L10n.t("识别完成")) + L10n.t(" · 已复制到剪贴板"))
                 self.logger.info("OCR 完成，文本已写进剪贴板")
             } else {
-                self.setOCRStatus(recognition.message ?? "识别失败")
+                self.setOCRStatus(recognition.message ?? L10n.t("识别失败"))
             }
         }
     }

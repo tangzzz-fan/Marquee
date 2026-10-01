@@ -49,7 +49,7 @@
 | 跨屏选区 | 逐屏取交集后拼接，输出 scale 取参与屏里**最大**的 |
 | OCR（13） | 入口是**动作**不是工具；**启动必须预热**（首次 25 s）。⚠️ ticket 21 曾因此把它的唯一入口藏了（PITFALLS 69）。**23 已接进覆盖层工具栏**；编辑器里那份保留。**两处共用同一识别器实例** |
 | **悬浮面板材质（17a）** | 覆盖层工具条 / 钉图控制条 / 倒计时 HUD 换系统材质。**决策点＝`ChromeMaterial.resolved(glassAvailable:)`（入参化 ⇒ 可脱机单测）**；参数在 `ChromeStyle`，两分支**同源**。15.x 退 `NSVisualEffectView(.hudWindow)`（深色，浅色模式下白字才不糊）。自检 `defaults write dev.tango.Marquee chrome.forceHUD -bool YES`。**工具条＝两个兄弟子视图**（材质底 + 前景）；读数框/提示框**留平深色**；编辑器窗口不动（PITFALLS 89–92） |
-| **本地化（17b，未开工）** | 现状：**0 处**设施；硬编码中文 **220 处 / 205 唯一 / 25 文件**，**40 处是插值串**。已定：catalog **只有一份**放 `App/Sources/Localizable.xcstrings`（App 是唯一宿主 ⇒ 全模块查 `Bundle.main`）、**key ＝中文原句**、`value: key` 让"漏翻"退化成显示中文而不是显示 key。**插值串必须 `String(format: L10n.t("…%@…"), x)`**，直接包会**静默失效**。`logger` 日志不翻 |
+| **本地化（17b）** | **单一 catalog**：`App/Resources/Localizable.xcstrings`（`project.yml` 里**显式** `buildPhase: resources`，不走 syncedFolder）+ `options.developmentLanguage: zh-Hans`。**key ＝中文原句**；`L10n.t` 收 `String.LocalizationValue`（插值直接写在字面量里 —— 拼好再传 `String` 会**静默失效**）。**说明符按类型**：`Int`→`%lld`、`Int32`/`OSStatus`→`%d`、`UInt32`→`%u`、`String`→`%@`、`Double`/`CGFloat`→`%lf`（实测，勿靠记忆）。不翻的用 `// L10N-EXEMPT[-START/-END]: 理由`。**6 条扫描测试**（含扫描器自检）。188 key / 197 处 |
 
 ## 构建与测试（走脚本，不要手敲裸命令）
 
@@ -94,13 +94,13 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **92 条实现陷阱**（写代码前必扫） |
-| **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–S 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |
+| **`docs/PITFALLS.md`** | **97 条实现陷阱**（写代码前必扫） |
+| **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–U 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |
 | `docs/PRD.md` / `docs/SPIKE-PLAN.md` | 产品与方案设计 / 坑点清单 + 提前验证报告（37 项） |
 | `docs/DEV-NOTES.md` / `docs/RELEASE.md` | 开发循环的已知摩擦 / 打包公证更新的复现步骤 |
 | `docs/SCREEN-RECORDING-PERMISSION.md` / `docs/RENDER-BENCH.md` | 权限完整复盘 / 渲染技术实测 |
 | `Modules/Sources/MarqueeTestSupport/` | **测试专用**：合成长页 + 位图读取 / MAE |
-| `.scratch/issues/2026-09-30-marquee-mvp/` | **24 条 ticket + INDEX**；`17` 拆成 `17a`（已完成）/ `17b`（**唯一未开工**） |
+| `.scratch/issues/2026-09-30-marquee-mvp/` | **24 条 ticket + INDEX**；**全部落地**（`17` 拆成 `17a` 玻璃 / `17b` 本地化），只剩人工验收 |
 | `Tools/Spikes/`、`Tools/RenderBench/` | 独立验证工具，与产品代码分离 |
 
 ## 工作流约定

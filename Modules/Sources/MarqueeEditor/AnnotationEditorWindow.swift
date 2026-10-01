@@ -63,7 +63,7 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered,
                               defer: false)
-        window.title = "标注"
+        window.title = L10n.t("标注")
         window.minSize = Self.minimumSize
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
@@ -196,24 +196,24 @@ private struct AnnotationEditorView: View {
 
     private var toolbar: some View {
         HStack(spacing: 4) {
-            toolButton(.select, systemImage: "cursorarrow", title: "选择")
-            toolButton(.rectangle, systemImage: "rectangle", title: "矩形")
-            toolButton(.ellipse, systemImage: "circle", title: "椭圆")
-            toolButton(.arrow, systemImage: "arrow.up.right", title: "箭头")
-            toolButton(.pen, systemImage: "pencil.tip", title: "画笔")
-            toolButton(.text, systemImage: "textformat", title: "文字")
-            toolButton(.mosaic, systemImage: "checkerboard.rectangle", title: "马赛克")
-            toolButton(.blur, systemImage: "camera.filters", title: "模糊")
+            toolButton(.select, systemImage: "cursorarrow", title: L10n.t("选择"))
+            toolButton(.rectangle, systemImage: "rectangle", title: L10n.t("矩形"))
+            toolButton(.ellipse, systemImage: "circle", title: L10n.t("椭圆"))
+            toolButton(.arrow, systemImage: "arrow.up.right", title: L10n.t("箭头"))
+            toolButton(.pen, systemImage: "pencil.tip", title: L10n.t("画笔"))
+            toolButton(.text, systemImage: "textformat", title: L10n.t("文字"))
+            toolButton(.mosaic, systemImage: "checkerboard.rectangle", title: L10n.t("马赛克"))
+            toolButton(.blur, systemImage: "camera.filters", title: L10n.t("模糊"))
             cropButton
 
             // 序号是**文字工具的一个预设**，不占独立工具位（PRD：工具栏 ≤ 9 个工具）
             if session.tool == .text {
                 toolbarSeparator
-                presetButton("文字", preset: .plain)
-                presetButton("序号", preset: .counter)
+                presetButton(L10n.t("文字"), preset: .plain)
+                presetButton(L10n.t("序号"), preset: .counter)
                 if session.textPreset == .counter {
                     HStack(spacing: 2) {
-                        Text("起始 \(session.nextCounter)")
+                        Text(L10n.t("起始 \(session.nextCounter)"))
                             .font(.system(size: 11))
                             .foregroundStyle(.white.opacity(0.6))
                             .frame(width: 44, alignment: .trailing)
@@ -221,7 +221,7 @@ private struct AnnotationEditorView: View {
                             .labelsHidden()
                             .controlSize(.mini)
                     }
-                    .help("序号从几开始（后续每放一个自增）")
+                    .help(L10n.t("序号从几开始（后续每放一个自增）"))
                 }
             }
 
@@ -236,7 +236,7 @@ private struct AnnotationEditorView: View {
                         .overlay(Circle().stroke(Color.white.opacity(session.style.stroke == color ? 0.95 : 0.25), lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
-                .help("描边颜色")
+                .help(L10n.t("描边颜色"))
             }
             toolbarSeparator
             sizeControls
@@ -252,7 +252,7 @@ private struct AnnotationEditorView: View {
             // 原来这里只有一行「Esc 复制并关闭」的小字 —— 用户不会天然想到"Esc = 完成"，
             // 而"取消"这个动作干脆没有入口。
             if let ocr {
-                iconButton(ocr.isRunning ? "识别中…" : "识别文字",
+                iconButton(ocr.isRunning ? L10n.t("识别中…") : L10n.t("识别文字"),
                            systemImage: ocr.isRunning ? "hourglass" : "text.viewfinder",
                            isActive: showOCRPanel,
                            isEnabled: !ocr.isRunning) {
@@ -262,24 +262,24 @@ private struct AnnotationEditorView: View {
                 toolbarSeparator
             }
 
-            iconButton("撤销", systemImage: "arrow.uturn.backward",
+            iconButton(L10n.t("撤销"), systemImage: "arrow.uturn.backward",
                        isEnabled: session.canUndo) {
                 session.undo()
             }
-            iconButton("重做", systemImage: "arrow.uturn.forward",
+            iconButton(L10n.t("重做"), systemImage: "arrow.uturn.forward",
                        isEnabled: session.canRedo) {
                 session.redo()
             }
 
             toolbarSeparator
 
-            iconButton("保存到磁盘并关闭（⌘S）", systemImage: "square.and.arrow.down") {
+            iconButton(L10n.t("保存到磁盘并关闭（⌘S）"), systemImage: "square.and.arrow.down") {
                 saveAndClose()
             }
-            iconButton("取消（丢弃刚画的标注，不改剪贴板）", systemImage: "xmark") {
+            iconButton(L10n.t("取消（丢弃刚画的标注，不改剪贴板）"), systemImage: "xmark") {
                 onClose()
             }
-            iconButton("完成（复制到剪贴板并关闭）",
+            iconButton(L10n.t("完成（复制到剪贴板并关闭）"),
                        systemImage: "checkmark",
                        tint: Color(red: 0.24, green: 0.82, blue: 0.42)) {
                 copyAndClose()
@@ -304,7 +304,7 @@ private struct AnnotationEditorView: View {
         if showOCRPanel, let service = ocr {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    Text("识别文字")
+                    Text(L10n.t("识别文字"))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
@@ -317,7 +317,7 @@ private struct AnnotationEditorView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.white.opacity(0.55))
-                    .help("关闭")
+                    .help(L10n.t("关闭"))
                 }
 
                 if let message = service.message {
@@ -343,7 +343,7 @@ private struct AnnotationEditorView: View {
                     Button {
                         copyText(result.fullText)
                     } label: {
-                        Text("全部复制")
+                        Text(L10n.t("全部复制"))
                             .font(.system(size: 12, weight: .medium))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
@@ -404,12 +404,12 @@ private struct AnnotationEditorView: View {
 
     private var sizeTarget: (kind: SizeTargetKind, values: [CGFloat], label: String) {
         if session.tool == .mosaic || session.tool == .blur || selectionContainsRedaction {
-            return (.strength, redactionStrengths, "打码强度")
+            return (.strength, redactionStrengths, L10n.t("打码强度"))
         }
         if session.tool == .text || selectionContainsText {
-            return (.fontSize, fontSizes, "字号")
+            return (.fontSize, fontSizes, L10n.t("字号"))
         }
-        return (.lineWidth, lineWidths, "线宽")
+        return (.lineWidth, lineWidths, L10n.t("线宽"))
     }
 
     private func isActiveSize(_ value: CGFloat, target: SizeTargetKind) -> Bool {
@@ -502,7 +502,7 @@ private struct AnnotationEditorView: View {
         if let id = editingID, let annotation = textAnnotation(id) {
             let rect = viewport.viewRect(forImage: annotation.frame,
                                          cropOrigin: session.document.cropRect.origin)
-            TextField("输入文字", text: $editingText)
+            TextField(L10n.t("输入文字"), text: $editingText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .padding(.horizontal, 8)
@@ -852,7 +852,7 @@ private struct AnnotationEditorView: View {
 
     /// 裁切是**模式**不是工具：它不改文档，只是让你调好框再回车。
     private var cropButton: some View {
-        iconButton(session.isCropping ? "裁切中：回车应用 · Esc 取消" : "裁切",
+        iconButton(session.isCropping ? L10n.t("裁切中：回车应用 · Esc 取消") : L10n.t("裁切"),
                    systemImage: "crop",
                    isActive: session.isCropping) {
             if session.isCropping {
@@ -865,19 +865,19 @@ private struct AnnotationEditorView: View {
 
     private var zoomControls: some View {
         HStack(spacing: 0) {
-            iconButton("缩小", systemImage: "minus.magnifyingglass") { zoom(by: 1 / 1.25) }
+            iconButton(L10n.t("缩小"), systemImage: "minus.magnifyingglass") { zoom(by: 1 / 1.25) }
             Text("\(Int((viewport.scale * 100).rounded()))%")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.75))
                 .frame(width: 40)
-            iconButton("放大", systemImage: "plus.magnifyingglass") { zoom(by: 1.25) }
+            iconButton(L10n.t("放大"), systemImage: "plus.magnifyingglass") { zoom(by: 1.25) }
         }
     }
 
     private func toolButton(_ tool: AnnotationEditorTool,
                             systemImage: String,
                             title: String) -> some View {
-        iconButton(session.tool == tool ? "\(title)（当前工具）" : title,
+        iconButton(session.tool == tool ? L10n.t("\(title)（当前工具）") : title,
                    systemImage: systemImage,
                    isActive: session.tool == tool) {
             session.tool = tool

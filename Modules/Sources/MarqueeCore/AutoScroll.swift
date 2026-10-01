@@ -213,7 +213,7 @@ public final class AutoScrollDriver {
     public func start() async -> Status {
         guard !status.isFinished else { return status }
         guard session.progress.phase.isAcceptingFrames else {
-            return finish(.stalled("长截图还没开始，没法自动滚动"))
+            return finish(.stalled(L10n.t("长截图还没开始，没法自动滚动")))
         }
         guard permission.currentPostEventPermission() == .granted else {
             return finish(.needsPermission)
@@ -256,7 +256,7 @@ public final class AutoScrollDriver {
         if shift == nil {
             probeFailureCount += 1
             if probeFailureCount >= policy.probeFailuresBeforeStall {
-                return finish(.stalled("连续采不到画面，自动滚动已停下"))
+                return finish(.stalled(L10n.t("连续采不到画面，自动滚动已停下")))
             }
         } else {
             probeFailureCount = 0
@@ -273,7 +273,7 @@ public final class AutoScrollDriver {
         }
         status = Status(stage: .settling(step: step, frames: nextFrames),
                         capture: session.progress,
-                        message: "正在滚动…（第 \(step) 屏）")
+                        message: L10n.t("正在滚动…（第 \(step) 屏）"))
         return status
     }
 
@@ -312,7 +312,7 @@ public final class AutoScrollDriver {
         await emitter.emitScrollDown(points: distance)
         status = Status(stage: .settling(step: step, frames: 0),
                         capture: session.progress,
-                        message: "正在滚动…（第 \(step) 屏）")
+                        message: L10n.t("正在滚动…（第 \(step) 屏）"))
         return status
     }
 
@@ -325,12 +325,12 @@ public final class AutoScrollDriver {
 
     private static func message(for reason: AutoScrollStopReason) -> String {
         switch reason {
-        case .atBottom: "看起来已经滚到底了，按 ⏎ 结束"
-        case .atLimit: "长图已达高度上限，按 ⏎ 结束"
-        case .stalled(let detail): "\(detail)，按 ⏎ 结束可保留已拼好的部分"
-        case .tooLong: "滚动步数已达上限，按 ⏎ 结束"
-        case .needsPermission: "自动滚动需要「辅助功能」授权；也可以自己滚（手动模式）"
-        case .cancelled: "已停止自动滚动"
+        case .atBottom: L10n.t("看起来已经滚到底了，按 ⏎ 结束")
+        case .atLimit: L10n.t("长图已达高度上限，按 ⏎ 结束")
+        case .stalled(let detail): L10n.t("\(detail)，按 ⏎ 结束可保留已拼好的部分")
+        case .tooLong: L10n.t("滚动步数已达上限，按 ⏎ 结束")
+        case .needsPermission: L10n.t("自动滚动需要「辅助功能」授权；也可以自己滚（手动模式）")
+        case .cancelled: L10n.t("已停止自动滚动")
         }
     }
 }

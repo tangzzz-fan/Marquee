@@ -38,11 +38,11 @@ public enum ScrollRegistrationFailure: Error, Equatable, Sendable {
     public var localizedDescription: String {
         switch self {
         case .notEnoughOverlap(let rows):
-            "这一帧滚动幅度过大（\(Int(rows.rounded())) 行），与前帧几乎不重叠，没法对齐"
+            L10n.t("这一帧滚动幅度过大（\(Int(rows.rounded())) 行），与前帧几乎不重叠，没法对齐")
         case .unreliable(let detail):
-            "这一帧没对齐：\(detail)"
+            L10n.t("这一帧没对齐：\(detail)")
         case .failed(let detail):
-            "配准失败：\(detail)"
+            L10n.t("配准失败：\(detail)")
         }
     }
 }

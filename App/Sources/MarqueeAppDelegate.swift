@@ -49,6 +49,7 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
             NSApplication.shared.activate()
             Task {
                 let granted = await SystemScreenRecordingPermission().requestPermission()
+                // L10N-EXEMPT-START: `-marqueeRequestPermission` 的控制台报告，贴回来给我看
                 let report = """
                 Marquee 权限登记探针
                   app 路径    : \(Bundle.main.bundleURL.path)
@@ -56,6 +57,7 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
                   preflight   : \(CGPreflightScreenCaptureAccess() ? "true" : "false")
                   时间        : \(Date())
                 """
+                // L10N-EXEMPT-END
                 print(report)
                 Self.writeProbeReport(report)
                 // 多留一会儿再退出：系统授权框可能正在等用户操作

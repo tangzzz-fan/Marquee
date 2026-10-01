@@ -12,6 +12,9 @@ options:
   createIntermediateGroups: true
   generateEmptyDirectories: false
   groupSortPosition: top
+  # 源语言＝简体中文：`L10n.t("矩形")` 的 key 就是那句中文，
+  # 英文由 `App/Resources/Localizable.xcstrings` 提供（见 ticket 17b）。
+  developmentLanguage: zh-Hans
 
 packages:
   MarqueeModules:
@@ -71,6 +74,11 @@ targets:
       # 只有 `project.yml` 本身（build settings / scheme / 依赖）变了才需要重新生成。
       - path: App/Sources
         type: syncedFolder
+      # 文案资源**刻意不放 `App/Sources`**：同步组里的文件由 Xcode 按类型归类，
+      # 而 `.xcstrings` 是不是稳当地进 Resources 阶段没有人能替我验证（本机跑不了 xcodebuild）。
+      # 显式列出来 + `buildPhase: resources`，归类是生成工程时就定死的，不靠猜。
+      - path: App/Resources
+        buildPhase: resources
     dependencies:
       - package: MarqueeModules
         product: MarqueeCore

@@ -144,10 +144,10 @@ public enum SettingsPage: String, CaseIterable, Sendable {
     /// 标签页标题。
     public var title: String {
         switch self {
-        case .general: "通用"
-        case .capture: "截屏"
-        case .output: "输出"
-        case .shortcuts: "快捷键"
+        case .general: L10n.t("通用")
+        case .capture: L10n.t("截屏")
+        case .output: L10n.t("输出")
+        case .shortcuts: L10n.t("快捷键")
         }
     }
 }

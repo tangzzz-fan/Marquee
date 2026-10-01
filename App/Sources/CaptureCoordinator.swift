@@ -108,7 +108,7 @@ final class CaptureCoordinator {
             // 成功也记一条：用户反馈"按了没反应"时，第一件要确认的就是当时注册的是哪个键
             logger.info("全局快捷键已注册：\(combo.displayString, privacy: .public)")
         default:
-            let message = result.failureMessage ?? "未知原因"
+            let message = result.failureMessage ?? L10n.t("未知原因")
             logger.error("快捷键注册失败：\(message, privacy: .public)")
             PermissionPrompt.presentShortcutFailure(message)
         }
@@ -294,6 +294,7 @@ final class CaptureCoordinator {
     /// 都发生在用户那边、发生在我们看不见的地方 —— 而这两件事**都不是必然报错的**
     /// （权限被拒只是返回 false，非独占注册永远返回成功）。
     /// 让用户跑一条命令把状态贴过来，比来回猜快得多。
+    // L10N-EXEMPT-START: `-marqueeDiagnostics` 打印到控制台的报告，用户贴回来给我看，翻译了反而看不懂
     func diagnosticsReport() -> String {
         let registration = activationResult.failureMessage ?? "注册成功"
         return """
@@ -358,6 +359,7 @@ final class CaptureCoordinator {
         return "id=\(identifier) team=\(team) 证书数=\(certificates.count)"
     }
 
+    // L10N-EXEMPT-END
     // MARK: - 私有
 
     private func handleOverlayFinish(_ outcome: SelectionOverlayController.Outcome) {
@@ -390,10 +392,12 @@ final class CaptureCoordinator {
                 logger.error("保存失败：\(message, privacy: .public)")
                 PermissionPrompt.presentFailure(CaptureFailure(message: message))
             }
+    // L10N-EXEMPT-START: 截图完成后的日志摘要
             let summary = """
             截图完成：\(Int(metrics.pixelSize.width))×\(Int(metrics.pixelSize.height)) px，\
             \(metrics.pngByteCount) 字节，耗时 \(metrics.elapsedMilliseconds) ms
             """
+    // L10N-EXEMPT-END
             logger.info("\(summary, privacy: .public)")
             if preferences.general().playSound {
                 CaptureFeedback.playSuccess()
@@ -452,7 +456,7 @@ final class CaptureCoordinator {
     private func copyHistory(_ entry: CaptureHistoryEntry) {
         guard let snapshot = history.snapshot(for: entry) else {
             logger.error("历史：取不回这一条（文件可能被外部删了）")
-            PermissionPrompt.presentFailure(CaptureFailure(message: "这张图的文件已经不在了（可能被清理过）"))
+            PermissionPrompt.presentFailure(CaptureFailure(message: L10n.t("这张图的文件已经不在了（可能被清理过）")))
             return
         }
         let document = AnnotationDocument(pixelSize: snapshot.originalSize,
@@ -460,7 +464,7 @@ final class CaptureCoordinator {
         guard let rendered = AnnotationRasterizer.image(document: document, source: snapshot.original),
               let png = ImageEncoding.pngData(from: rendered) else {
             logger.error("历史：重新合成失败")
-            PermissionPrompt.presentFailure(CaptureFailure(message: "这张图没能重新合成出来"))
+            PermissionPrompt.presentFailure(CaptureFailure(message: L10n.t("这张图没能重新合成出来")))
             return
         }
         clipboard.writePNG(png)
@@ -470,7 +474,7 @@ final class CaptureCoordinator {
     /// 从历史重新进编辑器。**喂的是原图 + 标注**，所以原有的标注仍可选中、可撤。
     private func editHistory(_ entry: CaptureHistoryEntry) {
         guard let snapshot = history.snapshot(for: entry) else {
-            PermissionPrompt.presentFailure(CaptureFailure(message: "这张图的文件已经不在了（可能被清理过）"))
+            PermissionPrompt.presentFailure(CaptureFailure(message: L10n.t("这张图的文件已经不在了（可能被清理过）")))
             return
         }
         presentEditor(image: snapshot.original, seed: snapshot.annotations)
@@ -494,7 +498,7 @@ final class CaptureCoordinator {
         } catch {
             logger.error("登录项设置失败：\(error.localizedDescription, privacy: .public)")
             preferencesWindow?.reportLaunchAtLogin(
-                failure: "系统没有接受这个设置（\(error.localizedDescription)）。开发构建通常是签名问题，正式安装包不受影响。"
+                failure: L10n.t("系统没有接受这个设置（\(error.localizedDescription)）。开发构建通常是签名问题，正式安装包不受影响。")
             )
         }
     }

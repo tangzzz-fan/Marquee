@@ -32,7 +32,7 @@ final class MenuBarController {
     private var recentPopover: NSPopover?
 
     private let statusItem: NSStatusItem
-    private let captureItem = NSMenuItem(title: "截屏",
+    private let captureItem = NSMenuItem(title: L10n.t("截屏"),
                                          action: #selector(triggerCapture),
                                          keyEquivalent: "a")
 
@@ -71,7 +71,7 @@ final class MenuBarController {
         menu.addItem(captureItem)
 
         // ticket 11：长截图（手动滚动）
-        let scroll = NSMenuItem(title: "滚动截屏",
+        let scroll = NSMenuItem(title: L10n.t("滚动截屏"),
                                 action: #selector(triggerScrollCapture),
                                 keyEquivalent: "")
         scroll.target = self
@@ -79,13 +79,13 @@ final class MenuBarController {
 
         // ticket 16：最近截图。**不是子菜单**，点了弹一层面板 ——
         // 子菜单放不下缩略图，而"看不见缩略图"就等于回到"我记不清哪张是哪张"。
-        let recent = NSMenuItem(title: "最近截图",
+        let recent = NSMenuItem(title: L10n.t("最近截图"),
                                 action: #selector(showRecent),
                                 keyEquivalent: "")
         recent.target = self
         menu.addItem(recent)
 
-        let settings = NSMenuItem(title: "设置…",
+        let settings = NSMenuItem(title: L10n.t("设置…"),
                                   action: #selector(showPreferences),
                                   keyEquivalent: ",")
         settings.target = self
@@ -93,7 +93,7 @@ final class MenuBarController {
 
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: "退出 Marquee",
+        let quit = NSMenuItem(title: L10n.t("退出 Marquee"),
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         menu.addItem(quit)

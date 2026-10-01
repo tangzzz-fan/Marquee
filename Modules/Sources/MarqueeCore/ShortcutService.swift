@@ -54,9 +54,9 @@ public enum ShortcutChangeResult: Equatable, Sendable {
         case .rejected(let error):
             error.message
         case .occupied(let combo):
-            "\(combo.displayString) 已被其他应用占用（例如微信的截图快捷键）。\n请到菜单栏「快捷键…」换一个组合。"
+            L10n.t("\(combo.displayString) 已被其他应用占用（例如微信的截图快捷键）。\n请到菜单栏「快捷键…」换一个组合。")
         case .registrationFailed(_, let status):
-            "注册快捷键失败（错误码 \(status)）"
+            L10n.t("注册快捷键失败（错误码 \(status)）")
         }
     }
 }

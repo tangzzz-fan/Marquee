@@ -15,19 +15,19 @@
 
 ## 当前状态
 
-**MVP 的 23 条 ticket 全部落地**（`01`–`23`），其中 `17a`（悬浮面板的 Liquid Glass 材质）刚完成；
-只剩 `17b`（中英文本地化）未开工。
+**MVP 的 24 条 ticket 全部落地**（`01`–`23`，其中 `17` 拆成 `17a` 玻璃材质 / `17b` 本地化）。
+**代码层面没有未开工的东西了**，剩下的是真实桌面上的人工验收。
 
-- `./scripts/test.sh` → **450 测试全绿**（Core 432 + 历史仓库 12 + 真实 Vision 装置自检 6）
+- `./scripts/test.sh` → **457 测试全绿**（Core 439 + 历史仓库 12 + 真实 Vision 装置自检 6）
 - `./scripts/build.sh` → **BUILD SUCCEEDED**
-- 大量条目处于 **"已实现、待人工验收"** —— 自动化测试覆盖不到真实桌面上的手感
+- 大部分条目处于 **"已实现、待人工验收"** —— 自动化测试覆盖不到真实桌面上的手感
 
 | 想做的事 | 看这里 |
 | --- | --- |
 | 现在到哪了、卡在哪 | **`docs/STATUS-AND-ACCEPTANCE.md`** §1–2 |
-| 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3（A–R 分组） |
+| 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3（A–U 分组） |
 | 逐条 ticket 状态与设计理由 | `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md` |
-| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（92 条实测） |
+| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（97 条实测） |
 
 ---
 
@@ -49,6 +49,32 @@
 | **最近截图** | 菜单「最近截图」→ 最近 12 张缩略图；点图复制、可重新编辑（**原图与标注分开存**，所以标注仍然可编辑）、可连文件一起删 |
 | **偏好设置** | 四页（通用 / 截屏 / 输出 / 快捷键），**改一下立刻生效、立刻落盘**，没有「应用」按钮 |
 | **系统材质** | 悬浮面板用原生 Liquid Glass（macOS 26+），15.x 自动降级到 HUD 材质 |
+| **中英双语** | 跟随系统语言。文案集中在单一 String Catalog，**漏翻译会被测试挡住** |
+
+### 新增文案怎么写（务必照做）
+
+1. 把中文原句包成 `L10n.t("…")` —— **插值直接写在字面量里**：
+
+   ```swift
+   L10n.t("已复制 \(text)")                     // ✓ 编译器把 key 记成「已复制 %@」
+   L10n.t("已复制 " + text)                      // ✗ 查的是渲染后的串，永远匹配不上
+   ```
+
+   错法**不崩不报错**，只是在英文环境下那句话仍然是中文。
+
+2. 往 `App/Resources/Localizable.xcstrings` 加一条，`en` 的 `value` 写英文。
+   说明符必须与源码类型对上：`Int` → `%lld`，`Int32`/`OSStatus` → `%d`，
+   `UInt32` → `%u`，`String` → `%@`，`Double`/`CGFloat` → `%lf`。
+
+3. 确实不该翻的（日志、断言、`DateFormatter` 格式串）用标记声明**并写理由**：
+
+   ```swift
+   // L10N-EXEMPT-START: -marqueeDiagnostics 的报告，贴回来给我看，翻译反而看不懂
+   …
+   // L10N-EXEMPT-END
+   ```
+
+`./scripts/test.sh` 会检查漏包、漏翻、孤儿条目与没写理由的豁免 —— 任一不合规**变红**。
 
 ---
 
@@ -198,8 +224,8 @@ spec → solution → test plan → impl → delivery
 
 | 文档 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **92 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
-| **`docs/STATUS-AND-ACCEPTANCE.md`** | 进度 / 阻塞项 / 人工验收清单（A–R 分组 + 与 SPIKE M1–M20 的对应 + 排障速查） |
+| **`docs/PITFALLS.md`** | **97 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
+| **`docs/STATUS-AND-ACCEPTANCE.md`** | 进度 / 阻塞项 / 人工验收清单（A–U 分组 + 与 SPIKE M1–M20 的对应 + 排障速查） |
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告（37 项） |
 | `docs/DEV-NOTES.md` | 开发循环中的已知摩擦（签名、沙箱、工程生成、宏插件被杀） |
@@ -233,7 +259,9 @@ swiftc -O -swift-version 5 -o spikes main.swift
 
 ```bash
 defaults write dev.tango.Marquee lens.zoom -float 4            # 放大镜倍数
-defaults write dev.tango.Marquee chrome.forceHUD -bool YES     # 强制走 15.x 的 HUD 材质（自检降级路径）
+defaults write dev.tango.Marquee chrome.tint  -float 0.18     # 玻璃着色调淡（越淡越透；默认 0.25）
+defaults write dev.tango.Marquee chrome.scrim -float 0.35     # 15.x 材质下的衬底（默认 0.35）
+defaults write dev.tango.Marquee chrome.forceHUD -bool YES    # 强制走 15.x 的 HUD 材质（自检降级路径）
 defaults delete dev.tango.Marquee chrome.forceHUD
 ```
 

@@ -100,7 +100,7 @@ final class ShortcutRecorderView: NSView {
     }
 
     private func refresh() {
-        titleField.stringValue = isRecording ? "按下新的组合…" : combo.displayString
+        titleField.stringValue = isRecording ? L10n.t("按下新的组合…") : combo.displayString
         titleField.textColor = isRecording ? .secondaryLabelColor : .labelColor
         needsDisplay = true
     }

@@ -58,7 +58,7 @@ enum ChromeBackground {
             let glass = NSGlassEffectView()
             glass.cornerRadius = cornerRadius
             glass.style = .regular
-            glass.tintColor = NSColor.black.withAlphaComponent(ChromeStyle.glassTintAlpha)
+            glass.tintColor = NSColor.black.withAlphaComponent(tintAlpha)
             return glass
 
         case .hud:
@@ -79,8 +79,37 @@ enum ChromeBackground {
         effect.layer?.masksToBounds = true
         // 衬底：材质是半透明的，不垫一层黑的话压在白底内容上白字会糊掉
         // （验收项里就有"两种系统上文字对比度足够"）。
-        effect.layer?.backgroundColor = NSColor.black.withAlphaComponent(ChromeStyle.scrimAlpha).cgColor
+        effect.layer?.backgroundColor = NSColor.black.withAlphaComponent(scrimAlpha).cgColor
         return effect
+    }
+
+    // MARK: - 现场可调
+    //
+    // "多透一点 / 再多一点"这种观感只能眼睛看着调，代码里猜没用。
+    // 沿用 `lens.zoom` 那一套：给一个 defaults 口子，下次唤起覆盖层生效。
+    //
+    //   defaults write dev.tango.Marquee chrome.tint  -float 0.25   # 玻璃着色
+    //   defaults write dev.tango.Marquee chrome.scrim -float 0.35   # 15.x 衬底
+    //   defaults delete dev.tango.Marquee chrome.tint
+
+    private static var tintAlpha: CGFloat {
+        override("chrome.tint", fallback: ChromeStyle.glassTintAlpha)
+    }
+
+    private static var scrimAlpha: CGFloat {
+        override("chrome.scrim", fallback: ChromeStyle.scrimAlpha)
+    }
+
+    /// 只有**真的写过**才覆盖。
+    ///
+    /// 用 `object(forKey:) is NSNumber` 而不是 `double(forKey:)`：后者在 key 不存在时返回 0，
+    /// 那会把不透明度直接置零（面板变全透明、字全看不见），而表现是"设置读坏了"——
+    /// 与 PITFALLS 85 同一条道理。
+    private static func override(_ key: String, fallback: CGFloat) -> CGFloat {
+        guard let number = UserDefaults.standard.object(forKey: key) as? NSNumber else {
+            return fallback
+        }
+        return CGFloat(min(max(number.doubleValue, 0), 1))
     }
 }
 

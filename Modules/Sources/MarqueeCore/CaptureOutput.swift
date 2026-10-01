@@ -49,7 +49,7 @@ public struct CaptureOutput {
                 // ⚠️ 这里**必须失败**，不能"回退成原图"。
                 // 标注里可能有打码/模糊 —— 静默交出一张没打码的原图，
                 // 是把用户以为已经遮住的内容原样发出去。宁可这次截图作废。
-                return .failed(CaptureFailure(message: "标注没能合成到截图上，这次截图已放弃（避免交出未处理的图）"))
+                return .failed(CaptureFailure(message: L10n.t("标注没能合成到截图上，这次截图已放弃（避免交出未处理的图）")))
             }
             flatten = merged
         } else {
@@ -57,7 +57,7 @@ public struct CaptureOutput {
         }
 
         guard let png = ImageEncoding.pngData(from: flatten) else {
-            return .failed(CaptureFailure(message: "截图编码为 PNG 失败"))
+            return .failed(CaptureFailure(message: L10n.t("截图编码为 PNG 失败")))
         }
         // 剪贴板先写。落盘失败不能把已经能粘贴的图弄没。
         clipboard.writePNG(png)
@@ -106,8 +106,8 @@ public struct CaptureOutput {
     /// "权限要重启进程才生效"（SPIKE A5），必须把话说到位，否则用户会以为应用坏了。
     public func failure(_ error: any Error, grantedJustNow: Bool) -> CaptureOutcome {
         if grantedJustNow {
-            return .failed(CaptureFailure(message: "已获得屏幕录制权限。请退出并重新打开 Marquee，权限才会生效"))
+            return .failed(CaptureFailure(message: L10n.t("已获得屏幕录制权限。请退出并重新打开 Marquee，权限才会生效")))
         }
-        return .failed(CaptureFailure(message: "截图失败：\(error.localizedDescription)"))
+        return .failed(CaptureFailure(message: L10n.t("截图失败：\(error.localizedDescription)")))
     }
 }

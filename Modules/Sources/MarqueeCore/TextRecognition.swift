@@ -126,14 +126,14 @@ public final class TextRecognitionService {
         case .idle:
             nil
         case .running:
-            "正在识别文字…"
+            L10n.t("正在识别文字…")
         case .ready(let result):
-            "识别到 \(result.lines.count) 行 · \(result.characterCount) 字 · "
+            L10n.t("识别到 \(result.lines.count) 行 · \(result.characterCount) 字 · ")
                 + String(format: "%.0f ms", result.elapsedMilliseconds)
         case .empty:
-            "这张图里没有识别到文字"
+            L10n.t("这张图里没有识别到文字")
         case .failed(let reason):
-            "识别失败：\(reason)"
+            L10n.t("识别失败：\(reason)")
         }
     }
 

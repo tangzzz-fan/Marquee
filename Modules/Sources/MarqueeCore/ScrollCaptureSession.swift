@@ -186,7 +186,7 @@ public final class ScrollCaptureSession {
         }
 
         guard let (display, clipped) = best else {
-            return .failed(CaptureFailure(message: "长截图区域太小，或者不落在任何显示器上"))
+            return .failed(CaptureFailure(message: L10n.t("长截图区域太小，或者不落在任何显示器上")))
         }
 
         region = clipped
@@ -209,7 +209,7 @@ public final class ScrollCaptureSession {
                                 canvasHeight: stitcher.totalHeight,
                                 accumulatedRows: 0)
         } catch {
-            return .failed(CaptureFailure(message: "长截图起步失败：\(error.localizedDescription)"))
+            return .failed(CaptureFailure(message: L10n.t("长截图起步失败：\(error.localizedDescription)")))
         }
         return .started(progress)
     }
@@ -230,14 +230,15 @@ public final class ScrollCaptureSession {
         do {
             captured = try await capturer.captureRegion(region, on: display)
         } catch {
-            return recordFailure("抓帧失败：\(error.localizedDescription)")
+            return recordFailure(L10n.t("抓帧失败：\(error.localizedDescription)"))
         }
 
         // 像素尺寸变了说明区域或屏发生了变化，继续拼会得到错位长图 —— 宁停不拼
         guard captured.image.width == stitcher.pixelWidth,
               captured.image.height == stitcher.viewHeight else {
-            return stall("画面尺寸发生了变化（\(stitcher.pixelWidth)×\(stitcher.viewHeight) → "
-                         + "\(captured.image.width)×\(captured.image.height)）")
+            // 拼成一条而不是两段拼：拆开的话只有前一半进了 catalog，
+            // 英文环境下会看到"英文前半 + 中文后半"，而这种半截译文最容易漏掉
+            return stall(L10n.t("画面尺寸发生了变化（\(stitcher.pixelWidth)×\(stitcher.viewHeight) → \(captured.image.width)×\(captured.image.height)）"))
         }
 
         let registrationStartedAt = clock.now()
@@ -247,12 +248,12 @@ public final class ScrollCaptureSession {
         } catch let failure as ScrollRegistrationFailure {
             return recordFailure(failure.localizedDescription)
         } catch {
-            return recordFailure("配准失败：\(error.localizedDescription)")
+            return recordFailure(L10n.t("配准失败：\(error.localizedDescription)"))
         }
         progress.lastRegistrationMilliseconds = (clock.now() - registrationStartedAt) * 1000
 
         if shift.confidence < settings.policy.minimumConfidence {
-            return recordFailure("这一帧可信度不足（\(String(format: "%.2f", shift.confidence))）")
+            return recordFailure(L10n.t("这一帧可信度不足（\(String(format: "%.2f", shift.confidence))）"))
         }
 
         switch settings.policy.verdict(for: shift, frameHeight: stitcher.viewHeight) {
@@ -277,9 +278,9 @@ public final class ScrollCaptureSession {
 
             if stationaryCount >= settings.policy.stationaryFramesBeforeBottomHint {
                 progress.phase = .atBottom
-                progress.warning = "看起来已经滚到底了 · 还可以继续滚，或按 ⏎ 结束"
+                progress.warning = L10n.t("看起来已经滚到底了 · 还可以继续滚，或按 ⏎ 结束")
             } else {
-                progress.warning = "没检测到滚动…继续往下滚"
+                progress.warning = L10n.t("没检测到滚动…继续往下滚")
             }
             return progress
 
@@ -291,7 +292,7 @@ public final class ScrollCaptureSession {
             if updated.totalHeight > settings.maximumCanvasHeight {
                 progress.phase = .atLimit
                 progress.canvasHeight = stitcher.totalHeight
-                progress.warning = "长图已达 \(settings.maximumCanvasHeight) px 上限，按 ⏎ 结束"
+                progress.warning = L10n.t("长图已达 \(settings.maximumCanvasHeight) px 上限，按 ⏎ 结束")
                 return progress
             }
             self.stitcher = updated
@@ -352,15 +353,15 @@ public final class ScrollCaptureSession {
     /// 结束并输出：拼长图 → 剪贴板 →（可选）落盘。
     public func finish(save: CaptureSaveRequest? = nil) async -> CaptureOutcome {
         guard progress.phase != .cancelled else {
-            return .failed(CaptureFailure(message: "长截图已取消"))
+            return .failed(CaptureFailure(message: L10n.t("长截图已取消")))
         }
         guard let stitcher, let output, !frames.isEmpty else {
-            return .failed(CaptureFailure(message: "长截图没有采到任何画面"))
+            return .failed(CaptureFailure(message: L10n.t("长截图没有采到任何画面")))
         }
 
         let stitchStartedAt = clock.now()
         guard let composed = ScrollStitchRenderer.render(plan: stitcher.plan, frames: frames) else {
-            return .failed(CaptureFailure(message: "拼接长图失败"))
+            return .failed(CaptureFailure(message: L10n.t("拼接长图失败")))
         }
         progress.stitchMilliseconds = (clock.now() - stitchStartedAt) * 1000
         progress.phase = .finished
@@ -395,7 +396,7 @@ public final class ScrollCaptureSession {
         progress.frameCount = frames.count
         progress.canvasHeight = stitcher?.totalHeight ?? 0
         if failureCount >= settings.policy.failuresBeforeStall {
-            let tail = frames.count >= 2 ? "，已拼好的部分保留可用，按 ⏎ 结束" : ""
+            let tail = frames.count >= 2 ? L10n.t("，已拼好的部分保留可用，按 ⏎ 结束") : ""
             progress.phase = .stalled(message + tail)
             progress.warning = message + tail
         } else {
@@ -405,7 +406,7 @@ public final class ScrollCaptureSession {
     }
 
     private func stall(_ message: String) -> Progress {
-        let text = message + "，已停止拼接；按 ⏎ 结束可保留已拼好的部分"
+        let text = message + L10n.t("，已停止拼接；按 ⏎ 结束可保留已拼好的部分")
         progress.phase = .stalled(text)
         progress.warning = text
         return progress

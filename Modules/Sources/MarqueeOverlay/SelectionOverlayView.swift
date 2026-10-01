@@ -1021,7 +1021,7 @@ final class SelectionOverlayView: NSView {
         field.backgroundColor = .white
         field.textColor = .black
         field.font = .systemFont(ofSize: Self.textInputFontSize)
-        field.placeholderString = "输入文字"
+        field.placeholderString = L10n.t("输入文字")
         field.focusRingType = .none
         field.wantsLayer = true
         field.layer?.cornerRadius = 5

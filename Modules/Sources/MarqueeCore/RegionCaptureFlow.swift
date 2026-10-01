@@ -50,7 +50,7 @@ public final class RegionCaptureFlow {
         }
 
         guard let layout = SelectionLayout.plan(selection: selection, displays: displays) else {
-            return .failed(CaptureFailure(message: "选区太小，或者不落在任何显示器上"))
+            return .failed(CaptureFailure(message: L10n.t("选区太小，或者不落在任何显示器上")))
         }
 
         do {
@@ -63,7 +63,7 @@ public final class RegionCaptureFlow {
 
             guard let composed = ImageCompositing.compose(outputSize: layout.outputPixelSize,
                                                           slices: slices) else {
-                return .failed(CaptureFailure(message: "拼接选区图像失败"))
+                return .failed(CaptureFailure(message: L10n.t("拼接选区图像失败")))
             }
             return output.finish(composed, startedAt: startedAt, save: save, inline: inline)
         } catch {

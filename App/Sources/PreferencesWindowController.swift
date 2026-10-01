@@ -59,7 +59,7 @@ final class PreferencesWindowController: NSWindowController {
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
-        window.title = "Marquee 设置"
+        window.title = L10n.t("Marquee 设置")
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -159,11 +159,11 @@ final class PreferencesWindowController: NSWindowController {
         launchNote.preferredMaxLayoutWidth = 420
 
         return page([
-            row(title: "截图后播放提示音",
-                subtitle: "连着截很多张时想安静一点可以关掉",
+            row(title: L10n.t("截图后播放提示音"),
+                subtitle: L10n.t("连着截很多张时想安静一点可以关掉"),
                 control: soundSwitch),
-            row(title: "开机时自动启动",
-                subtitle: "Marquee 常驻菜单栏，开机自启后随时按快捷键就能截",
+            row(title: L10n.t("开机时自动启动"),
+                subtitle: L10n.t("Marquee 常驻菜单栏，开机自启后随时按快捷键就能截"),
                 control: launchSwitch),
             launchNote,
         ])
@@ -176,19 +176,19 @@ final class PreferencesWindowController: NSWindowController {
         delayPopup.target = self
         delayPopup.action = #selector(captureChanged)
         delayPopup.addItems(withTitles: CapturePreferences.delayOptions.map {
-            $0 == 0 ? "不延时" : "\($0) 秒"
+            $0 == 0 ? L10n.t("不延时") : L10n.t("\($0) 秒")
         })
         delayPopup.controlSize = .small
 
         return page([
-            row(title: "截图里包含鼠标指针",
-                subtitle: "默认不带 —— 指针会挡在内容上",
+            row(title: L10n.t("截图里包含鼠标指针"),
+                subtitle: L10n.t("默认不带 —— 指针会挡在内容上"),
                 control: cursorSwitch),
-            row(title: "窗口截图带阴影",
-                subtitle: "在覆盖层里按 ⌥ 可以临时反过来",
+            row(title: L10n.t("窗口截图带阴影"),
+                subtitle: L10n.t("在覆盖层里按 ⌥ 可以临时反过来"),
                 control: shadowSwitch),
-            row(title: "延时截图",
-                subtitle: "按下快捷键后等几秒再出现选择框，方便先把画面摆好",
+            row(title: L10n.t("延时截图"),
+                subtitle: L10n.t("按下快捷键后等几秒再出现选择框，方便先把画面摆好"),
                 control: delayPopup),
         ])
     }
@@ -198,7 +198,7 @@ final class PreferencesWindowController: NSWindowController {
         directoryLabel.lineBreakMode = .byTruncatingMiddle
         directoryLabel.textColor = .secondaryLabelColor
 
-        let chooseButton = NSButton(title: "选择…", target: self, action: #selector(chooseDirectory))
+        let chooseButton = NSButton(title: L10n.t("选择…"), target: self, action: #selector(chooseDirectory))
         chooseButton.bezelStyle = .rounded
         chooseButton.controlSize = .small
 
@@ -208,7 +208,7 @@ final class PreferencesWindowController: NSWindowController {
 
         formatPopup.target = self
         formatPopup.action = #selector(outputChanged)
-        formatPopup.addItems(withTitles: ["PNG（无损）", "JPEG", "HEIC"])
+        formatPopup.addItems(withTitles: [L10n.t("PNG（无损）"), "JPEG", "HEIC"])
         formatPopup.controlSize = .small
 
         qualitySlider.target = self
@@ -228,15 +228,15 @@ final class PreferencesWindowController: NSWindowController {
         templateField.placeholderString = FileNameTemplate.defaultTemplate
         templateField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
 
-        let hint = NSTextField(labelWithString: "可用变量：{date} {time} {n} {app} {title}")
+        let hint = NSTextField(labelWithString: L10n.t("可用变量：{date} {time} {n} {app} {title}"))
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
 
         return page([
-            row(title: "保存位置", subtitle: "只有按 ⌘S 或点「保存」时才写盘", control: directoryRow),
-            row(title: "图片格式", subtitle: "JPEG / HEIC 有损，可调质量", control: formatPopup),
-            row(title: "质量", subtitle: "只在有损格式下有效", control: qualityRow),
-            row(title: "文件名模板", subtitle: nil, control: templateField),
+            row(title: L10n.t("保存位置"), subtitle: L10n.t("只有按 ⌘S 或点「保存」时才写盘"), control: directoryRow),
+            row(title: L10n.t("图片格式"), subtitle: L10n.t("JPEG / HEIC 有损，可调质量"), control: formatPopup),
+            row(title: L10n.t("质量"), subtitle: L10n.t("只在有损格式下有效"), control: qualityRow),
+            row(title: L10n.t("文件名模板"), subtitle: nil, control: templateField),
             hint,
         ])
     }
@@ -248,11 +248,11 @@ final class PreferencesWindowController: NSWindowController {
         shortcutStatus.lineBreakMode = .byWordWrapping
         shortcutStatus.preferredMaxLayoutWidth = 420
 
-        let reset = NSButton(title: "恢复默认（⌃Q）", target: self, action: #selector(resetShortcut))
+        let reset = NSButton(title: L10n.t("恢复默认（⌃Q）"), target: self, action: #selector(resetShortcut))
         reset.bezelStyle = .rounded
         reset.controlSize = .small
 
-        let hint = NSTextField(labelWithString: "点上面的方框后按下新的组合；Esc 取消。与系统或其他应用冲突时会明确告诉你。")
+        let hint = NSTextField(labelWithString: L10n.t("点上面的方框后按下新的组合；Esc 取消。与系统或其他应用冲突时会明确告诉你。"))
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
         hint.maximumNumberOfLines = 2
@@ -260,7 +260,7 @@ final class PreferencesWindowController: NSWindowController {
         hint.preferredMaxLayoutWidth = 420
 
         return page([
-            row(title: "全屏截图", subtitle: "全局生效，应用不在前台也能触发", control: nil),
+            row(title: L10n.t("全屏截图"), subtitle: L10n.t("全局生效，应用不在前台也能触发"), control: nil),
             recorder,
             shortcutStatus,
             reset,
@@ -335,7 +335,7 @@ final class PreferencesWindowController: NSWindowController {
         updateQualityLabel(settings.quality)
         templateField.stringValue = settings.nameTemplate
         recorder.update(combo: shortcut.current)
-        shortcutStatus.stringValue = "当前：\(shortcut.current.displayString)"
+        shortcutStatus.stringValue = L10n.t("当前：\(shortcut.current.displayString)")
         shortcutStatus.textColor = .secondaryLabelColor
     }
 
@@ -365,7 +365,7 @@ final class PreferencesWindowController: NSWindowController {
                                                 launchAtLogin: false))
         } else {
             launchNote.stringValue = launchSwitch.state == .on
-                ? "已加入系统登录项。可在「系统设置 → 通用 → 登录项」里查看"
+                ? L10n.t("已加入系统登录项。可在「系统设置 → 通用 → 登录项」里查看")
                 : ""
             launchNote.textColor = .secondaryLabelColor
         }
@@ -408,7 +408,7 @@ final class PreferencesWindowController: NSWindowController {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = output.settings().directory
-        panel.prompt = "选这个文件夹"
+        panel.prompt = L10n.t("选这个文件夹")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let settings = output.settings()
         output.save(OutputSettings(directory: url,
@@ -429,7 +429,7 @@ final class PreferencesWindowController: NSWindowController {
             recorder.update(combo: shortcut.current)
             window?.makeFirstResponder(recorder)
         } else {
-            shortcutStatus.stringValue = "已生效：\(combo.displayString)"
+            shortcutStatus.stringValue = L10n.t("已生效：\(combo.displayString)")
             shortcutStatus.textColor = .secondaryLabelColor
             onShortcutChanged?(combo)
         }

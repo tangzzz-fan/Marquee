@@ -273,14 +273,14 @@ final class PinStripView: NSView, NSViewToolTipOwner {
         switch button(at: point) {
         case .clickThrough:
             isClickThrough
-                ? "鼠标穿透：开着（点击会落到下面的应用）。点一下关掉"
-                : "鼠标穿透：关着。点开后点击会落到下面的应用"
+                ? L10n.t("鼠标穿透：开着（点击会落到下面的应用）。点一下关掉")
+                : L10n.t("鼠标穿透：关着。点开后点击会落到下面的应用")
         case .opacity:
-            "不透明度：现在是 \(Int(opacity * 100))%。点一下换下一档"
+            L10n.t("不透明度：现在是 \(Int(opacity * 100))%。点一下换下一档")
         case .close:
-            "关掉这张钉图"
+            L10n.t("关掉这张钉图")
         case nil:
-            "拖动这里可以移动这张钉图"
+            L10n.t("拖动这里可以移动这张钉图")
         }
     }
 

@@ -45,7 +45,7 @@ public struct VisionScrollRegistrar: ScrollFrameRegistering {
         }
 
         guard let observation = request.results?.first as? VNImageTranslationAlignmentObservation else {
-            throw ScrollRegistrationFailure.failed("Vision 没有返回平移观测值")
+            throw ScrollRegistrationFailure.failed(L10n.t("Vision 没有返回平移观测值"))
         }
 
         let transform = observation.alignmentTransform
@@ -57,12 +57,12 @@ public struct VisionScrollRegistrar: ScrollFrameRegistering {
         //   1. 横向漂移：竖直滚动不该伴随明显横向位移，出现了说明页面在动别的
         //   2. 位移本身的数值合理性：NaN / 无穷（画面几乎全同色时会出现）
         guard rows.isFinite, horizontalDrift.isFinite else {
-            throw ScrollRegistrationFailure.unreliable("位移不是有限数值")
+            throw ScrollRegistrationFailure.unreliable(L10n.t("位移不是有限数值"))
         }
         let width = Double(currentImage.width)
         if horizontalDrift > max(8, width * 0.1) {
             throw ScrollRegistrationFailure.unreliable(
-                "横向漂移 \(Int(horizontalDrift.rounded())) px，画面不在做竖直滚动")
+                L10n.t("横向漂移 \(Int(horizontalDrift.rounded())) px，画面不在做竖直滚动"))
         }
 
         // 置信度：横向漂移越小越高。竖直滚动不该伴随横向位移，

@@ -4,102 +4,92 @@
 跟随系统语言自动切换；并有一条**扫描测试**防止后续新增文案漏翻译。
 
 > 从原 ticket 17 拆出（2026-10-01）。玻璃视觉见 `17a-liquid-glass.md`。
->
-> ⚠️ **这一票不要"顺手包一层就完"** —— 下面第 3 条是最容易踩的坑，
-> 它**不崩不报错**，只是英文用户看到中文。
 
 **Blocked by:** 07、15
 
-**Status:** ready-for-agent
+**Status:** ✅ done（2026-10-02）
 
-## 开工前必须知道的现状（已勘查完，不要再重新查）
+## 做出来的东西
 
-| 项 | 现状 |
+| 决策 | 值 |
 | --- | --- |
-| 已有本地化设施 | **完全没有**：无 `.xcstrings` / `.strings` / `.lproj`，无 `NSLocalizedString`，无 `String(localized:)` |
-| `project.yml` | 没有 `knownRegions` / `developmentLanguage`；`App/Sources` 是 **`syncedFolder`**（放 `.xcstrings` 会被自动纳入，不必改工程文件） |
-| SPM 模块 | `Package.swift` 里 6 个 target **都没有 `resources:`**，全仓 **0 处 `Bundle.module`** |
-| 面向用户的硬编码中文（排除 os_log） | **220 处 / 205 个唯一串**，分布在 25 个文件 |
-| 其中最集中的 4 个文件 | `SelectionOverlayController` 63 · `AnnotationEditorWindow` 34 · `PreferencesWindowController` 32 · `ScrollCaptureSession` 14 |
-| **带字符串插值的** | **40 处** —— 全部不能直接当 key 用（见下） |
-| `App/Info.plist` | `CFBundleDevelopmentRegion = zh_CN` |
-| 现有的扫描类测试 | **没有先例**，需自建（仓内只有临时目录写读那类） |
+| 资源放哪 | **只有一份** `App/Resources/Localizable.xcstrings`。App 是唯一宿主、6 个模块都静态链进它 ⇒ 全模块统一查 `Bundle.main`。反过来（每模块一份 catalog + `Bundle.module`）要改 4 个 `Package.swift`、维护 4 份 catalog，收益为零 |
+| 工程接线 | `project.yml` 用 `- path: App/Resources` + `buildPhase: resources` **显式列出**，不走 `syncedFolder` —— 同步组里的 `.xcstrings` 是不是稳当进 Resources 阶段没人能替我验证（本机跑不了 xcodebuild），显式声明就把归类钉在生成工程那一刻。另加 `options.developmentLanguage: zh-Hans` |
+| key 用什么 | **中文原句**（`L10n.t("矩形")`）。省掉 188 个自造 key，diff 里"这行改了什么"一眼可见 |
+| 漏翻会怎样 | `String(localized:)` **回落到 key 本身**（＝中文），不是把 key 显示给用户。于是迁移可以一片一片来，中间态永远可用 |
+| 插值怎么办 | `L10n.t` 收 `String.LocalizationValue`，插值由编译器记进 key。**绝不能**写成 `L10n.t("已复制 " + text)` 或先插值再传 `String` —— 查表用的是渲染后的串，catalog 永远匹配不上，**英文用户照样看到中文**，不崩不报错 |
+| 不翻的部分 | 日志（`logger` / `print`）、断言（`fatalError` / `preconditionFailure`）、`DateFormatter` 格式串、手势档位名、`-marqueeDiagnostics` 报告。用 `// L10N-EXEMPT[-START/-END]: 理由` 标记声明，**必须写理由**（测试会检查成对与非空） |
+| 覆盖范围 | 生产代码 **197 处 / 188 个 key**（25 个文件），英文逐条写完 |
 
-## 三个必须先定下来的决定
+## 关于格式说明符（这一条是实测的，不要靠记忆）
 
-### 1. 资源放哪、谁负责查
+`String.LocalizationValue` 的插值由编译器按**类型**选说明符。写 catalog 时必须逐字对上，
+否则就是「查不到 → 回落中文」。用一次性探针实测（`/tmp/l10nprobe`）的结果：
 
-App 是唯一宿主，6 个模块都静态链进它 → **catalog 只有一份，放 `App/Sources/Localizable.xcstrings`**，
-所有模块统一查 `Bundle.main`。反过来（每个模块一份 catalog + `Bundle.module`）要改 4 个
-`Package.swift` 加 `resources:`，并且维护 4 份 catalog —— 收益为零。
+| 表达式类型 | 说明符 |
+| --- | --- |
+| `Int` / `Int64` / `Array.count` | `%lld` |
+| `Int32` / `OSStatus` | `%d` |
+| `UInt32` / `UInt8`（如 `CGDirectDisplayID`） | `%u` |
+| `String` | `%@` |
+| `Double` / `CGFloat` | `%lf` |
+| `Float` | `%f` |
 
-Core 提供一个薄入口吸收"用哪个 bundle"这件事：
+摸不清的几条是**去读声明**定下来的，不是猜的：
+`RecentCapturesPanelController` 的 `size` 是拼好的 `String` → `%@`；
+`ShortcutService` 的 `status` 是 `Int32` → `%d`；`ScreenCaptureKitCapturer` 的 `id` 是 `UInt32` → `%u`。
 
-```swift
-public enum L10n {
-    public static let bundle: Bundle = .main
-    public static func t(_ key: String) -> String {
-        NSLocalizedString(key, tableName: "Localizable", bundle: bundle, value: key, comment: "")
-    }
-}
-```
+> 探针本身也顺手证明了**整条链路是通的**：`xcstringstool compile` 出来的
+> `en.lproj/Localizable.strings` 放进一个自造 bundle 后，`String(localized:bundle:)` 确实能查到。
 
-`value: key` 是**刻意的**：源语言就是中文，所以"catalog 里没有这一条"退化成"显示中文"，
-**不会变成显示 key**。于是迁移可以一片一片来，中间态永远是可用的。
+## 扫描测试（验收项 4/5）
 
-### 2. key 用什么
+`Modules/Tests/MarqueeCoreTests/LocalizationScanTests.swift`，6 条：
 
-**用中文原句当 key**（`L10n.t("矩形")`）。这是"开发语言＝源语言"的标准模型，
-省掉 205 个自造 key，也让 diff 里"这行改了什么"一眼可见。
-代价：`en` 那一列必须逐条写，漏了就是中文（所以第 5 条的扫描测试必须覆盖 catalog 的完整性，不只是源码）。
+1. 生产代码里没有未本地化的中文字面量
+2. 源码用到的每个 key 都在 catalog 里
+3. catalog 里没有源码找不到的孤儿 key
+4. catalog 每条都有非空英文
+5. 豁免区必须成对且带理由
+6. **扫描器自检**：认得出中文字面量、`\(…)` 插值、注释与豁免 ——
+   没有这条，一个"什么都扫不到"的扫描器会让上面四条**全绿**
 
-### 3. ⚠️ 40 处插值串**不能**直接包
+## 变异测试（断言没空跑的证据）
 
-```swift
-L10n.t("已复制 \(text)")     // ✗ 错：查表用的是**渲染后**的串（"已复制 #FF0000"），
-                            //    catalog 里永远匹配不上 → 英文环境照样显示中文
-String(format: L10n.t("已复制 %@"), text)   // ✓ 对
-```
+| 变异 | 结果 |
+| --- | --- |
+| 把 `L10n.t("通用")` 退回裸 `"通用"` | ✘「没有未本地化的中文字面量」变红 ✔，同时 ✘「没有孤儿 key」也变红 ✔ |
+| 恢复 | 两条都转绿 ✔ |
 
-`String(format:)` 的说明符必须和实参类型对上（`%@` 给 `String`、`%lld` 给 `Int`、
-`%d` 给 `Int32`/`OSStatus`、`%.0f` 给 `Double`）。**对错了不报错，只是数字乱掉或崩**。
-40 处的类型要逐条看，这是这一票主要的手工量。
+## 实现记录（踩过的坑都在这）
 
-### 4. core 里的错误信息算不算用户可见
+- **key 抽取的两个坑**：`\(String(format: "%.2f", x))` 这种插值里**嵌套了字符串字面量**，
+  朴素的正则会在内层引号处把字面量截断；`"...。\n请到..."` 里的 `\n` 在源码里是两个字符、
+  运行时是一个换行 —— 抽取时必须**反转义**，否则 key 与运行时永远差一点。
+- **扫描器的行号会漂**：多行字面量里的**行继续**（`\` 结尾换行）也是一个换行，漏计一次
+  后面所有行号整体前移 —— 而"报错的行号指向别的行"会让每一条诊断都变成误导（PITFALLS 95）。
+- **keys 那一趟不能看行标记**：`logger.info("…\(L10n.t("…"))")` 这种行里包过的 key 是算数的，
+  跟着行标记一起跳过会让它变成"孤儿"然后误报（PITFALLS 96）。
+- `App/Sources` 里 4 处 `fatalError("…只支持代码创建")` 与所有 `logger.*` 都按规则跳过，
+  没有一条豁免是"因为懒得写理由"。
+- 顺带修了一处**用户可见的 bug**：权限弹窗的说明文字里带着 Markdown 的 `**`，
+  而 `NSAlert` 不认 —— 用户会原样看到两个星号。迁移时去掉了。
 
-`ScreenshotArchiver` / `ScrollCaptureSession` / `ShortcutService` 里那些
-`"保存失败：\(…) 里同名文件太多"` **是**发给用户看的（走 alert / 读数框），要翻。
-而 `CaptureCoordinator` 里的 `logger.info("…")`（45 处的多数字）**不是**，不要翻 ——
-日志保持中文反而对排查有利。
+## 以后新增文案怎么写
+
+1. 把中文原句包成 `L10n.t("…")`（**插值直接写在字面量里**，不要自己拼字符串）
+2. 往 `App/Resources/Localizable.xcstrings` 的 `strings` 里加一条，`en` 的 `value` 写英文
+   —— 说明符要与源码的类型对上（见上表）
+3. `./scripts/test.sh` 会替你检查：漏包、漏翻、孤儿、没写理由的豁免，一律变红
 
 ## Acceptance criteria
 
-- [ ] 简体中文与英文完整覆盖所有面向用户的文案，无硬编码字符串残留
-- [ ] 切换系统语言后界面语言随之改变（中文系统看中文、英文系统看英文）
-- [ ] 40 处插值串全部改成 `String(format:)` 形态，英文环境下**不再出现中文**
-- [ ] 有一份"硬编码字符串扫描"检查（测试），新增文案漏翻译会**变红**
-- [ ] 扫描测试同时校验 catalog 的 `en` 完整性（源码有 key 但 catalog 缺 en → 红）
-- [ ] `docs/` 里记下"新增文案该怎么写"（一条 `L10n.t` + 补 catalog 的 en）
+- [x] 简体中文与英文完整覆盖所有面向用户的文案（188 个 key 全部有英文）
+- [x] 英文环境下不再出现中文（插值串的说明符逐个核过；见上表）
+- [x] 有一份"硬编码字符串扫描"检查（测试），新增文案漏翻译会**变红**
+- [x] 扫描测试同时校验 catalog 的 en 完整性（缺 en → 红；目录里有孤儿 → 红）
+- [x] 文档里写了"新增文案该怎么写"（本票 + README）
+- [ ] **人工**：把系统语言切到 English 跑一遍五处界面（菜单栏 / 偏好设置 / 覆盖层工具条与提示 / 权限弹窗 / 最近截图），确认没有中文残留
+- [ ] **人工**：切回中文，确认与迁移前逐字一致
 
-## 建议的推进顺序（每步都能单独提交、单独验证）
-
-1. **机制**：`L10n` + 空 catalog + `project.yml` 的 `developmentLanguage: zh-Hans` /
-   `knownRegions`，跑一次 `./scripts/build.sh` 确认 catalog 真的被编进了 `.app`
-   （查 `Marquee.app/Contents/Resources/zh-Hans.lproj/Localizable.strings`）——
-   **先验通这一步**，否则后面 165 处白包
-2. **App 层**：菜单栏 5 · 偏好设置 32 · 权限提示 8 · 最近截图 9（含 4 处插值）
-3. **覆盖层**：`SelectionOverlayController` 的提示行与 `PinWindow` 的 tooltip
-4. **其余模块**：`AnnotationEditorWindow` 34 · `ScrollCaptureSession` 14 · `AutoScroll` 10 ·
-   `ShortcutValidation` 13 · `TextRecognition` 5 · 其余零星
-5. **扫描测试**：源码 key ↔ catalog 双向校验 + 新增硬编码中文检测（`os_log` 白名单）
-6. **排一遍**：`defaults write -g AppleLanguages -array en-US`（或临时改 `Bundle` 注入），
-   肉眼过一遍五处界面
-
-## 已知会遇到的坑
-
-- `enum` 的**裸值**不能包（`case rectangle = "矩形"` 是编译期字面量），扫描/替换脚本要跳过
-- 测试文件里的中文（全仓 1230 处 / 61 文件，含 34 个测试文件）**不是**文案，扫描要排除 `Modules/Tests/`
-- `"M月d日 HH:mm"` 这种是 `DateFormatter` 的格式串，应该走
-  `DateFormatter.dateFormat(fromTemplate:options:locale:)` 而不是当文案翻译
-- `App/Sources/EditorDemo.swift` 与 `CaptureCoordinator` 里那些自检/探针输出（`"✅ 已授权…"`）
-  不是用户界面，列进白名单
+> ⚠️ 人工那两条我做不了（要换系统语言并重启应用）。切完把问题贴回来。

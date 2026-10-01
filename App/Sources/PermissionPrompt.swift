@@ -18,21 +18,17 @@ enum PermissionPrompt {
     static func presentPermissionGuidance(grantedJustNow: Bool) {
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "Marquee 需要「屏幕录制」权限"
+        alert.messageText = L10n.t("Marquee 需要「屏幕录制」权限")
+        // 两段说明各写成**一条** `L10n.t`，而不是多行 `"""` 字面量：
+        // 多行字面量的 key 会带上首尾换行与缩进，读 catalog 时根本认不出那是哪一句。
+        // 顺带去掉原先写在字面量里的 `**` —— 那是 Markdown 的加粗，`NSAlert` 不认，
+        // 会**原样显示两个星号**给用户看。
         alert.informativeText = grantedJustNow
-            ? """
-              权限已经勾选，但 macOS 要求应用**重启后**才生效。
-              请退出 Marquee（菜单栏图标 → 退出 Marquee）再重新打开。
-              """
-            : """
-              请到「系统设置 → 隐私与安全性 → 屏幕录制」里勾选 Marquee，然后退出并重新打开应用。
-
-              如果列表里**找不到 Marquee**：点「在 Finder 中显示」，把打开的 Marquee
-              拖进列表（或点列表下方的「+」选中它）。
-              """
-        alert.addButton(withTitle: "打开系统设置")
-        alert.addButton(withTitle: "在 Finder 中显示")
-        alert.addButton(withTitle: "稍后")
+            ? L10n.t("权限已经勾选，但 macOS 要求应用重启后才生效。\n请退出 Marquee（菜单栏图标 → 退出 Marquee）再重新打开。")
+            : L10n.t("请到「系统设置 → 隐私与安全性 → 屏幕录制」里勾选 Marquee，然后退出并重新打开应用。\n\n如果列表里找不到 Marquee：点「在 Finder 中显示」，把打开的 Marquee 拖进列表（或点列表下方的「+」选中它）。")
+        alert.addButton(withTitle: L10n.t("打开系统设置"))
+        alert.addButton(withTitle: L10n.t("在 Finder 中显示"))
+        alert.addButton(withTitle: L10n.t("稍后"))
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:
@@ -48,9 +44,9 @@ enum PermissionPrompt {
     static func presentFailure(_ failure: CaptureFailure) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "截图没有完成"
+        alert.messageText = L10n.t("截图没有完成")
         alert.informativeText = failure.message
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: L10n.t("好"))
         alert.runModal()
     }
 
@@ -58,9 +54,9 @@ enum PermissionPrompt {
     static func presentShortcutFailure(_ message: String) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "快捷键没有生效"
+        alert.messageText = L10n.t("快捷键没有生效")
         alert.informativeText = message
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: L10n.t("好"))
         alert.runModal()
     }
 }

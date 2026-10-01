@@ -56,7 +56,7 @@ public final class FullScreenCaptureFlow {
 
         // ── 2. 定位显示器 ────────────────────────────────────────────
         guard let display = displays.displayUnderPointer() else {
-            return .failed(CaptureFailure(message: "没找到鼠标所在的显示器，请把鼠标移到要截的屏幕上再试"))
+            return .failed(CaptureFailure(message: L10n.t("没找到鼠标所在的显示器，请把鼠标移到要截的屏幕上再试")))
         }
 
         // ── 3. 采集 + 编码 + 写剪贴板 ───────────────────────────────

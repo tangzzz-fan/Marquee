@@ -13,11 +13,11 @@ public enum ShortcutValidationError: Equatable, Sendable {
     public var message: String {
         switch self {
         case .missingModifier:
-            "至少要有一个修饰键（⌘ ⌃ ⌥）"
+            L10n.t("至少要有一个修饰键（⌘ ⌃ ⌥）")
         case .shiftOnly:
-            "只有 ⇧ 不够，会和普通输入冲突，请带上 ⌘ ⌃ 或 ⌥"
+            L10n.t("只有 ⇧ 不够，会和普通输入冲突，请带上 ⌘ ⌃ 或 ⌥")
         case .reservedBySystem(let conflict):
-            "这个组合已被系统占用：\(conflict)"
+            L10n.t("这个组合已被系统占用：\(conflict)")
         }
     }
 }
@@ -57,17 +57,17 @@ public enum ShortcutValidation {
             KeyCombo(keyCode: keyCode, modifiers: modifiers, keyLabel: label)
         }
         return [
-            combo(0x30, [.command], "⇥"): "应用切换",
-            combo(0x32, [.command], "`"): "窗口切换",
+            combo(0x30, [.command], "⇥"): L10n.t("应用切换"),
+            combo(0x32, [.command], "`"): L10n.t("窗口切换"),
             combo(0x31, [.command], "Space"): "Spotlight",
-            combo(0x31, [.control, .command], "Space"): "表情与符号",
-            combo(0x03, [.control, .command], "F"): "全屏切换",
-            combo(0x0C, [.control, .command], "Q"): "锁定屏幕",
-            combo(0x14, [.command, .shift], "3"): "系统截图（全屏）",
-            combo(0x15, [.command, .shift], "4"): "系统截图（选区）",
-            combo(0x17, [.command, .shift], "5"): "系统截图（工具条）",
-            combo(0x16, [.command, .shift], "6"): "系统截图（触控栏）",
-            combo(0x2F, [.command, .shift], "."): "隐藏当前应用",
+            combo(0x31, [.control, .command], "Space"): L10n.t("表情与符号"),
+            combo(0x03, [.control, .command], "F"): L10n.t("全屏切换"),
+            combo(0x0C, [.control, .command], "Q"): L10n.t("锁定屏幕"),
+            combo(0x14, [.command, .shift], "3"): L10n.t("系统截图（全屏）"),
+            combo(0x15, [.command, .shift], "4"): L10n.t("系统截图（选区）"),
+            combo(0x17, [.command, .shift], "5"): L10n.t("系统截图（工具条）"),
+            combo(0x16, [.command, .shift], "6"): L10n.t("系统截图（触控栏）"),
+            combo(0x2F, [.command, .shift], "."): L10n.t("隐藏当前应用"),
         ]
     }()
 }
