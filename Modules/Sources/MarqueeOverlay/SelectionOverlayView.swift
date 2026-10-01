@@ -25,6 +25,14 @@ struct SelectionPresentation: Equatable {
     var scrollHintText: String = ""
     /// 长截图告警（如「已经滚到底了」「这一帧没对齐」），非空时用醒目色
     var scrollWarningText: String = ""
+    /// 空状态提示的锚点（**Cocoa 全局坐标**，一般就是鼠标位置）
+    ///
+    /// 为什么要有它：长截图进入后还没选目标时，既没有选区也没有悬停窗口，
+    /// 视图只能画一层蒙层 —— 用户看不出覆盖层在工作，会以为"拖不了"。
+    /// 在光标旁挂一句提示，是最省事也最直接的"这里可以操作"信号。
+    var hintAnchor: CGPoint?
+    /// 空状态提示文字
+    var hintText: String = ""
 
     static let empty = SelectionPresentation(globalRect: nil,
                                              sizeText: "",
@@ -135,7 +143,14 @@ final class SelectionOverlayView: NSView {
         case 0x7E: // ↑
             delegate?.overlayView(self, nudgeBy: 0, dy: 1)
         default:
-            NSSound.beep()
+            // 带 ⌘ / ⌃ 的组合放行给系统：⌘Tab、⌘`、⌘Space 这类是系统快捷键，
+            // 覆盖层既不该吞掉它们，也没理由为它们哔一声（用户按 ⌘Tab 想换目标应用，
+            // 结果是"叮"一下什么都不发生，那才是最费解的表现）。
+            if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control) {
+                super.keyDown(with: event)
+            } else {
+                NSSound.beep()
+            }
         }
     }
 
@@ -177,6 +192,10 @@ final class SelectionOverlayView: NSView {
         }
 
         bounds.fill()
+        if let anchor = presentation.hintAnchor, !presentation.hintText.isEmpty {
+            drawHint(at: globalToLocal(anchor),
+                     lines: [(presentation.hintText, ReadoutStyle.normal)])
+        }
     }
 
     /// 长截图抓帧中显示进度与提示，否则显示尺寸/坐标读数。
@@ -218,10 +237,45 @@ final class SelectionOverlayView: NSView {
     }
 
     private func drawReadout(in localSelection: CGRect, lines: [(text: String, color: NSColor)]) {
-        let visible = lines.filter { !$0.text.isEmpty }
-        guard !visible.isEmpty else { return }
+        guard let box = makeBox(lines: lines) else { return }
 
-        // 逐行上色：告警行用醒目色，否则用户看不出"到底了"和"还在滚"的差别
+        // 默认贴在选区左上角外侧；上下空间不够就翻到另一侧，再不够就贴进选区内部
+        var origin = CGPoint(x: localSelection.minX, y: localSelection.maxY + 6)
+        if origin.y + box.size.height > bounds.maxY {
+            origin.y = localSelection.minY - box.size.height - 6
+        }
+        if origin.y < bounds.minY {
+            origin.y = localSelection.minY + 6
+        }
+        draw(box, at: origin)
+    }
+
+    /// 在光标旁挂一句提示。
+    ///
+    /// 贴右下角、再夹进视图内 —— 提示框跑到屏幕外等于没提示。
+    private func drawHint(at point: CGPoint, lines: [(text: String, color: NSColor)]) {
+        guard let box = makeBox(lines: lines) else { return }
+        let origin = CGPoint(x: point.x + 18, y: point.y - box.size.height - 12)
+        draw(box, at: origin)
+    }
+
+    private func draw(_ box: (text: NSAttributedString, size: NSSize, padding: NSSize),
+                      at origin: CGPoint) {
+        let clamped = CGPoint(x: min(max(bounds.minX + 6, origin.x), bounds.maxX - box.size.width - 6),
+                              y: min(max(bounds.minY + 6, origin.y), bounds.maxY - box.size.height - 6))
+        let rect = NSRect(origin: clamped, size: box.size)
+        NSColor.black.withAlphaComponent(0.72).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
+        box.text.draw(at: NSPoint(x: rect.minX + box.padding.width, y: rect.minY + box.padding.height))
+    }
+
+    /// 把若干行文本排成一个读数框：逐行上色（告警行用醒目色，否则用户看不出
+    /// "到底了"和"还在滚"的差别），并算出框尺寸。
+    private func makeBox(lines: [(text: String, color: NSColor)])
+        -> (text: NSAttributedString, size: NSSize, padding: NSSize)? {
+        let visible = lines.filter { !$0.text.isEmpty }
+        guard !visible.isEmpty else { return nil }
+
         let attributed = NSMutableAttributedString()
         for (index, line) in visible.enumerated() {
             if index > 0 { attributed.append(NSAttributedString(string: "\n")) }
@@ -230,30 +284,12 @@ final class SelectionOverlayView: NSView {
                 .foregroundColor: line.color,
             ]))
         }
-        let textSize = attributed.size()
         let padding = NSSize(width: 8, height: 5)
-        let boxSize = NSSize(width: textSize.width + padding.width * 2,
-                             height: textSize.height + padding.height * 2)
-
-        // 默认贴在选区左上角外侧；上下空间不够就翻到另一侧，再不够就贴进选区内部
-        var origin = CGPoint(x: localSelection.minX, y: localSelection.maxY + 6)
-        if origin.y + boxSize.height > bounds.maxY {
-            origin.y = localSelection.minY - boxSize.height - 6
-        }
-        if origin.y < bounds.minY {
-            origin.y = localSelection.minY + 6
-        }
-        if origin.x + boxSize.width > bounds.maxX {
-            origin.x = bounds.maxX - boxSize.width - 6
-        }
-        if origin.x < bounds.minX {
-            origin.x = bounds.minX + 6
-        }
-
-        let box = NSRect(origin: origin, size: boxSize)
-        NSColor.black.withAlphaComponent(0.72).setFill()
-        NSBezierPath(roundedRect: box, xRadius: 5, yRadius: 5).fill()
-        attributed.draw(at: NSPoint(x: box.minX + padding.width, y: box.minY + padding.height))
+        let textSize = attributed.size()
+        return (attributed,
+                NSSize(width: textSize.width + padding.width * 2,
+                       height: textSize.height + padding.height * 2),
+                padding)
     }
 
     // MARK: - 坐标
@@ -272,5 +308,10 @@ final class SelectionOverlayView: NSView {
                       y: rect.minY - origin.y,
                       width: rect.width,
                       height: rect.height)
+    }
+
+    private func globalToLocal(_ point: CGPoint) -> CGPoint {
+        let origin = window?.frame.origin ?? .zero
+        return CGPoint(x: point.x - origin.x, y: point.y - origin.y)
     }
 }

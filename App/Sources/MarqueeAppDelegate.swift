@@ -75,6 +75,15 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
                 NSApplication.shared.terminate(nil)
             }
         }
+        // 长截图覆盖层的空状态：满屏蒙层 + 光标旁的提示框。
+        // 这条路径不需要权限（还没开始抓帧），但它是新写的绘制分支，
+        // 崩了同样是"一进长截图就废"。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeScrollOverlay") {
+            coordinator.performScrollCapture()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                NSApplication.shared.terminate(nil)
+            }
+        }
 
         // 排障入口：`Marquee -marqueeDiagnostics` 打印权限与快捷键的实际状态后退出。
         //

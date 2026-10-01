@@ -57,6 +57,8 @@ public final class SelectionOverlayController {
     private static let dragSlop: CGFloat = 4
     /// 一次 `Esc` 退出。不靠各块屏的面板各自消化，否则多屏要点好几次。
     private var keyMonitor: Any?
+    /// 前台应用变化（⌘Tab / 点了别的应用）→ 重取窗口清单
+    private var activationObserver: NSObjectProtocol?
 
     // 长截图（ticket 11）
     private var scrollSession: ScrollCaptureSession?
@@ -143,6 +145,7 @@ public final class SelectionOverlayController {
         keyOverlay.panel.makeKeyAndOrderFront(nil)
         keyOverlay.panel.makeFirstResponder(keyOverlay.view)
         installKeyMonitor()
+        installActivationObserver()
 
         // 清单与覆盖层并行：没有清单时仍可拖选区，不能串行等 SCK
         let pointerAtPresent = pointer
@@ -166,6 +169,7 @@ public final class SelectionOverlayController {
         pointerDownAt = nil
         dragExceededSlop = false
         removeKeyMonitor()
+        removeActivationObserver()
         resetScroll()
         NSCursor.arrow.set()
     }
@@ -193,6 +197,50 @@ public final class SelectionOverlayController {
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
             self.keyMonitor = nil
+        }
+    }
+
+    // MARK: - 前台应用变化
+
+    /// ⌘Tab / 点别的应用之后，**窗口的前后顺序变了**，缓存的清单就过期了。
+    ///
+    /// 不刷新的话症状很隐蔽：悬停仍然按**旧顺序**做命中 ——
+    /// 高亮会落到一个跟当前屏幕前后关系不符的窗口上；而且 `updateHover` 只在鼠标
+    /// 移动时被调用，所以不动鼠标的话连高亮都停在旧窗口上。
+    ///
+    /// 注意**不动落点**：用户已经单击锁定某扇窗，那是明确的意图，
+    /// 不该因为切了个应用就被清掉（`captureWindow` 走 `desktopIndependentWindow`，
+    /// 被挡住也照样截得到那一扇窗）。
+    private func installActivationObserver() {
+        guard activationObserver == nil else { return }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.refreshWindowsAfterActivationChange()
+            }
+        }
+    }
+
+    private func removeActivationObserver() {
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
+    }
+
+    private func refreshWindowsAfterActivationChange() {
+        guard !isFinishing, isPresented else { return }
+        let pointer = NSEvent.mouseLocation
+        Task { [weak self] in
+            guard let self, !self.isFinishing, self.isPresented else { return }
+            self.cachedWindows = await self.windowLister.listWindows()
+            // 强制重算一次：不重置的话，若前后命中的是同一扇窗就会走 early-return，
+            // 而它现在的遮挡关系可能已经变了。相位判定交给 `updateHover` 自己。
+            self.hoveredWindow = nil
+            self.updateHover(at: pointer)
         }
     }
 
@@ -383,18 +431,21 @@ public final class SelectionOverlayController {
             let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: hovered.frame,
                                                                   primaryScreenHeight: primaryScreenHeight)
             presentation = windowPresentation(hovered, cocoaRect: cocoaHover, locked: false)
-        } else if mode == .scrollCapture, let display = displayUnderPointer() {
-            // 长截图的空状态：用整块屏做高亮底，把"拖区域或点窗口"说清楚。
-            // 没有这个的话用户看到的只是一片变暗，不知道该干什么。
-            let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: display.frame,
-                                                                  primaryScreenHeight: primaryScreenHeight)
+        } else if mode == .scrollCapture {
+            // 长截图的空状态。
+            //
+            // ⚠️ 这里**不能**把整块屏当"高亮镂空"：镂空等于不挖洞，屏幕几乎不变暗
+            // （只剩四个圆角处有蒙层），用户看不出覆盖层在工作，会以为"拖不了"。
+            // 正确做法是满屏蒙层 + 在光标旁挂一句提示 —— 那里正是用户的视线所在。
             presentation = SelectionPresentation(
                 globalRect: nil,
                 sizeText: "",
                 originText: "",
-                hoverRect: cocoaHover,
-                hoverLabel: "长截图：拖出要滚动的区域，或单击要滚动的窗口",
-                hoverCornerRadius: 12
+                hoverRect: nil,
+                hoverLabel: "",
+                hoverCornerRadius: 12,
+                hintAnchor: NSEvent.mouseLocation,
+                hintText: "长截图：拖出要滚动的区域，或单击要滚动的窗口"
             )
         } else {
             presentation = .empty
