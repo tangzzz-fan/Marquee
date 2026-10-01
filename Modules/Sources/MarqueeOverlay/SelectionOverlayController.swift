@@ -87,6 +87,14 @@ public final class SelectionOverlayController {
     /// 长截图正在连续抓帧
     public var isScrollCapturing: Bool { scrollSession != nil && scrollProgress != nil }
 
+    /// 长截图会话已建立（**可能还在起步中**）。
+    ///
+    /// 用它当"别再来一次"的闸门，而不是 `isScrollCapturing`：
+    /// 后者要等 `session.begin()` 返回才为真，而 `begin` 里要走权限门 + 抓一帧基线
+    /// （实测几十到上百毫秒）。这段窗口里连按 `⏎` 会再建一个会话，
+    /// 前一个就变成没人管的孤儿 —— 它的抓帧循环照跑，还多占一份采集。
+    private var hasScrollSession: Bool { scrollSession != nil }
+
     // MARK: - 呈现 / 收场
 
     public func present(mode: Mode = .singleShot) {
@@ -196,7 +204,7 @@ public final class SelectionOverlayController {
     /// 而覆盖层面板会吞掉滚轮事件。`ignoresMouseEvents = true` 只影响鼠标，
     /// 键盘仍然回到本面板（`⏎` 结束 / `Esc` 取消照常）。
     private func beginScrollCapture(cocoaRect: CGRect) {
-        guard !isFinishing, !isScrollCapturing, let makeScrollSession else { return }
+        guard !isFinishing, !hasScrollSession, let makeScrollSession else { return }
         guard cocoaRect.width >= 8, cocoaRect.height >= 8 else { return }
 
         let session = makeScrollSession()
@@ -482,8 +490,8 @@ public final class SelectionOverlayController {
     /// 方向键步长按**像素**给：2x 屏上 1 像素 = 0.5 点，
     /// 所以这里换算成点再交给状态机（ticket 03 要求 ±1 px / ⇧±10 px）。
     private func nudge(dx: CGFloat, dy: CGFloat) {
-        // 长截图抓帧中，方向键不该去挪已经确定的采集区域
-        guard !isScrollCapturing else { return }
+        // 长截图会话一旦建立，方向键就不该再挪采集区域（起步中也不行）
+        guard !hasScrollSession else { return }
         guard let cocoaRect = session.rect else { return }
         let quartz = ScreenCoordinateConversion.quartzRect(fromCocoa: cocoaRect,
                                                            primaryScreenHeight: primaryScreenHeight)
@@ -519,7 +527,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     }
 
     func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint, optionDown: Bool) {
-        guard !isFinishing, !isScrollCapturing else { return }
+        guard !isFinishing, !hasScrollSession else { return }
         defer {
             pointerDownAt = nil
             dragExceededSlop = false
@@ -583,9 +591,15 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         guard !isFinishing else { return }
 
         if mode == .scrollCapture {
-            if isScrollCapturing {
-                finishScrollCapture(saveToDisk: saveToDisk)
-            } else if let rect = session.rect {
+            if hasScrollSession {
+                // 起步中（`session.begin` 还没返回）忽略按键：这时 `finish()` 会因为
+                // 一帧都没有而报"没有采到任何画面"，对用户来说是莫名其妙的一次失败。
+                if isScrollCapturing {
+                    finishScrollCapture(saveToDisk: saveToDisk)
+                }
+                return
+            }
+            if let rect = session.rect {
                 beginScrollCapture(cocoaRect: rect)
             } else if let display = displayUnderPointer() {
                 // 没划区域就按 ⏎ = 整屏长截图（用户可能只想滚整个页面）
