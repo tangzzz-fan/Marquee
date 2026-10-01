@@ -260,11 +260,17 @@ actor RecordingCapturer: ScreenCapturing {
 final class FakeClipboard: ClipboardWriting, @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [Data] = []
+    private var storedTexts: [String] = []
 
     var written: [Data] { withLocked(lock) { stored } }
+    var writtenTexts: [String] { withLocked(lock) { storedTexts } }
 
     func writePNG(_ data: Data) {
         withLocked(lock) { stored.append(data) }
+    }
+
+    func writeText(_ string: String) {
+        withLocked(lock) { storedTexts.append(string) }
     }
 }
 

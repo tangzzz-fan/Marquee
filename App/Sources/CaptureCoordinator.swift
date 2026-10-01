@@ -148,7 +148,11 @@ final class CaptureCoordinator {
                                      capturer: capturer,
                                      registrar: VisionScrollRegistrar(),
                                      clipboard: clipboard)
-            }
+            },
+            // 放大镜取色（ticket 10）：用现成的采集器取一屏像素，覆盖层期间冻结着用。
+            // 取不到就只是不显示放大镜，绝不影响选区与采集。
+            lensProvider: CapturerLensProvider(capturer: capturer),
+            clipboard: clipboard
         )
         overlay = controller
         controller.present(mode: mode)

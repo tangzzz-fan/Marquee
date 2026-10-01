@@ -68,6 +68,12 @@ public protocol ClipboardWriting: Sendable {
     /// 不要改成"写 `NSImage`"：那条路依赖 scale 元数据，跨应用粘贴更容易退化成半分辨率
     /// （`docs/SPIKE-PLAN.md` F2/F3 已实测对比）。
     func writePNG(_ data: Data)
+
+    /// 写入纯文本（ticket 10：复制像素色值，如 `#1A2B3C`）。
+    ///
+    /// 单独一个方法而不是"把色值包成 PNG"：粘到代码编辑器里要的是能直接用的
+    /// 文本字面量，不是一张图。
+    func writeText(_ string: String)
 }
 
 // MARK: - 显示器定位

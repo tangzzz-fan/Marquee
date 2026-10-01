@@ -33,6 +33,10 @@ struct SelectionPresentation: Equatable {
     var hintAnchor: CGPoint?
     /// 空状态提示文字
     var hintText: String = ""
+    /// 已落点时的操作提示（第三行读数）
+    var actionHintText: String = ""
+    /// 放大镜取色（ticket 10）。`nil` = 不显示。
+    var magnifier: MagnifierPresentation?
 
     static let empty = SelectionPresentation(globalRect: nil,
                                              sizeText: "",
@@ -40,6 +44,39 @@ struct SelectionPresentation: Equatable {
                                              hoverRect: nil,
                                              hoverLabel: "",
                                              hoverCornerRadius: 10)
+
+    /// 除放大镜之外的部分是否相等。用来判断"是不是只有放大镜在动"。
+    func equalsIgnoringMagnifier(_ other: SelectionPresentation) -> Bool {
+        var lhs = self
+        var rhs = other
+        lhs.magnifier = nil
+        rhs.magnifier = nil
+        return lhs == rhs
+    }
+}
+
+/// 放大镜要画的东西。由控制器算好（几何全在 `MarqueeCore.MagnifierLayout`）。
+struct MagnifierPresentation: Equatable {
+    /// 最近邻放大后的小图
+    var lensImage: CGImage?
+    /// 放大镜盒子，**Cocoa 全局坐标**
+    var boxRect: CGRect
+    /// 取样像素在盒子里的落位（局部坐标的正方形边长）
+    var sampleMarkerSize: CGFloat
+    /// 采样像素的色值文本（第一行 HEX、第二行 rgb）
+    var colorLines: [(text: String, color: NSColor)]
+    /// 复制之后的反馈（如「已复制 #1A2B3C」）
+    var statusText: String?
+
+    /// `CGImage` 没有值相等，按**引用**比 —— 同一个引用就不必重画。
+    /// 数组元素是元组（不合成 Equatable），所以只比文本。
+    static func == (lhs: MagnifierPresentation, rhs: MagnifierPresentation) -> Bool {
+        lhs.lensImage === rhs.lensImage
+            && lhs.boxRect == rhs.boxRect
+            && lhs.sampleMarkerSize == rhs.sampleMarkerSize
+            && lhs.statusText == rhs.statusText
+            && lhs.colorLines.map(\.text) == rhs.colorLines.map(\.text)
+    }
 }
 
 @MainActor
@@ -79,8 +116,24 @@ final class SelectionOverlayView: NSView {
     var presentation: SelectionPresentation = .empty {
         didSet {
             guard presentation != oldValue else { return }
-            needsDisplay = true
+            // 只有放大镜在动时只重画它那一小块。
+            //
+            // 放大镜跟着光标走，鼠标一动就要重画；整屏重绘在 5K 屏上是实打实的开销，
+            // 而验收项要求拖拽期间 120 fps 不掉帧。
+            if presentation.equalsIgnoringMagnifier(oldValue),
+               let old = oldValue.magnifier,
+               let new = presentation.magnifier {
+                setNeedsDisplay(dirtyRect(for: old).union(dirtyRect(for: new)))
+            } else {
+                needsDisplay = true
+            }
         }
+    }
+
+    /// 放大镜占的脏区（局部坐标）。色值框贴在盒子上下、文字还可能很宽，保守地多扩一圈。
+    private func dirtyRect(for magnifier: MagnifierPresentation) -> CGRect {
+        globalToLocal(magnifier.boxRect)
+            .insetBy(dx: -130, dy: -100)
     }
 
     override var isOpaque: Bool { false }
@@ -166,6 +219,14 @@ final class SelectionOverlayView: NSView {
     // MARK: - 绘制
 
     override func draw(_ dirtyRect: NSRect) {
+        drawBase()
+        if let magnifier = presentation.magnifier {
+            drawMagnifier(magnifier)
+        }
+    }
+
+    /// 蒙层与读数。放大镜不在这里画 —— 它要压在最上层。
+    private func drawBase() {
         let localSelection = presentation.globalRect.map { globalToLocal($0) }
         let localHover = presentation.hoverRect.map { globalToLocal($0) }
 
@@ -198,11 +259,67 @@ final class SelectionOverlayView: NSView {
         }
     }
 
+    /// 放大镜画在**最上层**：它要盖住蒙层、选区描边和任何读数框。
+    /// 用户盯着它看像素，被别的东西压住就没意义了。
+    private func drawMagnifier(_ magnifier: MagnifierPresentation) {
+        let box = globalToLocal(magnifier.boxRect)
+
+        if let lens = magnifier.lensImage,
+           let cgContext = NSGraphicsContext.current?.cgContext {
+            cgContext.saveGState()
+            // 最近邻：放大镜就是要看清"这一格是什么颜色"，
+            // 插值混色等于把要看的信息抹掉（Core 侧的 `magnified` 也是 `.none`，两处必须一致）
+            cgContext.interpolationQuality = .none
+            cgContext.draw(lens, in: box)
+            cgContext.restoreGState()
+        }
+
+        // 取样像素的落位：盒子正中的一个小方块，就是"当前取的是哪个像素"
+        let marker = CGRect(x: box.midX - magnifier.sampleMarkerSize / 2,
+                            y: box.midY - magnifier.sampleMarkerSize / 2,
+                            width: magnifier.sampleMarkerSize,
+                            height: magnifier.sampleMarkerSize)
+
+        // 十字线贯穿整个盒子，方便对齐周边像素
+        let cross = NSBezierPath()
+        cross.move(to: CGPoint(x: box.midX, y: box.minY))
+        cross.line(to: CGPoint(x: box.midX, y: box.maxY))
+        cross.move(to: CGPoint(x: box.minX, y: box.midY))
+        cross.line(to: CGPoint(x: box.maxX, y: box.midY))
+        cross.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.55).setStroke()
+        cross.stroke()
+
+        let markerPath = NSBezierPath(rect: marker)
+        markerPath.lineWidth = 1.5
+        NSColor.controlAccentColor.setStroke()
+        markerPath.stroke()
+
+        let border = NSBezierPath(rect: box.insetBy(dx: 0.5, dy: 0.5))
+        border.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.85).setStroke()
+        border.stroke()
+
+        // 色值文本贴在盒子下方（Cocoa y 向上 → "下方"是更小的 y），放不下就翻到上方
+        var lines = magnifier.colorLines
+        if let status = magnifier.statusText {
+            lines.append((status, ReadoutStyle.warning))
+        }
+        guard let textBox = makeBox(lines: lines) else { return }
+        var origin = CGPoint(x: box.minX, y: box.minY - textBox.size.height - 4)
+        if origin.y < bounds.minY { origin.y = box.maxY + 4 }
+        draw(textBox, at: origin)
+    }
+
     /// 长截图抓帧中显示进度与提示，否则显示尺寸/坐标读数。
     private func readoutLines() -> [(text: String, color: NSColor)] {
         guard presentation.isScrollCapturing else {
-            return [(presentation.sizeText, ReadoutStyle.normal),
-                    (presentation.originText, ReadoutStyle.normal)]
+            var lines: [(text: String, color: NSColor)] = [(presentation.sizeText, ReadoutStyle.normal),
+                                                           (presentation.originText, ReadoutStyle.normal)]
+            if !presentation.actionHintText.isEmpty {
+                lines.append((presentation.actionHintText, ReadoutStyle.hint))
+            }
+            return lines
         }
         var lines: [(text: String, color: NSColor)] = []
         if !presentation.scrollStatusText.isEmpty {

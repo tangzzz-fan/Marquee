@@ -13,4 +13,10 @@ struct SystemClipboard: ClipboardWriting, Sendable {
         pasteboard.clearContents()
         pasteboard.setData(data, forType: .png)
     }
+
+    func writeText(_ string: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(string, forType: .string)
+    }
 }

@@ -37,6 +37,10 @@ public final class SelectionOverlayController {
     private let makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)?
     /// 长截图会话工厂。`nil` 时 `Mode.scrollCapture` 不可用。
     private let makeScrollSession: (@MainActor () -> ScrollCaptureSession)?
+    /// 放大镜取色用的整屏像素来源（ticket 10）。`nil` 时整个放大镜不出现。
+    private let lensProvider: LensFrameProviding?
+    /// 复制色值用的剪贴板。`nil` 时 `⌥` 点击不复制。
+    private let clipboard: ClipboardWriting?
 
     private var mode: Mode = .singleShot
     private var session = SelectionSession()
@@ -66,6 +70,24 @@ public final class SelectionOverlayController {
     private var scrollProgress: ScrollCaptureSession.Progress?
     private var scrollRect: CGRect?
 
+    // 放大镜取色（ticket 10）
+    /// 每块屏一份冻结的整屏像素，按需取、取到就留着（放大镜跟随光标时不再采集）
+    private var lensFrames: [UInt32: LensFrame] = [:]
+    private var lensRequestsInFlight: Set<UInt32> = []
+    /// 当前算好的放大镜内容。`nil` = 不显示。
+    private var magnifier: MagnifierPresentation?
+    /// 最近一次取样的像素。用来确认"取样点没变"（避免无谓重建小图）
+    private var lastSample: (displayID: UInt32, pixel: PixelCoordinate)?
+    /// 当前取样像素的颜色
+    private var sampledColor: PixelColor?
+    /// 复制反馈文本（1.5 秒后自动清掉）
+    private var magnifierStatus: String?
+    /// 放大镜尺寸。ticket 15 会把它接到偏好设置上。
+    public var lensSettings: MagnifierLayout.Settings = .default
+    /// 复制色值用的格式。ticket 15 会把它接到偏好设置上。
+    public var copyFormat: PixelColor.Format = .hex
+    private var magnifierStatusTask: Task<Void, Never>?
+
     public init(regionFlow: RegionCaptureFlow,
                 fullScreenFlow: FullScreenCaptureFlow,
                 windowFlow: WindowCaptureFlow,
@@ -73,7 +95,9 @@ public final class SelectionOverlayController {
                 displays: DisplayLocating,
                 onFinish: @escaping (Outcome) -> Void,
                 makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)? = nil,
-                makeScrollSession: (@MainActor () -> ScrollCaptureSession)? = nil) {
+                makeScrollSession: (@MainActor () -> ScrollCaptureSession)? = nil,
+                lensProvider: LensFrameProviding? = nil,
+                clipboard: ClipboardWriting? = nil) {
         self.regionFlow = regionFlow
         self.fullScreenFlow = fullScreenFlow
         self.windowFlow = windowFlow
@@ -82,6 +106,8 @@ public final class SelectionOverlayController {
         self.onFinish = onFinish
         self.makeSaveRequest = makeSaveRequest
         self.makeScrollSession = makeScrollSession
+        self.lensProvider = lensProvider
+        self.clipboard = clipboard
     }
 
     public var isPresented: Bool { !overlays.isEmpty }
@@ -110,6 +136,7 @@ public final class SelectionOverlayController {
         hoveredWindow = nil
         isOptionDown = false
         resetScroll()
+        resetMagnifier()
         displayGeometries = displays.allDisplays()
 
         guard !displayGeometries.isEmpty,
@@ -154,6 +181,9 @@ public final class SelectionOverlayController {
             self.cachedWindows = await self.windowLister.listWindows()
             self.updateHover(at: pointerAtPresent)
         }
+
+        // 放大镜的整屏像素同样并行取。先踢一脚，用户不动鼠标也能看到放大镜。
+        updateMagnifier(at: pointerAtPresent)
     }
 
     private func teardown() {
@@ -171,6 +201,7 @@ public final class SelectionOverlayController {
         removeKeyMonitor()
         removeActivationObserver()
         resetScroll()
+        resetMagnifier()
         NSCursor.arrow.set()
     }
 
@@ -242,6 +273,131 @@ public final class SelectionOverlayController {
             self.hoveredWindow = nil
             self.updateHover(at: pointer)
         }
+    }
+
+    // MARK: - 放大镜取色（ticket 10）
+
+    /// 光标移动时重算放大镜。
+    ///
+    /// 按需取一屏像素（取到就缓存），之后所有取样都是**纯内存计算**：
+    /// 裁一块方形 → 最近邻放大 → 读中心像素颜色。
+    /// 不这么做就只能每次移动都去采集，而那是几十毫秒量级 —— 跟手是不可能的。
+    private func updateMagnifier(at cocoaPoint: CGPoint) {
+        guard let lensProvider, primaryScreenHeight > 0 else {
+            if magnifier != nil { magnifier = nil }
+            return
+        }
+
+        let quartz = ScreenCoordinateConversion.quartzPoint(fromCocoa: cocoaPoint,
+                                                            primaryScreenHeight: primaryScreenHeight)
+        guard let display = displayGeometries.first(where: { $0.frame.contains(quartz) }) else {
+            if magnifier != nil { magnifier = nil }
+            return
+        }
+
+        requestLensFrameIfNeeded(for: display, using: lensProvider)
+        guard let lens = lensFrames[display.displayID] else {
+            // 这一屏的像素还没取回来：先不显示，取到后会自动补上
+            if magnifier != nil { magnifier = nil }
+            return
+        }
+
+        let imagePoint = MagnifierLayout.imagePixel(forCocoa: cocoaPoint,
+                                                   on: display,
+                                                   primaryScreenHeight: primaryScreenHeight)
+        let settings = lensSettings
+        let side = max(1, Int((settings.samplePoints * display.backingScale).rounded()))
+        let center = PixelSampling.clampedCenter(imagePoint,
+                                                side: side,
+                                                imageWidth: lens.image.width,
+                                                imageHeight: lens.image.height)
+
+        // 取样像素没变就不重建小图。高刷新率下这是唯一值得省的开销：
+        // 2x 屏上光标走 1 点 = 2 像素，一半的移动事件落在同一个像素里。
+        if let lastSample, lastSample.displayID == display.displayID, lastSample.pixel == center,
+           magnifier != nil {
+            return
+        }
+
+        let zoom = max(1, Int(settings.zoom.rounded()))
+        guard let lensImage = PixelSampling.magnified(lens.image,
+                                                     centeredAt: center,
+                                                     side: side,
+                                                     zoom: zoom),
+              let color = PixelSampling.color(of: lens.image, at: center) else {
+            magnifier = nil
+            return
+        }
+
+        lastSample = (display.displayID, center)
+        sampledColor = color
+        magnifier = MagnifierPresentation(
+            lensImage: lensImage,
+            boxRect: CGRect(origin: MagnifierLayout.origin(cursor: cocoaPoint,
+                                                           settings: settings,
+                                                           screenBounds: display.frame),
+                            size: settings.boxSize),
+            // 一个源像素在盒子里占这么大：盒子边 = samplePoints × zoom（点），
+            // 而一个源像素 = 1 / backingScale 点，再放大 zoom 倍
+            sampleMarkerSize: settings.zoom / display.backingScale,
+            colorLines: [(color.hexString, ReadoutStyle.normal),
+                         (color.rgbString, ReadoutStyle.hint)],
+            statusText: magnifierStatus
+        )
+    }
+
+    private func requestLensFrameIfNeeded(for display: DisplayGeometry, using provider: LensFrameProviding) {
+        guard lensFrames[display.displayID] == nil,
+              !lensRequestsInFlight.contains(display.displayID) else { return }
+        lensRequestsInFlight.insert(display.displayID)
+
+        Task { [weak self] in
+            guard let self else { return }
+            let frame = await provider.lensFrame(for: display)
+            self.lensRequestsInFlight.remove(display.displayID)
+            guard !self.isFinishing, self.isPresented else { return }
+            if let frame {
+                self.lensFrames[display.displayID] = frame
+            }
+            // 取到之后立刻按当前光标补一次：用户不该为了看到放大镜而再动一下鼠标
+            self.updateMagnifier(at: NSEvent.mouseLocation)
+            self.refresh()
+        }
+    }
+
+    /// `⌥` 点击复制取样像素的色值。
+    ///
+    /// 只在**已落点且没锁定窗口**时生效。理由：那个相位里点击本来是空操作，
+    /// 插进来零冲突；而拖拽中按 `⌥` 必须仍然只是"拖出一个选区"、
+    /// 悬停中点击必须仍然只是"选中这扇窗"，`⌥` 也不能抢走"无阴影"的含义。
+    @discardableResult
+    private func copySampledColor() -> Bool {
+        guard let color = sampledColor, let clipboard else { return false }
+        let text = color.string(in: copyFormat)
+        clipboard.writeText(text)
+
+        magnifierStatus = "已复制 \(text)"
+        refresh()
+
+        magnifierStatusTask?.cancel()
+        magnifierStatusTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard let self, !Task.isCancelled else { return }
+            self.magnifierStatus = nil
+            self.refresh()
+        }
+        return true
+    }
+
+    private func resetMagnifier() {
+        lensFrames = [:]
+        lensRequestsInFlight = []
+        magnifier = nil
+        lastSample = nil
+        sampledColor = nil
+        magnifierStatus = nil
+        magnifierStatusTask?.cancel()
+        magnifierStatusTask = nil
     }
 
     // MARK: - 长截图（ticket 11）
@@ -407,7 +563,7 @@ public final class SelectionOverlayController {
 
     private func refresh() {
         let cocoaRect = session.rect
-        let presentation: SelectionPresentation
+        var presentation: SelectionPresentation
 
         if let progress = scrollProgress, isScrollCapturing {
             presentation = scrollPresentation(rect: scrollRect, progress: progress)
@@ -429,7 +585,9 @@ public final class SelectionOverlayController {
                 originText: "(\(Int(quartz.minX.rounded())), \(Int(quartz.minY.rounded())))",
                 hoverRect: nil,
                 hoverLabel: "",
-                hoverCornerRadius: 10
+                hoverCornerRadius: 10,
+                // 落点后才提这一句：那是 `⌥` 点击唯一生效的相位
+                actionHintText: "⌘S 保存到磁盘  ·  ⌥ 点击复制色值  ·  ⏎ 确认  ·  Esc 取消"
             )
         } else if let hovered = hoveredWindow, session.phase == .awaitingDrag {
             let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: hovered.frame,
@@ -454,6 +612,9 @@ public final class SelectionOverlayController {
         } else {
             presentation = .empty
         }
+
+        // 放大镜压在一切之上
+        presentation.magnifier = magnifier
 
         for overlay in overlays {
             overlay.view.presentation = presentation
@@ -578,6 +739,8 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             session.beginDrag(at: start)
         }
         session.updateDrag(to: globalPoint)
+        // 拖拽时鼠标移动走的是 mouseDragged，不会触发 mouseMoved —— 放大镜得在这里跟
+        updateMagnifier(at: globalPoint)
         refresh()
     }
 
@@ -600,6 +763,12 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         }
 
         if session.isSettled {
+            // 落点之后点击本来是**空操作**，所以 `⌥` 点击可以在这里安全地做取色复制。
+            // 为什么不在别的相位也支持：拖拽中 `⌥` 必须仍然只是"拖出一个选区"，
+            // 悬停中点击必须仍然只是"选中这扇窗"，而锁定窗口时 `⌥` 是"无阴影"。
+            if optionDown, session.settledWindow == nil {
+                _ = copySampledColor()
+            }
             return
         }
 
@@ -614,7 +783,9 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     }
 
     func overlayView(_ view: SelectionOverlayView, movedTo globalPoint: CGPoint) {
-        guard !isFinishing else { return }
+        guard !isFinishing, !hasScrollSession else { return }
+        // 拖拽中不会有 mouseMoved（走的是 draggedTo），所以这里只处理"空闲移动"
+        updateMagnifier(at: globalPoint)
         updateHover(at: globalPoint)
     }
 
