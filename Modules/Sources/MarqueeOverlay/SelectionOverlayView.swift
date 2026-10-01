@@ -50,6 +50,12 @@ struct SelectionPresentation: Equatable {
     /// 就地标注（含正在画的那一笔草稿）。
     var annotations: [Annotation] = []
 
+    /// 被选中的标注的包围盒（**选区局部点**，与 `annotations` 同一坐标系）。
+    ///
+    /// 没有它的话，用户点完一个标注**看不出到底选中了没有** ——
+    /// 而"选中了但没反应"与"没选中"在界面上完全一样。
+    var selectedAnnotationFrames: [CGRect] = []
+
     /// 打码（马赛克 / 模糊）预览要用的底图。
     ///
     /// 覆盖层不铺整屏截图，所以这两类**拿不到底图就画不出来** —— 那时预览会跳过它们，
@@ -114,8 +120,8 @@ struct OverlayToolbarPresentation: Equatable {
     /// 三档里当前选中的那一个（用**下标**而不是数值：两组值的数值范围不重叠，
     /// 拿数值比会一个都匹配不上，表现是"选中的那一档没有高亮"）。
     var sizeSlotIndex: Int
-    /// 这三档现在是线宽还是打码强度（只影响画法：圆点 / 方块）
-    var sizeSlotsAreRedaction: Bool
+    /// 这三档**现在代表什么**（只影响画法：圆点 / 方块 / 字母 A）
+    var sizeSlotMeaning: OverlaySizeMeaning
     /// 文字识别正在进行 —— 那一格换成"进行中"的样子并置灰。
     ///
     /// 不做这个的话，用户点了「识别文字」在界面上**看不到任何变化**
@@ -175,6 +181,15 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     /// 由控制层用 `OverlayToolbar.button(at:in:)` 判断点的是哪个按钮 ——
     /// 视图只负责"这一下点在工具栏里"，不做语义判断。
     func overlayView(_ view: SelectionOverlayView, clickedToolbarAt globalPoint: CGPoint)
+
+    // 文字输入框（ticket 22）。三条都来自那个真的 `NSTextField`：
+    /// 框里的内容变了（每次击键）
+    func overlayView(_ view: SelectionOverlayView, didChangeText text: String)
+    /// 框里按了 `⏎`
+    func overlayViewDidCommitText(_ view: SelectionOverlayView)
+    /// 框里按了 `Esc`
+    func overlayViewDidCancelText(_ view: SelectionOverlayView)
+
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView)
 }
 
@@ -565,7 +580,7 @@ final class SelectionOverlayView: NSView {
                             selected: state.stroke == AnnotationPalette.colors[index])
         case .lineWidth(let index):
             drawSizeSwatch(value: state.sizeSlotValues[index],
-                           isRedaction: state.sizeSlotsAreRedaction,
+                           meaning: state.sizeSlotMeaning,
                            in: rect,
                            selected: state.sizeSlotIndex == index)
         case .ocr:
@@ -592,10 +607,12 @@ final class SelectionOverlayView: NSView {
     /// 用户会以为是两个不同的东西。
     private static func symbol(for tool: OverlayTool) -> String {
         switch tool {
+        case .select: "cursorarrow"
         case .rectangle: "rectangle"
         case .ellipse: "circle"
         case .arrow: "arrow.up.right"
         case .pen: "pencil.tip"
+        case .text: "textformat"
         case .mosaic: "checkerboard.rectangle"
         case .blur: "camera.filters"
         }
@@ -621,20 +638,38 @@ final class SelectionOverlayView: NSView {
 
     /// 尺寸档用**它本身的大小**表达 —— 写数字（2/4/8）既看不懂又占地方。
     ///
-    /// 线宽画圆点、打码强度画方块：两组值范围不同（线宽 2–8 点、强度 4–16 点），
-    /// 光看大小容易混。形状不一样就一眼分得清"现在调的是哪一组"。
+    /// 三组值的范围互相重叠（线宽 2–8、打码强度 4–16、字号 18–44 点），
+    /// 光看大小分不清"现在调的是哪一组"，所以形状也不一样：
+    /// 线宽＝圆点、打码强度＝方块、字号＝一个"字"。
     private func drawSizeSwatch(value: CGFloat,
-                                isRedaction: Bool,
+                                meaning: OverlaySizeMeaning,
                                 in rect: CGRect,
                                 selected: Bool) {
         if selected { highlight(rect) }
-        let side = min(rect.width - 4, 4 + value * 1.4)
-        let box = CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2, width: side, height: side)
-        NSColor.white.setFill()
-        if isRedaction {
-            NSBezierPath(rect: box).fill()
-        } else {
-            NSBezierPath(ovalIn: box).fill()
+
+        switch meaning {
+        case .lineWidth, .redactionStrength:
+            let side = min(rect.width - 4, 4 + value * 1.4)
+            let box = CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2,
+                             width: side, height: side)
+            NSColor.white.setFill()
+            if meaning == .redactionStrength {
+                NSBezierPath(rect: box).fill()
+            } else {
+                NSBezierPath(ovalIn: box).fill()
+            }
+        case .fontSize:
+            // 画一个"字"：用真正的字号缩小到格子能装下的尺寸。
+            // 直接在 20 点的格子里画 44 点的字会糊成一团黑，所以按格高归一化，
+            // 但**保留三档之间的相对大小** —— 用户要能一眼看出"这档更大"。
+            let normalized = 9 + (value - AnnotationPalette.overlayFontSizes[0]) * 0.28
+            let font = NSFont.systemFont(ofSize: max(9, min(rect.height - 6, normalized)),
+                                         weight: .semibold)
+            let text = "A" as NSString
+            let size = text.size(withAttributes: [.font: font])
+            text.draw(at: CGPoint(x: rect.midX - size.width / 2,
+                                  y: rect.midY - size.height / 2),
+                      withAttributes: [.font: font, .foregroundColor: NSColor.white])
         }
     }
 
@@ -685,6 +720,19 @@ final class SelectionOverlayView: NSView {
                                // 标注坐标是点、底图是像素 —— 这个倍率不传下去，
                                // 马赛克格子会小一半（而"格子小了点"只会被当成强度没调对）
                                sourceScale: presentation.redactionBackdrop?.scale ?? 1)
+
+        // 选中框画在**同一个翻转后的坐标系**里，于是它跟着标注一起走，
+        // 不用再算一次"标注坐标 → 视图坐标"（那种换算写两遍必然会有一遍写错）。
+        let selected = presentation.selectedAnnotationFrames
+        if !selected.isEmpty {
+            cgContext.setStrokeColor(NSColor.controlAccentColor.cgColor)
+            cgContext.setLineWidth(1)
+            cgContext.setLineDash(phase: 0, lengths: [5, 3])
+            for frame in selected {
+                cgContext.stroke(frame.insetBy(dx: -3, dy: -3))
+            }
+            cgContext.setLineDash(phase: 0, lengths: [])
+        }
         cgContext.restoreGState()
     }
 
@@ -810,5 +858,144 @@ final class SelectionOverlayView: NSView {
     private func globalToLocal(_ point: CGPoint) -> CGPoint {
         let origin = window?.frame.origin ?? .zero
         return CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+    }
+
+    // MARK: - 文字输入框（ticket 22）
+
+    /// 输入框尺寸与字号。
+    ///
+    /// **故意不跟标注的字号走**：它是一个**控件**，不是所见即所得的预览 ——
+    /// 44 点的标注字号会做出一个 60 点高的白条糊在图上，反而看不清输入了什么
+    /// （编辑器里那个输入框也是固定 13 点，同理）。真正的字号在提交后才生效。
+    private static let textInputSize = CGSize(width: 240, height: 26)
+    private static let textInputFontSize: CGFloat = 14
+
+    /// 正在编辑时挂着的输入框。`nil` = 没有。
+    private var textInput: NSTextField?
+
+    /// 挂出输入框、把键盘焦点交给它。
+    ///
+    /// 用真的 `NSTextField` 而不是自绘：**中文输入法的候选窗、联想、光标全都要靠它**，
+    /// 自己收 `keyDown` 就等于自己实现一遍输入法（那是个无底洞）。
+    /// 前提是面板能成为 key window —— 已实测（2026-10-01）：
+    /// `panel.isKeyWindow=true firstResponder=true`。这条探针还在 `present()` 里留着。
+    func showTextInput(for annotation: Annotation, text: String) {
+        let field = textInput ?? makeTextInput()
+        textInput = field
+        field.delegate = self
+        field.stringValue = text
+        field.frame = textInputFrame(for: annotation)
+
+        if field.superview !== self {
+            addSubview(field)
+        }
+        window?.makeFirstResponder(field)
+        // 光标落到末尾：用户接着上一次的内容继续改（而不是每次都从头覆盖）
+        if let editor = field.currentEditor() {
+            editor.selectedRange = NSRange(location: (text as NSString).length, length: 0)
+        }
+    }
+
+    /// 把撤销 / 重做转给**输入框自己**。
+    ///
+    /// 编辑中的"撤销"该是"撤销我刚打的字"（与在框里按 `⌘Z` 走的是同一个 undo manager），
+    /// 而不是去撤销整张图的标注 —— 后者会把用户刚敲的一整行连同上一笔标注一起收走。
+    ///
+    /// - Returns: 输入框还能撤（重做）时为 `true`；没在编辑或没得撤时为 `false`。
+    func undoTextInput(redo: Bool) -> Bool {
+        guard let manager = textInput?.currentEditor()?.undoManager else { return false }
+        if redo {
+            guard manager.canRedo else { return false }
+            manager.redo()
+            return true
+        }
+        guard manager.canUndo else { return false }
+        manager.undo()
+        return true
+    }
+
+    /// 输入框里当前的文本（没有输入框时为 `nil`）。
+    var textInputText: String? { textInput?.stringValue }
+
+    /// 收掉输入框，并把键盘焦点还给覆盖层自己。
+    func hideTextInput() {
+        guard let field = textInput else { return }
+        // 先还焦点再拆视图：直接 `removeFromSuperview` 一个正在编辑的 `NSTextField`
+        // 会让它的 field editor 留在一个已经不在视图树里的控件上。
+        if window?.firstResponder === field.currentEditor() {
+            window?.makeFirstResponder(self)
+        }
+        field.delegate = nil
+        field.removeFromSuperview()
+        textInput = nil
+    }
+
+    private func makeTextInput() -> NSTextField {
+        let field = NSTextField(frame: CGRect(origin: .zero, size: Self.textInputSize))
+        field.isBordered = false
+        field.isBezeled = false
+        field.drawsBackground = true
+        field.backgroundColor = .white
+        field.textColor = .black
+        field.font = .systemFont(ofSize: Self.textInputFontSize)
+        field.placeholderString = "输入文字"
+        field.focusRingType = .none
+        field.wantsLayer = true
+        field.layer?.cornerRadius = 5
+        field.layer?.borderWidth = 2
+        field.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        // 不用 `NSTextField.lineBreakMode`：单行标注，换行会画到框外
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        return field
+    }
+
+    /// 输入框该放哪（**视图坐标**）。
+    ///
+    /// 这是唯一一处"把标注坐标换回视图坐标"的地方：标注存的是**选区局部点**
+    /// （原点＝选区视觉左上角、y 向下），而 `NSView` 的坐标是原点左下、y 向上。
+    /// 换算错的表现是输入框跑到选区外面去 —— 而它看起来只是"点错位置了"。
+    private func textInputFrame(for annotation: Annotation) -> CGRect {
+        guard let origin = presentation.annotationOrigin else {
+            return CGRect(origin: .zero, size: Self.textInputSize)
+        }
+        let box = annotation.frame.standardized
+        let topLeft = globalToLocal(origin)
+        let size = Self.textInputSize
+        let wanted = CGRect(x: topLeft.x + box.minX,
+                            y: topLeft.y - box.minY - size.height,
+                            width: size.width,
+                            height: size.height)
+
+        // 夹进视图：点击靠近屏幕边缘时输入框会整个跑到屏幕外，
+        // 而"看不见输入框"的表现与"点了没反应"一模一样。
+        let limit = bounds.insetBy(dx: 4, dy: 4)
+        return CGRect(x: min(max(limit.minX, wanted.minX), max(limit.minX, limit.maxX - size.width)),
+                      y: min(max(limit.minY, wanted.minY), max(limit.minY, limit.maxY - size.height)),
+                      width: size.width,
+                      height: size.height)
+    }
+}
+
+extension SelectionOverlayView: NSTextFieldDelegate {
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        delegate?.overlayView(self, didChangeText: field.stringValue)
+    }
+
+    /// `⏎` / `Esc` 走这里，而不是 `NSTextField` 的 target-action ——
+    /// 用同一个入口收两个键，就不会出现"回车能提交、Esc 却漏了"这种事。
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        switch commandSelector {
+        case #selector(NSResponder.insertNewline(_:)):
+            delegate?.overlayViewDidCommitText(self)
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            delegate?.overlayViewDidCancelText(self)
+            return true
+        default:
+            return false
+        }
     }
 }

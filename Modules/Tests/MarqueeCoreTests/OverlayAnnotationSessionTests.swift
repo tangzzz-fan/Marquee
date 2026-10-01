@@ -301,6 +301,223 @@ struct OverlayAnnotationSessionTests {
         #expect(subject.annotations.isEmpty)
     }
 
+    // MARK: - 选择 / 移动 / 删除（"画完还能改"）
+
+    /// 造一个已有若干标注的会话
+    private func sessionWithShapes() -> OverlayAnnotationSession {
+        var subject = session()
+        subject.toggle(tool: .rectangle)
+        subject.beginStroke(at: CGPoint(x: 10, y: 10))
+        subject.endStroke(at: CGPoint(x: 50, y: 40))          // 第一个：10,10–50,40
+        subject.beginStroke(at: CGPoint(x: 100, y: 100))
+        subject.endStroke(at: CGPoint(x: 160, y: 150))        // 第二个：100,100–160,150
+        subject.clearTool()
+        return subject
+    }
+
+    @Test("点在一个标注上就选中它")
+    func clickingSelects() {
+        var subject = sessionWithShapes()
+        subject.toggle(tool: .select)
+
+        let hit = subject.select(at: CGPoint(x: 30, y: 25))
+
+        #expect(hit)
+        #expect(subject.selectedAnnotations.count == 1)
+    }
+
+    @Test("点在空白处清空选择")
+    func clickingEmptyClearsSelection() {
+        var subject = sessionWithShapes()
+        subject.toggle(tool: .select)
+        subject.select(at: CGPoint(x: 30, y: 25))
+        #expect(!subject.selectedAnnotations.isEmpty)
+
+        let hit = subject.select(at: CGPoint(x: 300, y: 300))
+        #expect(!hit)
+        #expect(subject.selectedAnnotations.isEmpty)
+    }
+
+    @Test("重叠时选**后画的**那个（它与显示顺序一致 —— 看到谁在上面就选中谁）")
+    func laterShapeWinsWhenOverlapping() {
+        var subject = session()
+        subject.toggle(tool: .rectangle)
+        subject.beginStroke(at: CGPoint(x: 0, y: 0))
+        subject.endStroke(at: CGPoint(x: 100, y: 100))
+        subject.beginStroke(at: CGPoint(x: 20, y: 20))
+        subject.endStroke(at: CGPoint(x: 80, y: 80))     // 后画，盖在上面
+        subject.clearTool()
+        subject.toggle(tool: .select)
+
+        subject.select(at: CGPoint(x: 50, y: 50))
+
+        #expect(subject.selectedAnnotations.first?.frame == CGRect(x: 20, y: 20, width: 60, height: 60))
+    }
+
+    @Test("拖动移动整框：位置跟着走、尺寸不变")
+    func draggingMovesWithoutResizing() {
+        var subject = sessionWithShapes()
+        let original = subject.annotations[0].frame
+        subject.toggle(tool: .select)
+
+        subject.beginMove(at: CGPoint(x: 30, y: 25))
+        subject.updateMove(to: CGPoint(x: 60, y: 55))
+        let moved = subject.endMove(at: CGPoint(x: 60, y: 55))
+
+        #expect(moved)
+        #expect(subject.annotations[0].frame == original.offsetBy(dx: 30, dy: 30))
+        #expect(subject.annotations[0].frame.size == original.size)
+    }
+
+    @Test("没动过就不算一步改动 —— 点一下不该进撤销栈")
+    func clickWithoutMovingIsNotUndoable() {
+        var subject = sessionWithShapes()
+        subject.toggle(tool: .select)
+        let before = subject.canUndo
+
+        subject.beginMove(at: CGPoint(x: 30, y: 25))
+        let moved = subject.endMove(at: CGPoint(x: 30, y: 25))
+
+        #expect(!moved)
+        #expect(subject.canUndo == before, "点一下不该产生一步可撤销的改动")
+    }
+
+    @Test("拖动之后撤销，回到按下前的位置")
+    func undoingAMoveRestoresPosition() {
+        var subject = sessionWithShapes()
+        let original = subject.annotations[0].frame
+        subject.toggle(tool: .select)
+
+        subject.beginMove(at: CGPoint(x: 30, y: 25))
+        subject.endMove(at: CGPoint(x: 80, y: 75))
+        #expect(subject.annotations[0].frame != original)
+
+        subject.undo()
+
+        #expect(subject.annotations[0].frame == original)
+    }
+
+    @Test("镜像：拖动用的基准是**按下那一刻**，不是上一帧")
+    func moveUsesTheAnchorNotThePreviousFrame() {
+        var subject = sessionWithShapes()
+        let original = subject.annotations[0].frame
+        subject.toggle(tool: .select)
+
+        subject.beginMove(at: CGPoint(x: 30, y: 25))
+        subject.updateMove(to: CGPoint(x: 130, y: 125))
+        subject.updateMove(to: CGPoint(x: 40, y: 35))        // 往回拖
+        subject.endMove(at: CGPoint(x: 40, y: 35))
+
+        // 用上一帧当基准的话，这里会得到 30+100-70 = 60 这种累积误差
+        #expect(subject.annotations[0].frame == original.offsetBy(dx: 10, dy: 10))
+    }
+
+    @Test("Delete 删掉选中的那个")
+    func deleteRemovesSelection() {
+        var subject = sessionWithShapes()
+        subject.toggle(tool: .select)
+        subject.select(at: CGPoint(x: 30, y: 25))
+
+        let deleted = subject.deleteSelected()
+
+        #expect(deleted)
+        #expect(subject.annotations.count == 1)
+        #expect(subject.selectedAnnotations.isEmpty)
+    }
+
+    @Test("没选中任何东西时 Delete 是空操作（不该把整张图清掉）")
+    func deleteWithoutSelectionDoesNothing() {
+        var subject = sessionWithShapes()
+
+        let deleted = subject.deleteSelected()
+
+        #expect(!deleted)
+        #expect(subject.annotations.count == 2)
+    }
+
+    @Test("撤销把**刚画的那个**收走时，选中集合里不能留下幽灵 id")
+    func undoingADrawLeavesNoGhostSelection() {
+        // ⚠️ 这条与"删掉再撤销"不是同一件事：`deleteSelected` 自己会清空选中集合，
+        // 所以那条路径**无论如何都不会有幽灵** —— 只有"撤销一步绘制"才会：
+        // 撤销恢复的是**上一版数组**，而当前选中的那个在新版里根本不存在。
+        // 残留的幽灵 id 的表现是"Delete 按下去什么都没发生"，且完全看不出原因。
+        var subject = session()
+        subject.toggle(tool: .rectangle)
+        subject.beginStroke(at: CGPoint(x: 10, y: 10))
+        subject.endStroke(at: CGPoint(x: 50, y: 40))
+        subject.beginStroke(at: CGPoint(x: 100, y: 100))
+        subject.endStroke(at: CGPoint(x: 160, y: 150))     // 后画的那个
+        subject.clearTool()
+
+        subject.toggle(tool: .select)
+        subject.select(at: CGPoint(x: 130, y: 125))        // 选中后画的那个
+        #expect(subject.selectedAnnotations.count == 1)
+        let ghost = subject.selection.first!
+
+        subject.undo()                                     // 把它收回去
+
+        #expect(subject.annotations.count == 1)
+        // ⚠️ 断言的是**不变量本身**（选中集合只装存在的 id），不是某个可见症状：
+        // 目前的几处 `guard` 恰好把幽灵的后果挡住了（`deleteSelected` 会因为
+        // "一个都没删掉"而提前返回），所以**任何症状型断言都会是空跑**。
+        // 留着它是因为后面任何一处"信任这个集合"的新代码都会踩到它。
+        #expect(!subject.selection.contains(ghost))
+
+        let deleted = subject.deleteSelected()
+        #expect(!deleted)
+        #expect(subject.annotations.count == 1)
+    }
+
+    @Test("删掉再撤销：标注回来，且选中集合是干净的")
+    func undoingADeleteRestoresAndClearsSelection() {
+        var subject = sessionWithShapes()
+        subject.toggle(tool: .select)
+        subject.select(at: CGPoint(x: 30, y: 25))
+        subject.deleteSelected()
+
+        subject.undo()
+
+        #expect(subject.annotations.count == 2)
+        #expect(subject.selectedAnnotations.isEmpty)
+    }
+
+    @Test("切换工具会清掉选择 —— 否则旧的高亮会挂在画面上")
+    func switchingToolClearsSelection() {
+        var subject = sessionWithShapes()
+        subject.toggle(tool: .select)
+        subject.select(at: CGPoint(x: 30, y: 25))
+        #expect(!subject.selectedAnnotations.isEmpty)
+
+        subject.toggle(tool: .pen)
+
+        #expect(subject.selectedAnnotations.isEmpty)
+    }
+
+    @Test("`isDrawing` 与「选了工具」不是一回事 —— 选择工具不画东西")
+    func selectToolIsNotDrawing() {
+        var subject = session()
+        subject.toggle(tool: .select)
+
+        #expect(subject.tool != nil)
+        #expect(!subject.isDrawing, "把选择也算成画，用户点选时会画出新图形")
+        #expect(subject.isSelecting)
+
+        subject.toggle(tool: .pen)
+        #expect(subject.isDrawing)
+        #expect(!subject.isSelecting)
+    }
+
+    @Test("选择工具下 beginStroke 是空操作")
+    func selectToolCannotDraw() {
+        var subject = session()
+        subject.toggle(tool: .select)
+
+        let began = subject.beginStroke(at: CGPoint(x: 10, y: 10))
+
+        #expect(!began)
+        #expect(subject.draft == nil)
+    }
+
     @Test("`usesRedaction` 只在马赛克 / 模糊时为真 —— 控制层靠它决定要不要准备底图")
     func usesRedactionOnlyForBackdropTools() {
         var subject = session()
@@ -321,6 +538,165 @@ struct OverlayAnnotationSessionTests {
         let subject = OverlayAnnotationSession()
         #expect(subject.style.effectStrength == AnnotationPalette.overlayRedactionStrengths[1])
         #expect(subject.style.lineWidth == AnnotationPalette.lineWidths[1])
+    }
+
+    // MARK: - 文字输入（ticket 22）
+
+    /// 选好文字工具、在 `point` 落下一个待输入的文字
+    private func typingSession(at point: CGPoint = CGPoint(x: 40, y: 60)) -> OverlayAnnotationSession {
+        var subject = session()
+        subject.toggle(tool: .text)
+        subject.beginText(at: point)
+        return subject
+    }
+
+    @Test("没选文字工具时落不下文字 —— 否则任何工具点到哪儿都会冒出一个空文字框")
+    func beginTextNeedsTheTextTool() {
+        var subject = session()
+        subject.toggle(tool: .rectangle)
+
+        let started = subject.beginText(at: CGPoint(x: 10, y: 10))
+
+        #expect(started == nil)
+        #expect(!subject.isEditingText)
+    }
+
+    @Test("刚落下的文字是「待输入」状态：还没进标注数组，但**已经看得见**")
+    func pendingTextIsVisibleButNotCommitted() {
+        let subject = typingSession()
+
+        #expect(subject.isEditingText)
+        #expect(subject.annotations.isEmpty, "还没提交，不该进数组（撤销栈也不该动）")
+        #expect(!subject.isEmpty, "但它必须被画出来 —— 否则用户点完什么都看不见")
+        #expect(subject.visibleAnnotations.count == 1)
+        #expect(subject.visibleAnnotations.first?.kind == .text)
+    }
+
+    @Test("空内容的框也点得到 —— 宽度为 0 的框既看不见也点不中")
+    func emptyTextStillHasAHitTarget() {
+        let subject = typingSession()
+        let frame = subject.visibleAnnotations[0].frame
+
+        #expect(frame.width > 0)
+        #expect(frame.height > 0)
+    }
+
+    @Test("输入内容时框跟着量出来 —— 导出与命中都按这个框算")
+    func typingGrowsTheFrame() {
+        var subject = typingSession()
+        let before = subject.visibleAnnotations[0].frame
+
+        subject.updateText("一段比较长的中文")
+
+        let after = subject.visibleAnnotations[0].frame
+        #expect(after.width > before.width)
+        #expect(subject.visibleAnnotations[0].text == "一段比较长的中文")
+        #expect(after.origin == before.origin, "文字是往右长的，锚点不动")
+    }
+
+    @Test("提交：内容进数组、可撤销、待输入状态清掉")
+    func committingAddsAnUndoableAnnotation() {
+        var subject = typingSession()
+
+        let committed = subject.commitText("你好")
+
+        #expect(committed)
+        #expect(!subject.isEditingText)
+        #expect(subject.annotations.count == 1)
+        #expect(subject.annotations[0].text == "你好")
+        #expect(subject.canUndo)
+
+        subject.undo()
+        #expect(subject.annotations.isEmpty)
+    }
+
+    @Test("空内容提交 = 什么都不留下（也不该在撤销栈里插一步空改动）")
+    func committingEmptyTextLeavesNothing() {
+        var subject = typingSession()
+        let couldUndoBefore = subject.canUndo
+
+        let committed = subject.commitText("")
+
+        #expect(!committed)
+        #expect(subject.annotations.isEmpty)
+        #expect(!subject.isEditingText)
+        #expect(subject.canUndo == couldUndoBefore, "空提交不该产生一步可撤销的改动")
+    }
+
+    @Test("取消输入：内容丢掉，撤销栈不受影响")
+    func cancelTextDropsEverything() {
+        var subject = typingSession()
+        subject.updateText("打了一半")
+
+        subject.cancelText()
+
+        #expect(!subject.isEditingText)
+        #expect(subject.annotations.isEmpty)
+        #expect(subject.visibleAnnotations.isEmpty)
+        #expect(!subject.canUndo)
+    }
+
+    @Test("没有待输入的文字时，提交 / 取消都是空操作（不该凭空造一个空文字）")
+    func committingWithoutPendingTextIsANoOp() {
+        var subject = session()
+
+        let committed = subject.commitText("你好")
+
+        #expect(!committed)
+        #expect(subject.annotations.isEmpty)
+    }
+
+    @Test("换工具会收起待输入的文字 —— 否则它会挂在那儿，谁也提交不了")
+    func switchingToolCancelsPendingText() {
+        var subject = typingSession()
+
+        subject.toggle(tool: .rectangle)
+
+        #expect(!subject.isEditingText)
+        #expect(subject.visibleAnnotations.isEmpty)
+    }
+
+    @Test("文字工具不能靠「拖一笔」落下 —— 那会得到一个宽度等于拖拽距离的空框")
+    func textToolCannotBeDrawnAsAStroke() {
+        var subject = session()
+        subject.toggle(tool: .text)
+
+        let began = subject.beginStroke(at: CGPoint(x: 10, y: 10))
+
+        #expect(!began)
+        #expect(subject.draft == nil)
+    }
+
+    @Test("尺寸档的含义跟着工具走（会话上的那一份）")
+    func sizeMeaningFollowsTool() {
+        var subject = session()
+        #expect(subject.sizeMeaning == .lineWidth, "没选工具时按线宽算")
+
+        subject.toggle(tool: .mosaic)
+        #expect(subject.sizeMeaning == .redactionStrength)
+
+        subject.toggle(tool: .text)
+        #expect(subject.sizeMeaning == .fontSize)
+    }
+
+    @Test("默认字号必须落在字号档里 —— 否则一进文字工具就没有任何一档高亮")
+    func defaultFontSizeLandsOnASlot() {
+        let subject = OverlayAnnotationSession()
+        #expect(AnnotationPalette.overlayFontSizes.contains(subject.style.fontSize))
+    }
+
+    @Test("改字号之后输入的文字用新字号 —— 用户先在工具条上挑字号再落字")
+    func fontSizeAppliesToTheNewText() {
+        var subject = session()
+        subject.style.fontSize = AnnotationPalette.overlayFontSizes[2]
+        subject.toggle(tool: .text)
+        subject.beginText(at: CGPoint(x: 0, y: 0))
+        subject.updateText("大号字")
+        subject.commitText("大号字")
+
+        #expect(subject.annotations[0].style.fontSize == AnnotationPalette.overlayFontSizes[2])
+        #expect(subject.annotations[0].frame.height > AnnotationText.lineHeight(
+            fontSize: AnnotationPalette.overlayFontSizes[0]))
     }
 }
 

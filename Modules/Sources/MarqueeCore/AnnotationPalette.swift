@@ -36,7 +36,18 @@ public enum AnnotationPalette {
     /// 也就是 4 点上下（2x 屏上是 8 设备像素）。所以这三档偏小是**故意的**。
     public static let overlayRedactionStrengths: [CGFloat] = [4, 8, 16]
 
-    /// 覆盖层里打码强度的默认档（上面那一组的中间一个）。
+    /// 覆盖层里字号的三档（**点**）。
+    ///
+    /// 与打码强度同理：编辑器里字号是**原图像素**，覆盖层里是**点**，
+    /// 2x 屏上同一个数字差一倍 —— 所以另立一组，而不是复用 `AnnotationStyle.default` 的 36。
+    ///
+    /// 数值按"截图上看得清"定：18 点相当于正文注释，44 点相当于给整张图盖个头。
+    public static let overlayFontSizes: [CGFloat] = [18, 28, 44]
+
+    /// 覆盖层里字号的默认档（中间一个）。
+    public static var defaultOverlayFontSize: CGFloat { overlayFontSizes[1] }
+
+    /// 覆盖层里打码强度的默认档（`overlayRedactionStrengths` 的中间一个）。
     public static var defaultRedactionStrength: CGFloat { overlayRedactionStrengths[1] }
 
     /// 默认描边色。与 `AnnotationStyle.default` 保持一致。

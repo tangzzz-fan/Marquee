@@ -115,13 +115,35 @@ public final class SelectionOverlayController {
         case resize(handle: SelectionGeometry.Handle, anchor: CGRect)
         /// 画一笔标注
         case stroke
+
+        /// 日志用。不带它的话，"状态没收尾"那条 warning 只能说"非空"，
+        /// 而想知道是哪一类拖拽漏了收尾还得回去读代码。
+        var label: String {
+            switch self {
+            case .none: "none"
+            case .select: "select(重画选区)"
+            case .move: "move(移动整框)"
+            case .resize: "resize(改大小)"
+            case .stroke: "stroke(画一笔)"
+            }
+        }
     }
     private var dragMode: DragMode = .none
+    /// 一次泄漏只报一条日志（探针挂在 `refresh` 上，不拦着会刷屏）。
+    private var hasWarnedAboutDragLeak = false
     /// 拖拽中鼠标最后的位置。存它是因为"按 `⇧` 的那一刻"没有鼠标事件 ——
     /// 不存就只能等下次移动才看到变化，而用户明明按了键却没反应会以为没生效。
     private var lastDragPoint: CGPoint?
     /// 吸附命中的提示线（Cocoa 全局坐标）。`nil` = 这个方向没吸上。
     private var snapGuide: (vertical: CGFloat?, horizontal: CGFloat?) = (nil, nil)
+
+    // 文字输入（ticket 22）
+    /// 正在显示输入框的那块屏的视图。`nil` = 没在输入。
+    ///
+    /// 为什么记"视图"而不是一个布尔量：多屏时输入框只挂在**点到的那块屏**上，
+    /// 而结束输入时要去收掉**那一个**。记布尔量就只能靠"遍历所有屏挨个收"，
+    /// 那会在别的屏上误伤（比如同时打开两处输入）。
+    private weak var textEditingView: SelectionOverlayView?
 
     // 文字识别（ticket 23）
     /// 识别的一句话状态（识别中 / 结果 / 为什么没成）。挂在读数框的第三行。
@@ -209,6 +231,7 @@ public final class SelectionOverlayController {
         dragExceededSlop = false
         hoveredWindow = nil
         isOptionDown = false
+        textEditingView = nil
         resetScroll()
         resetMagnifier()
         displayGeometries = displays.allDisplays()
@@ -231,7 +254,11 @@ public final class SelectionOverlayController {
                                               defer: false)
             let view = SelectionOverlayView()
             view.delegate = self
-            panel.onCancel = { [weak self] in self?.cancel() }
+            // 走 `handleEscape()` 而不是 `cancel()`：面板自己的 `performKeyEquivalent`
+            // 也能收到 `Esc`，而这条路上原来直连 `cancel()` —— 于是"正在输入文字时按 Esc"
+            // 从这条路进来会把**整次截图**丢掉（从本地监听那条路进来却只是退出输入）。
+            // 同一个键在两条路上做两件事，就是这类 bug 的温床。
+            panel.onCancel = { [weak self] in self?.handleEscape() }
             panel.contentView = view
 
             overlays.append((panel, view))
@@ -248,6 +275,26 @@ public final class SelectionOverlayController {
         keyOverlay.panel.makeFirstResponder(keyOverlay.view)
         installKeyMonitor()
         installActivationObserver()
+
+        // ── 探针：覆盖层到底有没有拿到键盘焦点 ──────────────────────────
+        //
+        // 这件事**决定了覆盖层里能不能放输入框**（文字工具的前提）。
+        // 面板是 `.nonactivatingPanel` + `canBecomeKey = true` + `becomesKeyOnlyIfNeeded = false`，
+        // 按文档它应当能成为 key；但本项目有一条反证：**视图的 `keyDown` 曾经完全收不到 `⏎`**
+        // （PITFALLS 56，最后是靠应用级本地监听绕过去的）。
+        // 两者对不上，所以这里不猜 —— 记一条实测数据，下次排障直接看日志。
+        //
+        // 延迟一点点再查：`makeKeyAndOrderFront` 之后窗口系统需要一个回合才认账。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.isPresented else { return }
+            let anyKey = self.overlays.contains { $0.panel.isKeyWindow }
+            let focused = self.overlays.contains { $0.panel.firstResponder === $0.view }
+            self.logger.info("""
+            覆盖层焦点：panel.isKeyWindow=\(anyKey, privacy: .public) \
+            firstResponder=\(focused, privacy: .public) \
+            app.isActive=\(NSApp.isActive, privacy: .public)（输入框需要 isKeyWindow=true）
+            """)
+        }
 
         // 清单与覆盖层并行：没有清单时仍可拖选区，不能串行等 SCK
         let pointerAtPresent = pointer
@@ -282,6 +329,7 @@ public final class SelectionOverlayController {
         // 而它们是"对的坐标、错的上下文"，看着像截图工具自己在图上乱画。
         annotationSession.removeAll()
         annotationSession.clearTool()
+        textEditingView = nil
         dragMode = .none
         lastDragPoint = nil
         snapGuide = (nil, nil)
@@ -333,6 +381,20 @@ public final class SelectionOverlayController {
     private func handleOverlayKeyDown(_ event: NSEvent) -> Bool {
         guard !isFinishing else { return true }
 
+        // 正在输入文字 → **整条让行**。
+        //
+        // 本地监听在事件到达窗口**之前**就跑，所以不让行的话，用户敲的每个字
+        // 都会被当成快捷键吞掉 —— 表现得像"输入框是坏的"，而其实是这里吃掉了。
+        // 唯一要拦的是 `Esc`（退出输入）；其余（含 `⏎`、`⌘Z`、输入法用来选词的上下键）
+        // 全部放回给输入框自己处理。
+        if annotationSession.isEditingText {
+            if event.keyCode == 0x35 {   // Esc
+                cancelTextEditing()
+                return true
+            }
+            return false
+        }
+
         switch Int(event.keyCode) {
         case 0x35: // Esc
             handleEscape()
@@ -349,6 +411,23 @@ public final class SelectionOverlayController {
             logger.info("覆盖层按键：空格")
             toggleAutoScroll()
             return true
+        case 0x33, 0x75: // Delete（退格）/ 前进删除
+            if annotationSession.deleteSelected() {
+                logger.info("删除选中的标注，剩 \(self.annotationSession.annotations.count) 个")
+            }
+            refresh()
+            return true
+
+        case 0x06 where event.modifierFlags.contains(.command): // ⌘Z / ⇧⌘Z
+            let isRedo = event.modifierFlags.contains(.shift)
+            let changed = isRedo ? annotationSession.redo() : annotationSession.undo()
+            if changed {
+                let action = isRedo ? "重做" : "撤销"
+                logger.info("快捷键：\(action, privacy: .public)")
+            }
+            refresh()
+            return true
+
         case 0x7B: // ←
             nudge(dx: -1, dy: 0)
             return true
@@ -380,6 +459,11 @@ public final class SelectionOverlayController {
     /// （用它是为了"一次 `Esc` 退出",不必每块屏各消化一次）。
     /// 两处各写一份判断，就一定会出现"从另一条路进来时漏掉了自动滚动分支"这种事。
     private func handleEscape() {
+        // ① 正在输入文字 → 结束输入（丢掉这半截）
+        if annotationSession.isEditingText {
+            cancelTextEditing()
+            return
+        }
         // 自动滚动中按 `Esc` = 只停自动滚动，画面与已拼好的部分都留着。
         if autoScrollDriver != nil {
             stopAutoScroll()
@@ -412,7 +496,9 @@ public final class SelectionOverlayController {
             refresh()
             return
         }
-        if annotationSession.isDrawing {
+        // 任何工具（含「选择」）都先退出工具 —— 少了这一档，
+        // 选了「选择」再按 Esc 会**直接取消整次截图**，而用户只是想退出选择模式。
+        if annotationSession.tool != nil {
             annotationSession.clearTool()
             refresh()
             return
@@ -1018,28 +1104,36 @@ public final class SelectionOverlayController {
         let visibleFrame = NSScreen.screens.first { $0.frame.intersects(rect) }?.visibleFrame
             ?? NSScreen.main?.visibleFrame
         guard let visibleFrame else { return nil }
-        // 那三档尺寸按**当前工具**换意义：画图形时是线宽，画打码时是打码强度。
+        // 那三档尺寸按**当前工具**换意义：画图形是线宽、画打码是打码强度、写文字是字号。
         // 与编辑器同一套做法，且**不新增控件** —— 工具栏每多一格就更宽，
         // 而它有一条"必须放得进 1024 点的屏"的硬约束。
-        let redactionSlots = annotationSession.usesRedaction
-        let sizeValues = redactionSlots
-            ? AnnotationPalette.overlayRedactionStrengths
-            : AnnotationPalette.lineWidths
-        let selectedValue = redactionSlots
-            ? annotationSession.style.effectStrength
-            : annotationSession.style.lineWidth
+        //
+        // 三件事（取值 / 取当前值 / 画法）全部由 `sizeMeaning` 一个枚举决定：
+        // 散开写成 `tool == .mosaic || tool == .blur` 的话，加第四种含义时一定漏一处。
+        let meaning = annotationSession.sizeMeaning
+        let sizeValues = meaning.values
 
         return OverlayToolbarPresentation(
             frame: OverlayToolbar.frame(for: rect, screenFrame: visibleFrame),
             activeTool: annotationSession.tool,
             stroke: annotationSession.style.stroke,
             sizeSlotValues: sizeValues,
-            sizeSlotIndex: Self.nearestIndex(of: selectedValue, in: sizeValues),
-            sizeSlotsAreRedaction: redactionSlots,
+            sizeSlotIndex: Self.nearestIndex(of: Self.selectedSizeValue(for: meaning, in: annotationSession), in: sizeValues),
+            sizeSlotMeaning: meaning,
             isRecognizing: textRecognition?.isRunning ?? false,
             canUndo: annotationSession.canUndo,
             canRedo: annotationSession.canRedo
         )
+    }
+
+    /// 当前这一组的选中值。
+    private static func selectedSizeValue(for meaning: OverlaySizeMeaning,
+                                          in session: OverlayAnnotationSession) -> CGFloat {
+        switch meaning {
+        case .lineWidth: session.style.lineWidth
+        case .redactionStrength: session.style.effectStrength
+        case .fontSize: session.style.fontSize
+        }
     }
 
     /// 最接近的下标。
@@ -1073,17 +1167,30 @@ public final class SelectionOverlayController {
 
     /// 交叉验证"拖拽状态有没有漏收尾"。
     ///
-    /// `dragMode` 只在鼠标按着时非空，而它的收尾集中在 `endedDragAt` 的一个 `defer` 里。
-    /// 但**总有人（包括我）会忍不住在别的分支里提前 return** —— 那样它就会一直挂着。
-    /// 这里用一个**独立的事实**去对：真的还有鼠标键按着吗？
+    /// `dragMode` 只在鼠标按着时非空。这里用一个**独立的事实**去对：真的还有鼠标键按着吗？
     /// 对不上就记一条 warning —— 它坏掉时的现象是"某个东西再也不出现"，
     /// 与"那个东西没做"长得一模一样，没有日志根本分不清。
     ///
+    /// ⚠️ 这条探针**误报过一次**（2026-10-01）：真因不在"某条分支漏了收尾"，
+    /// 而在 `endedDragAt` 里"先分派、收尾交给 `defer`" —— 分支里调的 `refresh()`
+    /// 跑在 `defer` 之前，于是它读到的是还没清掉的旧值。
+    /// 所以探针报"没清"时，第一件事是**看它是在哪个时刻被读到的**，
+    /// 而不是去找哪条分支忘了写。
+    ///
     /// 只记日志、**不自动纠正**：`pressedMouseButtons` 是向窗口服务器查的，
     /// 万一它偶发不准，自动纠正会让工具栏在拖动中闪一下 —— 那比漏日志更难查。
+    /// 一次泄漏只报一条（它会在每次 `refresh` 上触发，否则刷屏）。
     private func warnIfDragStateLeaked() {
-        guard dragMode != .none, NSEvent.pressedMouseButtons == 0 else { return }
-        logger.warning("拖拽状态没收尾：鼠标已松开，dragMode 仍非空 —— 说明有条分支漏了 `defer` 收尾")
+        guard dragMode != .none, NSEvent.pressedMouseButtons == 0 else {
+            hasWarnedAboutDragLeak = false
+            return
+        }
+        guard !hasWarnedAboutDragLeak else { return }
+        hasWarnedAboutDragLeak = true
+        logger.warning("""
+        拖拽状态没收尾：鼠标已松开，dragMode 仍是 \(self.dragMode.label, privacy: .public) \
+        —— 注意先确认它是在**哪个时刻**被读到的（`endedDragAt` 里分派与 `refresh()` 的先后）
+        """)
     }
 
     /// 标注坐标系的**原点**（Cocoa 全局点）：选区的**视觉左上角**。
@@ -1094,6 +1201,15 @@ public final class SelectionOverlayController {
     private func annotationOrigin() -> CGPoint? {
         guard let rect = annotationRect() else { return nil }
         return CGPoint(x: rect.minX, y: rect.maxY)
+    }
+
+    /// 与 `annotationPoint` 同义，但**不会因为"还没有画布"而返回 nil**。
+    ///
+    /// 选择工具要拿到点去命中测试；此时若 `annotationRect()` 为 nil，
+    /// 说明状态本身就不对（选中工具却还没有选区），当作原点处理即可 ——
+    /// 返回 nil 会把调用方逼成"静默什么都不做"，那种失败没人查得出来。
+    private func localAnnotationPoint(_ globalPoint: CGPoint) -> CGPoint {
+        annotationPoint(globalPoint) ?? .zero
     }
 
     /// 把鼠标位置（Cocoa 全局点）换成标注坐标系里的点。
@@ -1175,7 +1291,11 @@ public final class SelectionOverlayController {
 
         // 选区几何编辑（ticket 19）：控制点只在"能改几何"的时候出现 ——
         // 选了标注工具时拖动是画标注，这时还摆着控制点会让人以为能拖角。
-        presentation.showsSelectionHandles = session.isSettled && !hasScrollSession && !annotationSession.isDrawing
+        presentation.selectedAnnotationFrames = annotationSession.selectedAnnotations.map(\.frame)
+        // 控制点只在"没选任何工具"时出现：选了任何工具（含「选择」）之后，
+        // 拖动都属于工具自己的语义，这时还摆着控制点会让人以为能拖角改大小。
+        presentation.showsSelectionHandles = session.isSettled && !hasScrollSession
+            && annotationSession.tool == nil
         presentation.snapGuideVertical = snapGuide.vertical
         presentation.snapGuideHorizontal = snapGuide.horizontal
 
@@ -1200,6 +1320,15 @@ public final class SelectionOverlayController {
         // OCR 的状态**优先于**常规提示：它是刚刚发生的事，而提示行只有那么大。
         // 识别完会在几秒后自动让位（见 `setOCRStatus`）。
         if let ocrStatus { return ocrStatus }
+        if annotationSession.isEditingText {
+            return "输入文字 · ⏎ 确认 · Esc 放弃"
+        }
+        if annotationSession.isSelecting {
+            let count = annotationSession.selectedAnnotations.count
+            return count > 0
+                ? "已选中 \(count) 个标注  ·  拖动移动  ·  Delete 删除  ·  Esc 取消选择"
+                : "点一个标注选中它  ·  再点一次工具图标退出  ·  Esc 取消工具"
+        }
         if annotationSession.isDrawing {
             if annotationSession.usesRedaction, redactionBackdrop == nil {
                 return "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图"
@@ -1323,9 +1452,36 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     func overlayView(_ view: SelectionOverlayView, beganDragAt globalPoint: CGPoint) {
         guard !isFinishing else { return }
 
+        // 正在输入文字时，这一下点击**只用来结束输入** —— 与编辑器的做法一致。
+        // 不这样的话：点一下会先把文字提交掉、再顺手在别处落一个新输入点。
+        if annotationSession.isEditingText {
+            commitTextEditing()
+            return
+        }
+
+        // 文字工具：**点一下**放下输入点，不是拖一笔（见 `OverlayTool.isStrokeBased`）。
+        if annotationSession.tool == .text, !hasScrollSession {
+            beginTextEdit(at: globalPoint)
+            return
+        }
+
         // 选中工具时，拖拽 = **画一笔标注**，而不是重画选区。
         // （视图不做这个判断：它只负责把"点在工具栏上"和"点在别处"分开，
         //   工具语义属于控制层 —— 视图那边多一份"什么时候算画标注"迟早跟这里对不上。）
+        // 「选择」工具：拖动 = 挪已有的标注，不是画新东西，也不改选区几何。
+        if annotationSession.isSelecting, !hasScrollSession {
+            dragMode = .stroke          // 复用同一条"按下→拖→松"的通道
+            lastDragPoint = globalPoint
+            let point = localAnnotationPoint(globalPoint)
+            if !annotationSession.beginMove(at: point) {
+                // 点在空白处：清掉选择。与几乎所有工具的直觉一致 ——
+                // 不清的话，用户"点一下别的地方"之后那个框还亮着，会以为没点中。
+                annotationSession.select(at: point)
+            }
+            refresh()
+            return
+        }
+
         if annotationSession.isDrawing, !hasScrollSession {
             guard let rect = annotationRect(), rect.contains(globalPoint),
                   let local = annotationPoint(globalPoint) else {
@@ -1376,7 +1532,14 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         switch dragMode {
         case .stroke:
             guard let local = annotationPoint(globalPoint) else { return }
-            annotationSession.updateStroke(to: local)
+            // 两种 `.stroke`：画一笔（`isDrawing`）或拖动已选中的标注（`isSelecting`）。
+            // 用同一个 DragMode 是因为它们的生命周期完全相同（按下→拖→松），
+            // 区别只在会话上调用哪个方法。
+            if annotationSession.isMovingAnnotations {
+                annotationSession.updateMove(to: local)
+            } else {
+                annotationSession.updateStroke(to: local)
+            }
             refresh()
 
         case .move(let anchor):
@@ -1411,23 +1574,40 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint, optionDown: Bool) {
         guard !isFinishing else { return }
-        // 统一的收尾：不管这次拖拽是哪一种，按下状态都得清干净。
+
+        // 先把这次拖拽的"种类"**取走并立刻清空**，再分派。
         //
-        // ⚠️ `dragMode` **必须在这里清**，不能只靠在每条 `case` 里各自清 ——
-        // 我漏过一次 `.select` 分支，后果是拖完选区后 `dragMode` 永远停在 `.select`，
-        // 而依赖它的东西（工具栏显示）就再也不出现。这种"漏一条分支"的写法
-        // **一定会在加第三种拖拽时重演**，所以收尾只留这一处。
+        // ⚠️ 不能反过来（先分派、收尾交给 `defer`）。分支里会调 `refresh()`，
+        // 而 `defer` 要等函数返回才跑 —— 那几拍里 `refresh()` 读到的是**旧值**。
+        // 后果有两条，都是"看起来跟这不相关"的那种：
+        //   ① 交叉验证探针误报「鼠标已松开、dragMode 仍非空」（用户 2026-10-01 的日志里
+        //      连报两次，其实是误报 —— 真因就是这里）；
+        //   ② 任何想读"这次拖拽是什么"的地方读到的是上一次的。
+        // 我第一版写的就是 `defer`，结果每条需要读它的 `case` 里又各自补了一句
+        // `dragMode = .none` —— 也就是说"收尾只留一处"根本没成立。
+        // **要点：要读它，就得先取走。**
+        //
+        // ⚠️ 局部变量别叫 `mode` —— 控制层自己有一个 `mode: Mode`（采集模式），
+        // 名字一撞就会把它遮住：`mode == .scrollCapture` 立刻编不过（两个枚举没有同名成员），
+        // 但如果哪天它们有了同名成员，这里会**悄悄换成另一个含义**。
+        let drag = dragMode
+        dragMode = .none
+
         defer {
             pointerDownAt = nil
             dragExceededSlop = false
             lastDragPoint = nil
-            dragMode = .none
         }
 
-        switch dragMode {
+        switch drag {
         case .stroke:
-            dragMode = .none
             guard let local = annotationPoint(globalPoint) else { return }
+            if annotationSession.isMovingAnnotations {
+                let moved = annotationSession.endMove(at: local)
+                if moved { logger.info("标注移动：已移动选中的标注") }
+                refresh()
+                return
+            }
             let committed = annotationSession.endStroke(at: local)
             let verdict = committed ? "已落一个" : "太短，丢弃"
             logger.info("标注收笔：\(verdict, privacy: .public)，当前共 \(self.annotationSession.annotations.count) 个")
@@ -1436,7 +1616,6 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
         case .move, .resize:
             // 松手就结束这次几何编辑，吸附提示线随之收起
-            dragMode = .none
             snapGuide = (nil, nil)
             refresh()
             return
@@ -1523,6 +1702,11 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     private func performCommit(saveToDisk: Bool) {
         guard !isFinishing else { return }
 
+        // 工具栏的「完成 / 保存」会走到这里，而输入框里可能还有没敲完的字 ——
+        // 不先结算的话，用户刚打的字会**无声无息地消失**。
+        // （`⏎` 到不了这里：它在输入期间被让行给输入框了。）
+        commitTextEditing()
+
         if mode == .scrollCapture {
             if hasScrollSession {
                 // 起步中（`session.begin` 还没返回）忽略按键：这时 `finish()` 会因为
@@ -1564,9 +1748,9 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     }
 
     func overlayViewDidRequestWholeScreen(_ view: SelectionOverlayView) {
-        // 选中标注工具时，双击没有意义：第一下已经算一笔了（落点 → 太短被丢弃）。
+        // 选了任何工具时，双击都没有意义：第一下已经算一笔了（落点 → 太短被丢弃）。
         // 真正会踩到的是"想画两笔、手快了一点"，那样第二笔会被吃掉 —— 挡掉更省事。
-        guard !annotationSession.isDrawing else { return }
+        guard annotationSession.tool == nil else { return }
         if mode == .scrollCapture {
             // 长截图里双击 = "整屏开始滚"，而不是"截一张整屏"
             performCommit(saveToDisk: false)
@@ -1582,6 +1766,15 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     func overlayView(_ view: SelectionOverlayView, clickedToolbarAt globalPoint: CGPoint) {
         guard !isFinishing, let bar = toolbarPresentationIfSettled(),
               let slot = OverlayToolbar.slot(at: globalPoint, in: bar.frame) else { return }
+        // 点工具条**不会把正在打的字扔掉**：
+        // - 改颜色 / 改尺寸 / 撤销重做 → 输入继续（用户想改的就是这一行）
+        // - 换工具 / 识别 / 保存 / 取消 / 完成 → 先**结算**（把内容落成标注），再执行动作
+        //
+        // 结算 ≠ 丢弃。只有 `Esc` 才丢 —— 这一条得写清楚，
+        // 否则以后有人"顺手"在换工具时改成 `cancelTextEditing()`，用户的字就没了。
+        if !slot.preservesTextEditing {
+            commitTextEditing()
+        }
         perform(toolbarSlot: slot)
     }
 
@@ -1602,24 +1795,34 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
         case .lineWidth(let index):
             // 那三档按当前工具改不同的参数（与编辑器同一套做法）：
-            // 画图形时改线宽，画打码时改打码强度。
-            if annotationSession.usesRedaction {
-                guard AnnotationPalette.overlayRedactionStrengths.indices.contains(index) else { return }
-                annotationSession.style.effectStrength = AnnotationPalette.overlayRedactionStrengths[index]
+            // 画图形改线宽、画打码改打码强度、写文字改字号。
+            let meaning = annotationSession.sizeMeaning
+            let values = meaning.values
+            guard values.indices.contains(index) else { return }
+            switch meaning {
+            case .lineWidth:
+                annotationSession.style.lineWidth = values[index]
+            case .redactionStrength:
+                annotationSession.style.effectStrength = values[index]
                 logger.info("工具栏：打码强度 → \(self.annotationSession.style.effectStrength, privacy: .public) 点")
-            } else {
-                guard AnnotationPalette.lineWidths.indices.contains(index) else { return }
-                annotationSession.style.lineWidth = AnnotationPalette.lineWidths[index]
+            case .fontSize:
+                annotationSession.style.fontSize = values[index]
+                // 正在输入的字号也要跟着变：用户是想"把这行字调大"，
+                // 若只影响下一个字，他会以为这个键没用（谁改谁推）。
+                if let pending = annotationSession.textEditor?.text {
+                    annotationSession.updateText(pending)
+                }
+                logger.info("工具栏：字号 → \(self.annotationSession.style.fontSize, privacy: .public) 点")
             }
 
-        case .undo:
-            if annotationSession.undo() {
-                logger.info("工具栏：撤销 → 剩 \(self.annotationSession.annotations.count) 个标注")
-            }
-
-        case .redo:
-            if annotationSession.redo() {
-                logger.info("工具栏：重做 → 现在 \(self.annotationSession.annotations.count) 个标注")
+        case .undo, .redo:
+            let isRedo = (slot == .redo)
+            // 正在输入文字时，撤销指的是"撤销我刚打的字" —— 与框里按 `⌘Z` 一致。
+            // 直接去撤销文档的话，用户会看到刚敲的一整行**连同上一笔标注**被一起收走。
+            if let view = textEditingView, view.undoTextInput(redo: isRedo) { return }
+            let changed = isRedo ? annotationSession.redo() : annotationSession.undo()
+            if changed {
+                logger.info("工具栏：\(isRedo ? "重做" : "撤销", privacy: .public) → 现在 \(self.annotationSession.annotations.count) 个标注")
             }
 
         case .ocr:
@@ -1696,6 +1899,60 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         session.settle(rect: result.rect)
         snapGuide = (result.verticalLine, result.horizontalLine)
         refresh()
+    }
+
+    // MARK: - 文字输入（ticket 22）
+
+    /// 点一下：在那个位置放下一个待输入的文字，并把输入框挂到**点到的那块屏**上。
+    private func beginTextEdit(at globalPoint: CGPoint) {
+        guard let rect = annotationRect(), rect.contains(globalPoint),
+              let local = annotationPoint(globalPoint) else {
+            // 选区外点击：什么都不做。不偷偷重画选区，也不把文字落到选区外面
+            //（外面那部分会被裁掉，看起来像"输入框跑丢了"）。
+            logger.info("文字工具：点在选区之外 —— 忽略。要重画选区请先按 Esc 退出工具")
+            return
+        }
+        guard let annotation = annotationSession.beginText(at: local) else { return }
+        guard let target = overlay(containing: globalPoint) else { return }
+
+        textEditingView = target.view
+        target.view.showTextInput(for: annotation, text: annotation.text)
+        logger.info("文字输入开始：锚点 (\(Int(local.x)), \(Int(local.y)))，输入框在第 \(self.overlays.firstIndex { $0.view === target.view } ?? 0) 块屏")
+        refresh()
+    }
+
+    /// 结束输入并**提交**（内容为空则丢弃）。没在输入时是空操作。
+    private func commitTextEditing() {
+        guard let view = textEditingView else { return }
+        let text = view.textInputText ?? ""
+        view.hideTextInput()
+        textEditingView = nil
+
+        if annotationSession.commitText(text) {
+            logger.info("文字已落定：\(text.count, privacy: .public) 个字")
+        } else {
+            logger.info("文字输入结束：内容为空 —— 不留下任何东西")
+        }
+        refresh()
+    }
+
+    /// 结束输入并**丢弃**（`Esc`）。没在输入时是空操作。
+    private func cancelTextEditing() {
+        guard let view = textEditingView else { return }
+        view.hideTextInput()
+        textEditingView = nil
+        annotationSession.cancelText()
+        logger.info("文字输入已取消（这一下 Esc 没有丢掉整次截图）")
+        refresh()
+    }
+
+    /// 点落在**哪块屏**的覆盖层上。
+    ///
+    /// 输入框必须挂到那个视图上：挂错屏的后果是它出现在另一块显示器上，
+    /// 而用户在自己这块屏上什么都看不到 —— 与"点了没反应"完全一样。
+    private func overlay(containing globalPoint: CGPoint)
+        -> (panel: SelectionOverlayPanel, view: SelectionOverlayView)? {
+        overlays.first { $0.panel.frame.contains(globalPoint) } ?? overlays.first
     }
 
     // MARK: - 文字识别（ticket 23）
@@ -1818,6 +2075,21 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             }
         }
         return SelectionGeometry.SnapTargets.edges(of: rects)
+    }
+
+    func overlayView(_ view: SelectionOverlayView, didChangeText text: String) {
+        // 每次击键都同步进会话：这样"待输入的那一行"始终是完整内容 ——
+        // 中途点工具条结算、或按 `⏎`，拿到的都是最新的一份，不会差最后一个字。
+        annotationSession.updateText(text)
+        refresh()
+    }
+
+    func overlayViewDidCommitText(_ view: SelectionOverlayView) {
+        commitTextEditing()
+    }
+
+    func overlayViewDidCancelText(_ view: SelectionOverlayView) {
+        cancelTextEditing()
     }
 
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView) {

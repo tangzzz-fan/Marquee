@@ -2,18 +2,32 @@ import CoreGraphics
 
 /// 覆盖层浮动工具栏上可以选中的标注工具。
 ///
-/// 顺序即工具条上的顺序。文字暂不在其中：它要一个输入框，而覆盖层的键盘统一走
-/// 控制层的应用级本地监听，有输入框在编辑时必须整条让行 —— 那是个独立的前提（ticket 22）。
+/// 顺序即工具条上的顺序，与**编辑器工具栏一致** —— 同一个功能在两处用不同的图标/顺序，
+/// 用户会以为是两个不同的东西。
 public enum OverlayTool: String, CaseIterable, Sendable, Codable {
+    /// 选择工具：点选已有标注、拖动移动、`Delete` 删除（"画完还能改"）。
+    ///
+    /// 它是**工具**而不是"自带的行为"：不选它的时候，拖动是改**选区**的几何
+    /// （拖角改大小、框内拖动移动整框）。两件事都用拖动，靠工具区分才不会有歧义 ——
+    /// 否则"按在框内"到底该挪标注还是挪选区，只能靠猜。
+    case select
     case rectangle
     case ellipse
     case arrow
     case pen
+    /// 文字：**点一下**放下输入点，再输入内容（不是拖一笔）。
+    case text
     case mosaic
     case blur
 
-    public var kind: AnnotationKind {
+    /// 绘制时对应的标注类型。`nil` = 这个工具不画东西（选择）。
+    ///
+    /// 做成可选而不是给 `.select` 硬塞一个 `AnnotationKind`：
+    /// 后者会让"它到底能画出什么"这个问题有一个**看起来有答案**的答案。
+    public var kind: AnnotationKind? {
         switch self {
+        case .select: nil
+        case .text: .text
         case .rectangle: .rectangle
         case .ellipse: .ellipse
         case .arrow: .arrow
@@ -23,8 +37,16 @@ public enum OverlayTool: String, CaseIterable, Sendable, Codable {
         }
     }
 
-    /// 是否靠"一笔拖出来"成形。六类目前都是。
-    public var isStrokeBased: Bool { true }
+    /// 这个工具是否"画东西"。
+    public var draws: Bool { kind != nil }
+
+    /// 是否靠"一笔拖出来"成形。
+    ///
+    /// 只有 `.select`（不画东西）与 `.text`（点一下放下、再敲内容）不是。
+    /// 让文字走 `beginStroke` 的话，用户按住鼠标拖一下就会得到一个
+    /// "宽度等于拖拽距离"的空文字框 —— 而正文一个字都还没输。
+    /// 所以这条判据是**必须的**，不是分类学上的洁癖。
+    public var isStrokeBased: Bool { draws && self != .text }
 
     /// 是否需要**底图像素**才能预览。
     ///
@@ -34,7 +56,53 @@ public enum OverlayTool: String, CaseIterable, Sendable, Codable {
     public var needsBackdrop: Bool {
         switch self {
         case .mosaic, .blur: true
-        case .rectangle, .ellipse, .arrow, .pen: false
+        case .select, .rectangle, .ellipse, .arrow, .pen, .text: false
+        }
+    }
+
+    /// 选中这个工具时，工具条上那三档尺寸**代表什么**。
+    ///
+    /// 与编辑器同一套做法：只有一排控件，按当前上下文决定改的是哪个参数
+    /// （**不新增控件** —— 工具条每多一格就更宽，而它有一条"必须放得进 1024 点的屏"的硬约束）。
+    public var sizeMeaning: OverlaySizeMeaning {
+        switch self {
+        case .mosaic, .blur: .redactionStrength
+        case .text: .fontSize
+        case .select, .rectangle, .ellipse, .arrow, .pen: .lineWidth
+        }
+    }
+}
+
+/// 工具条上那三档尺寸**此刻代表哪一组值**。
+///
+/// 把"含义"做成一个枚举、而不是让各处自己 switch 工具，是因为它有三处用户：
+/// 控制层（改哪个字段）、视图（画成圆点 / 方块 / 字号），以及测试。
+/// 三处各自写一遍 `tool == .mosaic || tool == .blur` 的话，加第二类需要底图的工具时
+/// 一定会漏掉一处 —— 而漏掉的表现是"某一档点了没反应"。
+public enum OverlaySizeMeaning: String, CaseIterable, Sendable {
+    /// 图形工具的线宽
+    case lineWidth
+    /// 打码强度（马赛克块边长 / 模糊半径）
+    case redactionStrength
+    /// 文字的字号
+    case fontSize
+
+    /// 这一组的值（点）。
+    public var values: [CGFloat] {
+        switch self {
+        case .lineWidth: AnnotationPalette.lineWidths
+        case .redactionStrength: AnnotationPalette.overlayRedactionStrengths
+        case .fontSize: AnnotationPalette.overlayFontSizes
+        }
+    }
+
+    /// 默认值。**必须落在 `values` 里**，否则一进来三档全不高亮
+    /// （`AnnotationStyle.default` 的 36 是原图像素的数，落在覆盖层那三档之外）。
+    public var defaultValue: CGFloat {
+        switch self {
+        case .lineWidth: AnnotationPalette.defaultLineWidth
+        case .redactionStrength: AnnotationPalette.defaultRedactionStrength
+        case .fontSize: AnnotationPalette.defaultOverlayFontSize
         }
     }
 }
@@ -93,6 +161,22 @@ public enum OverlayToolbar {
         case save
         case cancel
         case confirm
+
+        /// 点这一格之后，**正在进行的文字输入还留着吗**。
+        ///
+        /// 留着的只有"纯改样式"的那几格（颜色 / 尺寸三档）与撤销重做 ——
+        /// 那时用户想改的就是**正在打的那行字**。
+        /// 其余（换工具、识别文字、保存 / 取消 / 完成）都该先把输入结算掉：
+        /// 不结算的话，"切到矩形工具"会把半截文字**无声地丢掉**。
+        ///
+        /// ⚠️ 注意"结算"不等于"丢弃"：结算＝把已打的内容落成一个真的标注。
+        /// 只有 `Esc` 才丢。
+        public var preservesTextEditing: Bool {
+            switch self {
+            case .color, .lineWidth, .undo, .redo: true
+            case .tool, .ocr, .save, .cancel, .confirm: false
+            }
+        }
 
         /// 分组序号。相邻两格分组不同 → 中间画一条分隔线。
         public var group: Int {

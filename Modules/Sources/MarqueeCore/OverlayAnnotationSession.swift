@@ -35,8 +35,30 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     /// 正在画的那一笔。`nil` = 没在画。
     public private(set) var draft: Annotation?
 
-    /// 当前工具。`nil` = 不在画标注（拖拽 = 重画选区）。
+    /// 正在**输入内容**的那个文字标注。`nil` = 没在输入。
+    ///
+    /// 它和 `draft` 分开，而不是复用 `draft`，因为两者的"完成"条件完全不同：
+    /// 一笔的完成看**几何**（够不够长），文字的完成看**内容**（有没有字）。
+    /// 塞在一起的话，`endStroke` 里就要分两种判据 —— 那正是"一段代码管两件事"。
+    public private(set) var textEditor: Annotation?
+
+    /// 当前工具。`nil` = 没选工具（拖拽 = 改选区几何）。
     public private(set) var tool: OverlayTool?
+
+    /// 选中的标注（"画完还能改"）。空集 = 没选中任何东西。
+    public private(set) var selection: Set<UUID> = []
+    /// 正在拖动的那一次移动：按下点 + **按下那一刻的完整快照**。
+    ///
+    /// 存快照而不是"每帧累加位移"：后者会累积浮点误差，而且中途改选中集合时
+    /// 基准就错了（已经挪过的那些会被再挪一次）。
+    ///
+    /// 用一个具名类型而不是元组：**元组不满足 `Equatable`**，
+    /// 而本类型是 `Equatable` 的 —— 加一个元组属性会让整个类型直接编不过。
+    private struct MoveAnchor: Equatable {
+        var point: CGPoint
+        var before: [Annotation]
+    }
+    private var moveAnchor: MoveAnchor?
 
     /// 下一个标注用的样式（颜色 / 线宽）。改它**不入撤销栈** —— 它不影响已有内容。
     public var style: AnnotationStyle
@@ -47,17 +69,38 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
 
     public init(style: AnnotationStyle = AnnotationStyle(stroke: AnnotationPalette.defaultColor,
                                                          lineWidth: AnnotationPalette.defaultLineWidth,
+                                                         fontSize: AnnotationPalette.defaultOverlayFontSize,
                                                          effectStrength: AnnotationPalette.defaultRedactionStrength)) {
         self.style = style
     }
 
     // MARK: - 状态
 
-    public var isEmpty: Bool { annotations.isEmpty && draft == nil }
+    public var isEmpty: Bool { annotations.isEmpty && draft == nil && textEditor == nil }
     public var canUndo: Bool { !undoStack.isEmpty }
     public var canRedo: Bool { !redoStack.isEmpty }
     /// 是否正处在"画标注"模式。
-    public var isDrawing: Bool { tool != nil }
+    ///
+    /// ≠ "选了工具"：`.select` 也是工具，但它不画东西 —— 它是在改已有的标注。
+    /// 两者混在一个判据里的话，选「选择」工具会让"拖动 = 画一笔"成立，
+    /// 于是用户想点选一个箭头，结果在它旁边画了个新矩形。
+    public var isDrawing: Bool { tool?.draws == true }
+
+    /// 是否处在"改已有标注"模式。
+    public var isSelecting: Bool { tool == .select }
+
+    /// 选中的那些标注（按画的先后）。
+    public var selectedAnnotations: [Annotation] {
+        annotations.filter { selection.contains($0.id) }
+    }
+
+    /// 是否正在输入文字。
+    public var isEditingText: Bool { textEditor != nil }
+
+    /// 那三档尺寸此刻代表什么（线宽 / 打码强度 / 字号）。
+    ///
+    /// 没选工具时按线宽算 —— 那时工具条上的三档仍然是可点的（用户会先调再选工具）。
+    public var sizeMeaning: OverlaySizeMeaning { tool?.sizeMeaning ?? .lineWidth }
 
     /// 当前工具是否需要底图像素（马赛克 / 模糊）。
     ///
@@ -70,8 +113,12 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     ///
     /// 草稿也要画：用户拖的时候必须看到框跟着走，否则工具像是没反应。
     public var visibleAnnotations: [Annotation] {
-        guard let draft else { return annotations }
-        return annotations + [draft]
+        var visible = annotations
+        if let draft { visible.append(draft) }
+        // 待输入的文字也要画：用户点完必须**立刻看见**那个落脚点，
+        // 否则"点了没反应"与"这个工具没做"完全一样。
+        if let textEditor { visible.append(textEditor) }
+        return visible
     }
 
     // MARK: - 工具
@@ -81,23 +128,113 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     /// 取消选中要能一步做到：画完几个箭头想改选区大小，不该先去别处点一下。
     public mutating func toggle(tool: OverlayTool) {
         cancelStroke()
+        cancelText()
+        selection = []
+        moveAnchor = nil
         self.tool = (self.tool == tool) ? nil : tool
     }
 
     /// 取消工具选择（回到"调整选区"的模式）。
     public mutating func clearTool() {
         cancelStroke()
+        cancelText()
+        selection = []
+        moveAnchor = nil
         tool = nil
+    }
+
+    // MARK: - 选择 / 移动 / 删除（ticket 22）
+
+    /// 最上面那个"包含这个点"的标注。
+    ///
+    /// 判据走 `Annotation.contains`（箭头与画笔按**到路径的距离**判，不按包围盒 ——
+    /// 斜线的包围盒里有大片空白，用包围盒会"点空白处却选中了箭头"）。
+    /// 顺序与 `AnnotationDocument.orderedFrontToBack` 一致：后画的在上面。
+    public func annotation(at point: CGPoint) -> Annotation? {
+        for annotation in orderedFrontToBack() where annotation.contains(point) {
+            return annotation
+        }
+        return nil
+    }
+
+    /// 点一下：命中就选中它；没命中就清空选择。
+    ///
+    /// - Returns: 是否命中了某个标注。
+    @discardableResult
+    public mutating func select(at point: CGPoint) -> Bool {
+        guard let hit = annotation(at: point) else {
+            selection = []
+            return false
+        }
+        selection = [hit.id]
+        return true
+    }
+
+    public mutating func clearSelection() { selection = [] }
+
+    /// 按下：点在某个标注上就开始拖动它（顺带把它选中）。
+    ///
+    /// - Returns: 是否开始了拖动。
+    @discardableResult
+    public mutating func beginMove(at point: CGPoint) -> Bool {
+        guard let hit = annotation(at: point) else { return false }
+        if !selection.contains(hit.id) { selection = [hit.id] }
+        moveAnchor = MoveAnchor(point: point, before: annotations)
+        cancelStroke()
+        return true
+    }
+
+    public var isMovingAnnotations: Bool { moveAnchor != nil }
+
+    /// 拖到哪。整框平移 —— 框与路径一起走（`translated(by:)` 已经处理了这一点）。
+    public mutating func updateMove(to point: CGPoint) {
+        guard let anchor = moveAnchor else { return }
+        let delta = CGPoint(x: point.x - anchor.point.x, y: point.y - anchor.point.y)
+        let ids = selection
+        annotations = anchor.before.map { ids.contains($0.id) ? $0.translated(by: delta) : $0 }
+    }
+
+    /// 松手。
+    ///
+    /// - Returns: 是否真的动过（动了才进撤销栈 —— 点一下不该算一步改动）。
+    @discardableResult
+    public mutating func endMove(at point: CGPoint) -> Bool {
+        guard let anchor = moveAnchor else { return false }
+        updateMove(to: point)
+        moveAnchor = nil
+
+        let delta = CGPoint(x: point.x - anchor.point.x, y: point.y - anchor.point.y)
+        guard hypot(delta.x, delta.y) >= 1 else {
+            annotations = anchor.before
+            return false
+        }
+        commit(anchor.before, replacing: annotations)
+        return true
+    }
+
+    /// 删掉选中的那些。
+    @discardableResult
+    public mutating func deleteSelected() -> Bool {
+        guard !selection.isEmpty else { return false }
+        let remaining = annotations.filter { !selection.contains($0.id) }
+        guard remaining.count != annotations.count else { return false }
+        commit(annotations, replacing: remaining)
+        selection = []
+        cancelStroke()
+        return true
     }
 
     // MARK: - 一笔
 
-    /// 落笔。返回是否真的开始了（没选工具 / 已有草稿时为 `false`）。
+    /// 落笔。返回是否真的开始了（没选工具 / 工具不是"画一笔"的那类 / 已有草稿时为 `false`）。
+    ///
+    /// ⚠️ `isStrokeBased` 这道闸必须有：文字也是"有 kind 的工具"，放它进来就会
+    /// 得到一个"宽度等于拖拽距离"的空文字框（见 `OverlayTool.isStrokeBased`）。
     @discardableResult
     public mutating func beginStroke(at point: CGPoint) -> Bool {
-        guard let tool, draft == nil else { return false }
+        guard let tool, let kind = tool.kind, tool.isStrokeBased, draft == nil else { return false }
         strokeStart = point
-        draft = makeAnnotation(tool: tool, at: point)
+        draft = makeAnnotation(kind: kind, at: point)
         return true
     }
 
@@ -150,6 +287,66 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
         strokeStart = nil
     }
 
+    // MARK: - 文字输入（ticket 22）
+
+    /// 在 `point`（选区局部点）放下一个待输入的文字，进入输入状态。
+    ///
+    /// - Returns: 落下的那个标注（视图拿它定位输入框）；没选文字工具时为 `nil`。
+    ///
+    /// 内容此时是空的 —— 提交时才判定它成不成立（空内容直接丢弃，见 `commitText`）。
+    @discardableResult
+    public mutating func beginText(at point: CGPoint) -> Annotation? {
+        guard tool == .text else { return nil }
+        cancelStroke()
+        let annotation = Annotation(kind: .text,
+                                    frame: AnnotationText.frame(text: "",
+                                                                fontSize: style.fontSize,
+                                                                origin: point),
+                                    style: style,
+                                    zIndex: annotations.count)
+        textEditor = annotation
+        return annotation
+    }
+
+    /// 输入框里的内容变了。框跟着**重新量**：命中、选中框、导出都按这个框算。
+    public mutating func updateText(_ text: String) {
+        guard var editing = textEditor else { return }
+        editing.text = text
+        // 字号也可能在输入途中被工具条改过，跟着最新样式走
+        editing.style = style
+        editing.frame = AnnotationText.frame(text: text,
+                                             fontSize: style.fontSize,
+                                             origin: editing.frame.origin)
+        textEditor = editing
+    }
+
+    /// 提交输入。
+    ///
+    /// - Returns: 是否真的产出了一个标注（**空内容一律丢弃**）。
+    ///
+    /// 空内容必须丢掉：用户点了一下又按回车（或点了别处），
+    /// 在图上留一个 0 宽的空文字，谁也看不见、谁也删不掉 ——
+    /// 而它会一直参与导出与"有标注"的判断。
+    @discardableResult
+    public mutating func commitText(_ text: String) -> Bool {
+        guard var pending = textEditor else { return false }
+        textEditor = nil
+        guard !text.isEmpty else { return false }
+        // 用**提交这一刻**的样式（输入途中用户可能改过颜色或字号）
+        pending.style = style
+        pending.text = text
+        pending.frame = AnnotationText.frame(text: text,
+                                             fontSize: style.fontSize,
+                                             origin: pending.frame.origin)
+        commit(pending)
+        return true
+    }
+
+    /// 丢掉正在输入的文字（`Esc` / 换工具 / 收场时用）。已提交的标注不动。
+    public mutating func cancelText() {
+        textEditor = nil
+    }
+
     // MARK: - 撤销
 
     @discardableResult
@@ -157,6 +354,12 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
         guard let previous = undoStack.popLast() else { return false }
         redoStack.append(annotations)
         annotations = previous
+        // 撤销可能把"被删掉的标注"带回来，也可能把"刚画的"收走 ——
+        // 两种情况下选中集合都可能指向不存在的东西，必须一起收拾。
+        //
+        // 注意这条**没有可见症状**（现有的几处 guard 恰好挡住了后果），
+        // 所以它靠"断言不变量"守着，而不是靠某个行为断言 —— 见会话测试里那条用例的注释。
+        pruneSelection()
         cancelStroke()
         return true
     }
@@ -166,6 +369,7 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
         guard let next = redoStack.popLast() else { return false }
         undoStack.append(annotations)
         annotations = next
+        pruneSelection()
         cancelStroke()
         return true
     }
@@ -174,7 +378,10 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     public mutating func removeAll() {
         annotations = []
         draft = nil
+        textEditor = nil
         strokeStart = nil
+        selection = []
+        moveAnchor = nil
         undoStack = []
         redoStack = []
     }
@@ -187,12 +394,12 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
         annotations.append(annotation)
     }
 
-    private func makeAnnotation(tool: OverlayTool, at point: CGPoint) -> Annotation {
+    private func makeAnnotation(kind: AnnotationKind, at point: CGPoint) -> Annotation {
         // zIndex 用序号递增：后画的盖在上面，与数组顺序一致
         let zIndex = annotations.count
-        switch tool {
+        switch kind {
         case .rectangle, .ellipse, .mosaic, .blur:
-            return Annotation(kind: tool.kind,
+            return Annotation(kind: kind,
                               frame: CGRect(origin: point, size: .zero),
                               style: style,
                               zIndex: zIndex)
@@ -208,7 +415,44 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
                               style: style,
                               zIndex: zIndex,
                               path: [point])
+        case .text:
+            // 到不了这里：文字不走 `beginStroke`（见 `isStrokeBased`）。
+            // 保留分支只为让 switch 完整 —— 框由字数量出来，不是零尺寸。
+            return Annotation(kind: .text,
+                              frame: AnnotationText.frame(text: "",
+                                                          fontSize: style.fontSize,
+                                                          origin: point),
+                              style: style,
+                              zIndex: zIndex)
         }
+    }
+
+    /// 前后顺序：`zIndex` 大的在上；相同则数组里靠后的在上（后画的盖住先画的）。
+    private func orderedFrontToBack() -> [Annotation] {
+        annotations.enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.zIndex != rhs.element.zIndex {
+                    return lhs.element.zIndex > rhs.element.zIndex
+                }
+                return lhs.offset > rhs.offset
+            }
+            .map(\.element)
+    }
+
+    /// 一步改动的统一收口：进撤销栈、清重做栈、清掉已经不存在的选中项。
+    ///
+    /// 三件事必须一起做 —— 只做前两件的话，删掉一个标注再撤销回来时
+    /// 选中集合里会留着一个**已经不存在的 id**，而它会让"下次删"什么都没发生。
+    private mutating func commit(_ before: [Annotation], replacing after: [Annotation]) {
+        undoStack.append(before)
+        redoStack.removeAll()
+        annotations = after
+        pruneSelection()
+    }
+
+    private mutating func pruneSelection() {
+        guard !selection.isEmpty else { return }
+        selection.formIntersection(Set(annotations.map(\.id)))
     }
 
     /// 一笔是否够格成为标注。

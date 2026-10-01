@@ -159,14 +159,15 @@ struct OverlayToolbarTests {
         }
     }
 
-    @Test("工具条内容与用户预期一致：6 个工具 + 色板 + 尺寸三档 + 识别 + 撤销重做 + 保存取消完成")
+    @Test("工具条内容与用户预期一致：7 个工具 + 色板 + 尺寸三档 + 识别 + 撤销重做 + 保存取消完成")
     func slotInventory() {
         #expect(OverlayToolbar.slots.count
                 == OverlayTool.allCases.count
                 + AnnotationPalette.colors.count
                 + AnnotationPalette.lineWidths.count
                 + 6)
-        #expect(OverlayToolbar.slots.first == .tool(.rectangle))
+        // 「选择」在最左（与编辑器一致）：它是"不动手画"的那个，摆在最前面最不容易误点
+        #expect(OverlayToolbar.slots.first == .tool(.select))
         #expect(OverlayToolbar.slots.last == .confirm)
         // OCR 是**动作**不是工具：它必须在工具区之外，否则以后数工具数会把它算进去
         #expect(OverlayToolbar.slots.contains(.ocr))
@@ -244,6 +245,78 @@ struct OverlayToolbarTests {
         #expect(OverlayTool.blur.needsBackdrop)
         for tool in OverlayTool.allCases where tool != .mosaic && tool != .blur {
             #expect(!tool.needsBackdrop)
+        }
+    }
+
+    @Test("「选择」不是绘图工具：它没有 kind，`draws` 为假")
+    func selectToolDrawsNothing() {
+        // 这条是本类里最容易写错的一处：把 `.select` 也算成"选了工具就画"，
+        // 用户想点选一个箭头，结果在旁边画了个新矩形。
+        #expect(OverlayTool.select.kind == nil)
+        #expect(!OverlayTool.select.draws)
+        for tool in OverlayTool.allCases where tool != .select {
+            #expect(tool.kind != nil)
+            #expect(tool.draws)
+        }
+    }
+
+    // MARK: - 文字工具（ticket 22）
+
+    @Test("文字是靠「点一下」放下的，不是「拖一笔」")
+    func textIsPlacedByClick() {
+        // ⚠️ 这条是关键的行为差别：文字若走 `beginStroke`，用户按住鼠标拖一下
+        // 就会得到一个"宽度等于拖拽距离"的文字框，而正文根本还没输入。
+        #expect(OverlayTool.text.kind == .text)
+        #expect(OverlayTool.text.draws, "它仍然是个绘图工具（会被画到图上）")
+        #expect(!OverlayTool.text.isStrokeBased)
+        #expect(!OverlayTool.text.needsBackdrop, "文字不需要底图像素")
+
+        for tool in OverlayTool.allCases where tool != .text {
+            #expect(tool.isStrokeBased || !tool.draws,
+                    "\(tool.rawValue) 不是点放式工具，却被打上了 isStrokeBased=false")
+        }
+    }
+
+    @Test("那三档尺寸的含义由当前工具决定 —— 加新工具时只改一处")
+    func sizeMeaningFollowsTheTool() {
+        #expect(OverlayTool.mosaic.sizeMeaning == .redactionStrength)
+        #expect(OverlayTool.blur.sizeMeaning == .redactionStrength)
+        #expect(OverlayTool.text.sizeMeaning == .fontSize)
+        for tool in [OverlayTool.select, .rectangle, .ellipse, .arrow, .pen] {
+            #expect(tool.sizeMeaning == .lineWidth)
+        }
+    }
+
+    @Test("三组尺寸档必须一样长 —— 否则有一组永远选不到最后一档")
+    func everySizeMeaningHasTheSameNumberOfSlots() {
+        // 工具条上的格子数是按**线宽**那组建的（`slots` 用的是 `lineWidths.indices`），
+        // 而控制层按当前含义去另一组取同一个下标。长度不一样就会越界，
+        // 或者最后一档永远高亮不上 —— 而界面看起来只是"那一档点了没反应"。
+        let expected = AnnotationPalette.lineWidths.count
+        for meaning in OverlaySizeMeaning.allCases {
+            #expect(meaning.values.count == expected,
+                    "\(meaning) 有 \(meaning.values.count) 档，与工具条的 \(expected) 格对不上")
+            #expect(!meaning.values.isEmpty)
+        }
+    }
+
+    @Test("点工具条不会把正在打的字扔掉：改样式与撤销重做留着输入，其余先结算")
+    func toolbarClicksDoNotDiscardTyping() {
+        // 这条钉的是**一条产品决定**：`结算`（把内容落成标注）与 `丢弃` 是两件事。
+        // 换工具 / 识别 / 保存 / 取消 / 完成 都该先结算；只有 `Esc` 才丢。
+        for slot in [OverlayToolbar.Slot.color(0), .lineWidth(1), .undo, .redo] {
+            #expect(slot.preservesTextEditing, "\(slot) 属于「改这一行」，不该把输入结算掉")
+        }
+        for slot in [OverlayToolbar.Slot.tool(.rectangle), .ocr, .save, .cancel, .confirm] {
+            #expect(!slot.preservesTextEditing, "\(slot) 会离开「写文字」这件事，必须先结算输入")
+        }
+    }
+
+    @Test("每组的默认值都必须落在自己的档位里 —— 否则一进来三档全不高亮")
+    func defaultsLandOnASlot() {
+        for meaning in OverlaySizeMeaning.allCases {
+            #expect(meaning.values.contains(meaning.defaultValue),
+                    "\(meaning) 的默认值 \(meaning.defaultValue) 不在 \(meaning.values) 里")
         }
     }
 }
