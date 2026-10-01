@@ -113,6 +113,7 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 27. **`NSLock.lock()` 在 async 上下文里不可用**（编译报 "unavailable from asynchronous contexts"）→ 把加解锁收进一个同步闭包（`withLocked`），在闭包外再做异步的事。
 28. **`fillMask(punching:)` 的洞有多大，蒙层就少多少** —— 洞等于整屏时这个分支等于"没画"（只剩四角有蒙层）。长截图空状态就踩过：把整块屏当高亮镂空 → 用户看不出覆盖层在工作，以为"拖不了"。空状态要的是满屏蒙层 + 提示，不是高亮。
 29. **依赖"前台→后台顺序"的命中，必须在应用切换后重取清单**：`NSWorkspace.didActivateApplicationNotification` → 重拉 `SCShareableContent` + 强制重算悬停（`updateHover` 只在鼠标移动时被调用，不动鼠标就会一直停在旧高亮上）。
+30. **可选回调漏接线 = 静默 no-op，且毫无线索。** ticket 11 把 `MenuBarController.onScrollCapture` 写成可选 `var` 却忘了在 app delegate 注入 → 菜单项看着是启用的、点下去什么都不发生。**判据：用户说"点了没反应"时，第一件事是验入口通不通，再看下游渲染。** 修法是把 UI 回调做成 `init` 的必填参数（漏接即编译错误），别用可选 `var`。
 
 ## 文档与资产
 
