@@ -111,6 +111,8 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 25. **长图拼接的总高与每片底边都取 `floor`，不要 `ceil`。** 取 `ceil` 会多出一行"只覆盖一半"的行，谁都不完整覆盖它 → 长图上一条**半透明横线**。片的落位是连续坐标，`floor` 才是真正被完整覆盖到的行数。
 26. **被沙箱包裹的 shell 里 `xcodebuild` 编不过 SwiftUI 宏**：`swift-plugin-server` 启动时自己再套一层沙箱，外层不放行就被 SIGKILL（退出码 137），报 `StateMacro ... produced malformed response`。**判断方法：`./scripts/test.sh`（SwiftPM，按 `--disable-sandbox`）能过、`./scripts/build.sh` 不能 → 一定是宿主沙箱，别动代码。** 清 PATH / `env -i` / `-jobs` / 官方三件套都试过无效；App 层可改用 `swiftc -typecheck -I Modules/.build/out/Products/Debug` 验证。见 DEV-NOTES 第 4.1 节。
 27. **`NSLock.lock()` 在 async 上下文里不可用**（编译报 "unavailable from asynchronous contexts"）→ 把加解锁收进一个同步闭包（`withLocked`），在闭包外再做异步的事。
+28. **`fillMask(punching:)` 的洞有多大，蒙层就少多少** —— 洞等于整屏时这个分支等于"没画"（只剩四角有蒙层）。长截图空状态就踩过：把整块屏当高亮镂空 → 用户看不出覆盖层在工作，以为"拖不了"。空状态要的是满屏蒙层 + 提示，不是高亮。
+29. **依赖"前台→后台顺序"的命中，必须在应用切换后重取清单**：`NSWorkspace.didActivateApplicationNotification` → 重拉 `SCShareableContent` + 强制重算悬停（`updateHover` 只在鼠标移动时被调用，不动鼠标就会一直停在旧高亮上）。
 
 ## 文档与资产
 
