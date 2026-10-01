@@ -315,7 +315,18 @@ public final class SelectionOverlayController {
         }
 
         let settings = lensSettings
-        let side = max(1, Int((settings.samplePoints * display.backingScale).rounded()))
+        let scale = Double(display.backingScale)
+        let side = max(1, Int((settings.samplePoints * scale).rounded()))
+        let zoom = max(1, settings.zoom)
+        // 盒子边长由**实际采样边长**推出来（不是 `samplePoints × zoom`）：
+        // 少这一步，放大图与盒子就差最多半像素，绘制时会多一次亚像素重采样，
+        // 表现为"个别格子被拉宽、个别被吃掉一行"。
+        let placement = MagnifierLayout.Placement(
+            boxSide: MagnifierLayout.boxSide(sampledSide: side, zoom: zoom, backingScale: scale),
+            gap: settings.gap,
+            backingScale: scale,
+            screenBounds: display.frame
+        )
         let center = PixelSampling.clampedCenter(
             MagnifierLayout.imagePixel(forCocoa: cocoaPoint,
                                        on: display,
@@ -328,8 +339,7 @@ public final class SelectionOverlayController {
         let step = magnifierTracker.update(cursor: cocoaPoint,
                                            center: center,
                                            displayID: display.displayID,
-                                           settings: settings,
-                                           screenBounds: display.frame)
+                                           placement: placement)
 
         switch step {
         case .idle:
@@ -341,15 +351,15 @@ public final class SelectionOverlayController {
             // 这是鼠标移动时最常见的一档，省掉每帧一次裁剪 + 放大。
             magnifier = makeMagnifier(box: box,
                                       lensImage: lastLensImage,
-                                      backingScale: display.backingScale)
+                                      backingScale: scale)
             pushMagnifier()
 
         case .resample(let box, let center):
-            let zoom = max(1, Int(settings.zoom.rounded()))
             guard let lensImage = PixelSampling.magnified(lens.image,
                                                          centeredAt: center,
                                                          side: side,
-                                                         zoom: zoom),
+                                                         zoom: Int(zoom),
+                                                         interpolation: settings.interpolation),
                   let color = PixelSampling.color(of: lens.image, at: center) else {
                 clearMagnifier()
                 return
@@ -358,7 +368,7 @@ public final class SelectionOverlayController {
             sampledColor = color
             magnifier = makeMagnifier(box: box,
                                       lensImage: lensImage,
-                                      backingScale: display.backingScale)
+                                      backingScale: scale)
             pushMagnifier()
         }
     }
@@ -370,8 +380,9 @@ public final class SelectionOverlayController {
         MagnifierPresentation(
             lensImage: lensImage,
             boxRect: box,
-            // 一个源像素在盒子里占这么大：盒子边 = samplePoints × zoom（点），
-            // 而一个源像素 = 1 / backingScale 点，再放大 zoom 倍
+            // 一个源像素在盒子里占这么大：盒子边长 = 采样边长 × zoom（点），
+            // 而一个源像素 = 1 / backingScale 点，再放大 zoom 倍。
+            // 盒子边长与放大图是严格 1:1 的（见 `MagnifierLayout.boxSide(sampledSide:…)`）
             sampleMarkerSize: lensSettings.zoom / backingScale,
             colorLines: magnifierLines(),
             statusText: magnifierStatus

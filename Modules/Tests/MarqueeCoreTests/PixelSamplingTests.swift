@@ -100,7 +100,7 @@ struct PixelSamplingTests {
 
     // MARK: - 放大
 
-    @Test("放大用最近邻：输出里只允许出现源图那两种颜色，不许出现混色")
+    @Test("最近邻放大：输出里只允许出现源图那两种颜色，不许出现混色")
     func magnificationIsNearestNeighbour() {
         let image = TestImage.checkerboard(width: 8, height: 8)
         let first = PixelSampling.color(of: image, at: PixelCoordinate(x: 0, y: 0))
@@ -110,7 +110,8 @@ struct PixelSamplingTests {
         let zoomed = PixelSampling.magnified(image,
                                             centeredAt: PixelCoordinate(x: 4, y: 4),
                                             side: 8,
-                                            zoom: 3)
+                                            zoom: 3,
+                                            interpolation: .nearest)
         guard let out = zoomed, let bitmap = BitmapReader.read(out) else {
             Issue.record("放大失败")
             return
@@ -130,13 +131,60 @@ struct PixelSamplingTests {
         #expect(seen.contains(first!) && seen.contains(second!), "输出颜色应当就是源图那两种")
     }
 
+    /// 平滑是"低倍数看内容"那一档的默认，必须真的平滑 —— 否则用户看到的还是阶梯边。
+    @Test("平滑放大：硬边之间会出现过渡色（这就是它消除锯齿的方式）")
+    func smoothMagnificationIntroducesGradients() {
+        let image = TestImage.checkerboard(width: 8, height: 8)
+        let nearest = PixelSampling.magnified(image, centeredAt: PixelCoordinate(x: 4, y: 4),
+                                              side: 8, zoom: 3, interpolation: .nearest)
+        let smooth = PixelSampling.magnified(image, centeredAt: PixelCoordinate(x: 4, y: 4),
+                                             side: 8, zoom: 3, interpolation: .smooth)
+        guard let nearestOut = nearest, let smoothOut = smooth,
+              let nearestBitmap = BitmapReader.read(nearestOut),
+              let smoothBitmap = BitmapReader.read(smoothOut) else {
+            Issue.record("放大失败")
+            return
+        }
+        #expect(nearestOut.width == smoothOut.width, "两种插值只该改观感，不该改尺寸")
+
+        func distinctColors(_ bitmap: Bitmap) -> Set<PixelColor> {
+            var seen: Set<PixelColor> = []
+            for y in 0..<bitmap.height {
+                for x in 0..<bitmap.width {
+                    let pixel = bitmap.rgba(x: x, y: y)
+                    seen.insert(PixelColor(red: pixel.red, green: pixel.green, blue: pixel.blue))
+                }
+            }
+            return seen
+        }
+        let nearestColors = distinctColors(nearestBitmap)
+        let smoothColors = distinctColors(smoothBitmap)
+        #expect(nearestColors.count == 2)
+        #expect(smoothColors.count > nearestColors.count,
+                "平滑放大后应当出现过渡色，实际只有 \(smoothColors.count) 种")
+    }
+
+    @Test("插值按倍数自动选：低倍数看内容用平滑，高倍数看像素用最近邻")
+    func interpolationDependsOnZoom() {
+        #expect(MagnifierInterpolation.automatic(forZoom: 1) == .smooth)
+        #expect(MagnifierInterpolation.automatic(forZoom: 3) == .smooth, "默认的 3 倍必须是平滑，否则又是锯齿")
+        #expect(MagnifierInterpolation.automatic(forZoom: 5) == .smooth)
+        #expect(MagnifierInterpolation.automatic(forZoom: 6) == .nearest)
+        #expect(MagnifierInterpolation.automatic(forZoom: 8) == .nearest)
+
+        #expect(MagnifierLayout.Settings(samplePoints: 40, zoom: 3).interpolation == .smooth)
+        #expect(MagnifierLayout.Settings(samplePoints: 20, zoom: 8).interpolation == .nearest)
+    }
+
     @Test("放大：裁剪区越界或边长超过图像时返回 nil，而不是给一张残图")
     func magnificationRejectsInvalidRequests() {
         let image = TestImage.checkerboard(width: 4, height: 4)
         // 中心已在图内，但 6×6 的取样区放不下
-        #expect(PixelSampling.magnified(image, centeredAt: PixelCoordinate(x: 2, y: 2), side: 6, zoom: 2) == nil)
+        #expect(PixelSampling.magnified(image, centeredAt: PixelCoordinate(x: 2, y: 2),
+                                        side: 6, zoom: 2, interpolation: .nearest) == nil)
         // 边长超过图像尺寸
-        #expect(PixelSampling.magnified(image, centeredAt: PixelCoordinate(x: 2, y: 2), side: 8, zoom: 2) == nil)
+        #expect(PixelSampling.magnified(image, centeredAt: PixelCoordinate(x: 2, y: 2),
+                                        side: 8, zoom: 2, interpolation: .nearest) == nil)
     }
 
     // MARK: - 点 → 像素
@@ -162,11 +210,21 @@ struct PixelSamplingTests {
 
     // MARK: - 摆位
 
+    /// 测试用的几何量：默认设置、1x。
+    private func placement(scale: Double = 1,
+                           bounds: CGRect = CGRect(x: 0, y: 0, width: 1000, height: 800))
+        -> MagnifierLayout.Placement {
+        let settings = MagnifierLayout.Settings.default
+        return MagnifierLayout.Placement(boxSide: settings.boxSide,
+                                         gap: settings.gap,
+                                         backingScale: scale,
+                                         screenBounds: bounds)
+    }
+
     @Test("放大镜永远落在屏幕内，且不盖住光标")
     func magnifierAvoidsEdgesAndCursor() {
-        let bounds = CGRect(x: 0, y: 0, width: 1000, height: 800)
-        let settings = MagnifierLayout.Settings.default
-        let box = settings.boxSize
+        let placement = placement()
+        let box = CGSize(width: placement.boxSide, height: placement.boxSide)
 
         for cursor in [CGPoint(x: 500, y: 400),
                        CGPoint(x: 2, y: 2),
@@ -174,33 +232,69 @@ struct PixelSamplingTests {
                        CGPoint(x: 2, y: 798),
                        CGPoint(x: 998, y: 2),
                        CGPoint(x: 990, y: 10)] {
-            let origin = MagnifierLayout.origin(cursor: cursor, settings: settings, screenBounds: bounds)
+            let origin = MagnifierLayout.origin(cursor: cursor, placement: placement)
             let boxRect = CGRect(origin: origin, size: box)
-            #expect(bounds.contains(boxRect), "光标 \(cursor) 时放大镜 \(boxRect) 跑出屏幕")
+            #expect(placement.screenBounds.contains(boxRect),
+                    "光标 \(cursor) 时放大镜 \(boxRect) 跑出屏幕")
             #expect(!boxRect.contains(cursor), "光标 \(cursor) 时放大镜盖住了取样点")
             // 关键一条：放大镜要**贴着**光标（间距就是 gap）。
             // 只靠夹取也能满足"不越界、不盖光标"，但会把放大镜甩到屏幕另一头 ——
             // 用户看着一个远处的放大镜，根本不知道它在放大哪一块。
-            let gap = settings.gap
-            let huggingX = cursor.x <= boxRect.minX - gap + 1 || cursor.x >= boxRect.maxX + gap - 1
+            let gap = placement.gap
+            let huggingX = cursor.x <= boxRect.minX - gap + 1.5 || cursor.x >= boxRect.maxX + gap - 1.5
             #expect(huggingX, "光标 \(cursor) 时放大镜 \(boxRect) 没有贴着光标（水平间距应约为 \(gap)）")
         }
     }
 
     @Test("放大镜默认在光标右下；右边放不下就翻到左边")
     func magnifierFlipsSide() {
-        let bounds = CGRect(x: 0, y: 0, width: 1000, height: 800)
-        let settings = MagnifierLayout.Settings.default
+        let placement = placement()
 
         // 中间：放在右下（Cocoa 里"下方"是更小的 y）
-        let center = MagnifierLayout.origin(cursor: CGPoint(x: 400, y: 400),
-                                           settings: settings, screenBounds: bounds)
+        let center = MagnifierLayout.origin(cursor: CGPoint(x: 400, y: 400), placement: placement)
         #expect(center.x > 400)
         #expect(center.y < 400)
 
         // 贴右边界：翻到左边
-        let right = MagnifierLayout.origin(cursor: CGPoint(x: 990, y: 400),
-                                          settings: settings, screenBounds: bounds)
+        let right = MagnifierLayout.origin(cursor: CGPoint(x: 990, y: 400), placement: placement)
         #expect(right.x < 990)
+    }
+
+    // MARK: - 设备像素对齐
+
+    /// 盒子边长必须由**实际采样边长**推出来。
+    ///
+    /// 直接用 `samplePoints × zoom` 会与放大图差最多半像素 ——
+    /// 那半像素就是"有的格子被拉宽、有的被吃掉一行"的来源。
+    @Test("盒子边长由实际采样边长推出，保证放大图与盒子 1:1")
+    func boxSideMatchesSampledSide() {
+        // 2x 屏、采样 40 点 → 80 像素；3 倍 → 放大图 240 像素 → 盒子应当是 120 点
+        #expect(MagnifierLayout.boxSide(sampledSide: 80, zoom: 3, backingScale: 2) == 120)
+        // 1x 屏：40 像素 → 120 像素的图 → 盒子 120 点
+        #expect(MagnifierLayout.boxSide(sampledSide: 40, zoom: 3, backingScale: 1) == 120)
+        // 采样边长为奇数时也要严丝合缝（这正是"直接用点数算"会错开的情形）
+        // 33 点 @2x → 66 像素 → 3 倍 → 198 像素 → 99 点
+        #expect(MagnifierLayout.boxSide(sampledSide: 66, zoom: 3, backingScale: 2) == 99)
+        // scale 非法时不崩，退回按点算
+        #expect(MagnifierLayout.boxSide(sampledSide: 40, zoom: 3, backingScale: 0) == 120)
+    }
+
+    @Test("盒子落位对齐设备像素 —— 否则 1:1 的图会被亚像素重采样一次")
+    func placementSnapsToDevicePixels() {
+        let bounds = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let placement = MagnifierLayout.Placement(boxSide: 120, gap: 22, backingScale: 2,
+                                                  screenBounds: bounds)
+
+        for cursor in [CGPoint(x: 400.3, y: 400.7),
+                       CGPoint(x: 123.456, y: 234.567),
+                       CGPoint(x: 700.99, y: 512.01)] {
+            let origin = MagnifierLayout.origin(cursor: cursor, placement: placement)
+            #expect((origin.x * 2).truncatingRemainder(dividingBy: 1) == 0,
+                    "光标 \(cursor) 时 x=\(origin.x) 没有落在设备像素上")
+            #expect((origin.y * 2).truncatingRemainder(dividingBy: 1) == 0,
+                    "光标 \(cursor) 时 y=\(origin.y) 没有落在设备像素上")
+            // 对齐只该挪半个像素以内，不许把盒子甩到别处
+            #expect(abs(origin.x - (cursor.x + 22)) <= 0.5 + 0.001, "对齐把它挪太远了：\(origin)")
+        }
     }
 }

@@ -12,6 +12,26 @@ public struct PixelCoordinate: Equatable, Sendable, Hashable {
     }
 }
 
+/// 放大时的插值方式。
+public enum MagnifierInterpolation: Equatable, Sendable {
+    /// 最近邻：绝不混色，每个源像素都是一个硬边方块
+    case nearest
+    /// 平滑：斜线不再呈阶梯状
+    case smooth
+
+    /// 按倍数自动选：**低倍数看内容、高倍数看像素**。
+    ///
+    /// 阈值取 6 的道理是"每个源像素占几个点"：
+    /// - 3~5 倍时一个源像素只有 1.5~2.5 点，最近邻的阶梯边就是用户说的"锯齿感"
+    /// - 6 倍以上一个源像素 ≥ 3 点，格子已经清楚到能被当成"格子"来读，此时混色反而碍事
+    ///
+    /// 注意**色值准确性与此无关**：读数是从原图读的（`PixelSampling.color(of:at:)`），
+    /// 不经过这张放大图。所以平滑只是好看，不会让取色变糊。
+    public static func automatic(forZoom zoom: Double) -> MagnifierInterpolation {
+        zoom >= 6 ? .nearest : .smooth
+    }
+}
+
 /// 放大镜的取样与放大。
 ///
 /// 全程在**原图像素**上工作，不涉及点/像素换算 —— 那一步在
@@ -65,14 +85,17 @@ public enum PixelSampling {
         return PixelColor(red: bytes[0], green: bytes[1], blue: bytes[2])
     }
 
-    /// 以 `center` 为中心裁一块 `side×side` 的方形区域，**最近邻**放大 `zoom` 倍。
+    /// 以 `center` 为中心裁一块 `side×side` 的方形区域，放大 `zoom` 倍。
     ///
-    /// 最近邻是放大镜唯一正确的插值：双线性会把相邻像素混起来，
-    /// 用户就是想看清"这一格到底是什么颜色"，混色等于把信息抹掉。
+    /// 插值方式由 `interpolation` 决定（见 `MagnifierInterpolation`）：
+    /// 低倍数平滑、高倍数最近邻。**这里就是"放大"真正发生的地方** ——
+    /// 视图那一步是 1:1 直通（`side × zoom` 像素画进 `side × zoom / scale` 点的盒子），
+    /// 所以插值质量放在这里设才有意义。
     public static func magnified(_ image: CGImage,
                                 centeredAt center: PixelCoordinate,
                                 side: Int,
-                                zoom: Int) -> CGImage? {
+                                zoom: Int,
+                                interpolation: MagnifierInterpolation) -> CGImage? {
         let side = max(1, side)
         let zoom = max(1, zoom)
         let origin = PixelCoordinate(x: center.x - side / 2, y: center.y - side / 2)
@@ -93,7 +116,7 @@ public enum PixelSampling {
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
             return nil
         }
-        context.interpolationQuality = .none
+        context.interpolationQuality = interpolation == .smooth ? .high : .none
         context.draw(patch, in: CGRect(x: 0, y: 0, width: scaledSide, height: scaledSide))
         return context.makeImage()
     }
@@ -131,9 +154,47 @@ public struct MagnifierLayout: Equatable, Sendable {
 
         public static let `default` = Settings()
 
-        /// 放大镜盒子的边长（点）
+        /// 放大镜盒子的边长（点），**仅用于"没有屏幕信息"时的估算**。
+        ///
+        /// 真实摆位请走 `MagnifierLayout.boxSide(sampledSide:zoom:backingScale:)` ——
+        /// 那个是由**实际采样边长**推出来的，保证放大图与盒子 1:1（不会再多一次重采样）。
         public var boxSide: Double { samplePoints * zoom }
         public var boxSize: CGSize { CGSize(width: boxSide, height: boxSide) }
+
+        /// 该用哪种插值（低倍数平滑、高倍数最近邻，见 `MagnifierInterpolation`）
+        public var interpolation: MagnifierInterpolation { .automatic(forZoom: zoom) }
+    }
+
+    /// 一次摆位所需的全部几何量。
+    ///
+    /// 打成一个包，是因为它们总是**一起**算出来的（都取决于"哪块屏 + 当前设置"），
+    /// 拆成四个参数只会让调用点变长、也更容易传错顺序。
+    public struct Placement: Equatable, Sendable {
+        /// 盒子边长（点）。**必须**由 `boxSide(sampledSide:zoom:backingScale:)` 推出来
+        public var boxSide: Double
+        public var gap: Double
+        /// 该屏的 backing scale，用来把落位对齐到设备像素
+        public var backingScale: Double
+        /// 该屏边界，与 cursor **同一坐标空间**（别一个 Cocoa 一个 Quartz）
+        public var screenBounds: CGRect
+
+        public init(boxSide: Double, gap: Double, backingScale: Double, screenBounds: CGRect) {
+            self.boxSide = boxSide
+            self.gap = gap
+            self.backingScale = backingScale
+            self.screenBounds = screenBounds
+        }
+    }
+
+    /// 由**实际采样边长**推出盒子边长（点）。
+    ///
+    /// 不能直接用 `samplePoints × zoom`：采样边长是 `round(samplePoints × scale)`，
+    /// 与 `samplePoints × scale` 差最多半像素，而放大图是 `side × zoom` **像素**。
+    /// 两者错开时，视图那一步就会做一次亚像素重采样 ——
+    /// 表现为"个别格子被拉宽、个别被吃掉一行"，比单纯的块状更难忍受。
+    public static func boxSide(sampledSide: Int, zoom: Double, backingScale: Double) -> Double {
+        guard backingScale > 0 else { return Double(sampledSide) * zoom }
+        return Double(sampledSide) * zoom / backingScale
     }
 
     /// 全局 Cocoa 点 → 某块屏**采集帧**里的像素坐标。
@@ -154,25 +215,38 @@ public struct MagnifierLayout: Equatable, Sendable {
     ///
     /// 默认放在光标**右下**；任一边越界就翻到另一侧；翻过去仍越界（屏幕太小）才夹住。
     /// 必须保证盒子**不盖住光标** —— 盖住了就等于用户看不清自己正在取哪个像素。
+    ///
+    /// 最后还有一步**对齐设备像素**：放大图与盒子是 1:1 的，但盒子落在半个像素上时，
+    /// 这次绘制就退化成一次亚像素重采样 —— 平滑插值下整体发虚，
+    /// 最近邻下则是个别格子被拉宽/吃掉一行。对齐之后才是纯粹的直通拷贝。
     public static func origin(cursor: CGPoint,
-                              settings: Settings,
-                              screenBounds: CGRect) -> CGPoint {
-        let box = settings.boxSize
-        let gap = settings.gap
+                              placement: Placement) -> CGPoint {
+        let box = CGSize(width: placement.boxSide, height: placement.boxSide)
+        let gap = placement.gap
+        let bounds = placement.screenBounds
 
         var x = cursor.x + gap
-        if x + box.width > screenBounds.maxX {
+        if x + box.width > bounds.maxX {
             x = cursor.x - gap - box.width
         }
-        x = min(max(screenBounds.minX + 4, x), screenBounds.maxX - box.width - 4)
+        x = min(max(bounds.minX + 4, x), bounds.maxX - box.width - 4)
 
         // Cocoa 的 y 向上：光标"下方"是更小的 y
         var y = cursor.y - gap - box.height
-        if y < screenBounds.minY {
+        if y < bounds.minY {
             y = cursor.y + gap
         }
-        y = min(max(screenBounds.minY + 4, y), screenBounds.maxY - box.height - 4)
+        y = min(max(bounds.minY + 4, y), bounds.maxY - box.height - 4)
 
-        return CGPoint(x: x, y: y)
+        // 对齐到设备像素网格。夹取留了 4 点余量，所以这一步不会把盒子推出屏外。
+        let scale = placement.backingScale > 0 ? placement.backingScale : 1
+        return CGPoint(x: (x * scale).rounded() / scale,
+                       y: (y * scale).rounded() / scale)
+    }
+
+    /// 盒子矩形（左上角 + 边长），Cocoa 全局坐标。
+    public static func box(cursor: CGPoint, placement: Placement) -> CGRect {
+        CGRect(origin: origin(cursor: cursor, placement: placement),
+               size: CGSize(width: placement.boxSide, height: placement.boxSide))
     }
 }

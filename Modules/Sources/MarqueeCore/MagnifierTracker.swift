@@ -52,16 +52,12 @@ public struct MagnifierTracker: Equatable, Sendable {
     ///   - cursor: 光标位置，**Cocoa 全局坐标**
     ///   - center: 夹取后的取样像素（原图像素坐标）
     ///   - displayID: 取样像素所属的屏
-    ///   - screenBounds: 摆位用的屏幕边界，与 `cursor` **同一个坐标空间**
+    ///   - placement: 摆位用的几何量（边长 / 间距 / scale / 屏幕边界）
     public mutating func update(cursor: CGPoint,
                                 center: PixelCoordinate,
                                 displayID: UInt32,
-                                settings: MagnifierLayout.Settings,
-                                screenBounds: CGRect) -> Update {
-        let box = CGRect(origin: MagnifierLayout.origin(cursor: cursor,
-                                                        settings: settings,
-                                                        screenBounds: screenBounds),
-                         size: settings.boxSize)
+                                placement: MagnifierLayout.Placement) -> Update {
+        let box = MagnifierLayout.box(cursor: cursor, placement: placement)
 
         let sameDisplay = lastDisplayID == displayID
         let sameSample = sameDisplay && lastSample == center

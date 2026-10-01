@@ -267,8 +267,13 @@ final class SelectionOverlayView: NSView {
         if let lens = magnifier.lensImage,
            let cgContext = NSGraphicsContext.current?.cgContext {
             cgContext.saveGState()
-            // 最近邻：放大镜就是要看清"这一格是什么颜色"，
-            // 插值混色等于把要看的信息抹掉（Core 侧的 `magnified` 也是 `.none`，两处必须一致）
+            // 这一步是 **1:1 直通拷贝**：放大图是 `采样边长 × zoom` 像素，盒子是
+            // `采样边长 × zoom / scale` 点，落位还对过设备像素网格
+            // （见 `MagnifierLayout.boxSide(sampledSide:…)` 与 `origin(cursor:placement:)`）。
+            // 所以插值质量在这里**不该起作用** —— 写上 `.none` 是为了万一将来
+            // 因为浮点误差真的错开半像素时，不要引入第二次平滑。
+            // **真正的插值发生在 Core**（`PixelSampling.magnified` 的 `interpolation` 参数）：
+            // 低倍数平滑、高倍数最近邻，那里才是"放大"发生的地方。
             cgContext.interpolationQuality = .none
             cgContext.draw(lens, in: box)
             cgContext.restoreGState()

@@ -28,6 +28,7 @@
 | 滚动到底的判定 | **"没动" 只有在"真的滚过"之后才算"到底"**（`hasAppendedContent`）。且 `atBottom` 只是**提示**、不停抓帧（`Phase.isAcceptingFrames` 把它算作可接收）→ 用户接着滚就继续拼。阈值名 `stationaryFramesBeforeBottomHint`（不要改回 `...beforeStop`） |
 | 放大镜取色 | **ticket 10 起**。放大镜**只活在落点之前**（`SelectionSession.showsMagnifier`，与 PRD F4「选区时显示」+ 微信截图一致）；落点（区域或窗口）后**收起**，长截图抓帧时也收起。`⌥` 相位：**悬停/拖拽中按住＝显示 HEX/RGB，悬停时点击＝复制色值**；落点后 `⌥` 归 ticket 04 的「无阴影」。不带 `⌥` 的点击始终是"选中这扇窗"。像素来源＝覆盖层出现后**取一屏冻结**（不是每次移动去采）；"什么才算变了"在 `MagnifierTracker`（`idle` / `moved`（只挪盒子、复用放大图）/ `resample`） |
 | 放大镜尺寸 | **采样 40 点 × 3 倍 = 120 点盒子**（2026-10-01 用户实测后从 12×8=96 改过来）。`zoom` 就是**用户感知倍数**（盒子边 ÷ 采样边，与屏幕 scale 无关），且必须取整。**"能对准"靠十字线 + 中心像素框，不靠看清像素** —— 倍数一高，内容就彻底不可辨认。现场调参：`defaults write dev.tango.Marquee lens.zoom -float 4`（`lens.samplePoints` / `lens.gap` 同理，**下次唤起覆盖层即生效**，范围在 `MagnifierSettingsStore` 里夹住）。界面留 ticket 15 |
+| 放大镜渲染 | 三件事写在一处，别拆：①**插值按倍数自动选**（`MagnifierInterpolation.automatic(forZoom:)`：<6 平滑、≥6 最近邻）—— 低倍数看内容、高倍数看像素，**色值准确性与此无关**（读数直接取原图）；②**盒子边长由实际采样边长推出**（`MagnifierLayout.boxSide(sampledSide:zoom:backingScale:)`），不能用 `samplePoints × zoom`，否则与放大图差半像素；③**落位对齐设备像素**（`origin(cursor:placement:)` 末尾按 scale 取整）—— 不对齐则 1:1 的图会被亚像素重采样，表现是"个别格子被拉宽、个别被吃掉一行"。视图那一步是 1:1 直通，`interpolationQuality` 在那里不起作用，**真正的放大发生在 Core 的 `PixelSampling.magnified`** |
 | 构建配置 | **Run 走 Release**（`project.yml` 的 `schemes.Marquee.run.config`）：性能预算只有在优化构建下才有参考价值。test/analyze 仍是 Debug。签名写在 `settings.base`，Release 同样用证书，不会退回 ad-hoc |
 | 确认之后 | 原图立刻进剪贴板（`⌘S` 才落盘）。同时打开标注编辑器。编辑器里 `Esc` 把标注栅格化后再写回剪贴板并关闭。裁切界面在 ticket 09 |
 | 测试目标结构 | `MarqueeCoreTests`（纯逻辑）+ **`MarqueeCaptureTests`**（真实 Vision 的装置自检必须打在真实实现上）+ `MarqueeTestSupport`（**测试专用**库：合成长页 / 位图读取 / MAE，不挂宿主 target）。新测试目标要同时改 `Modules/Package.swift` |
@@ -125,6 +126,8 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 35. **改了状态 ≠ 状态会被推出去。** 放大镜更新只改 `magnifier` 字段，把"推给视图"交给调用方顺手调 `refresh()` —— 而空闲移动走的是 `updateHover`，那里"悬停窗口没变"时直接 `return`，于是**落点之后与悬停在同一个窗口内时放大镜定格不动**。规矩：**谁改谁推**（`pushMagnifier`），别让"刷新"依赖另一个函数的副作用。同源：`statusText` 是烘进 presentation 的，只 `refresh()` 推的是算好的旧那份 → 反馈要等下次鼠标移动才出现，必须**重建**。
 36. **判定要分清"内容没变"与"位置没变"。** 放大镜原来把"取样像素没变"直接当成"什么都不用做"，而光标位置仍可能变了 —— 混在一起就会**该动的没动**。抽成三态（`idle` / `moved`（复用小图、只挪盒子）/ `resample`（重采））后既可测也不再含糊。1x 屏上尤其明显（走一格像素算没变），2x 屏只是间歇性卡住。
 37. **说"某键被占用"之前，先确认它被占用的**相位**。** 我把 `⌥` 取色挪到"已落点"，理由是"避开 ticket 04 的 `⌥`＝无阴影"；但 ticket 04 的 `⌥` 是**落点之后**读的，悬停时它本来就是空档 —— 一个假冲突换来的是放大镜必须赖在落点之后不走，同时违背 PRD F4（「选区时显示」「`⌥` **悬停**即」）与用户参照的微信行为。**冲突要按相位核对，不能按"这个键有没有人用"粗判。**
+38. **"1:1 直通拷贝"也需要对齐设备像素。** 只要目标矩形落在半个像素上（`origin = 光标 + 间距`，光标天然带小数），CG 就会插值一次 —— 平滑档看起来发虚，最近邻档则是**个别格子被拉宽、个别被吃掉一行**（比整片块状更难忍受，也更容易被误当成"锯齿"）。画任何"像素到像素"的图（放大镜、像素对齐的预览）都要把落位按 `backingScale` 取整。
+39. **"放大"发生的地方要和"画"分开想。** 视图里 `interpolationQuality` 只在**非 1:1** 时起作用；如果图像尺寸与目标矩形严格相等，那个设置形同虚设。放大镜原先把插值质量设在视图（无效位），而真正决定观感的 `PixelSampling.magnified` 却写死 `.none` —— 于是"改插值"改了个寂寞。**问自己：重采样到底发生在哪一步。**
 
 ## 文档与资产
 
