@@ -146,6 +146,25 @@ struct OverlayToolbarPresentation: Equatable {
     var isRecognizing: Bool
     var canUndo: Bool
     var canRedo: Bool
+    /// 工具条上展开的那个弹层（`nil` = 没展开）。
+    ///
+    /// 色板与尺寸**不再各占一格**：12 格把整条撑到 799 点，而参考的那条只有一排图标。
+    /// 收进面板之后整条降到 ~545 点，也让工具格重新成为视觉重心。
+    var palette: OverlayPalettePresentation?
+}
+
+/// 工具条上展开的弹层要画什么。
+struct OverlayPalettePresentation: Equatable {
+    var kind: OverlayPalette
+    /// 弹层矩形，**Cocoa 全局坐标**
+    var frame: CGRect
+    var stroke: AnnotationColor
+    /// 三档尺寸此刻的数值与选中档（含义由 `sizeSlotMeaning` 决定）
+    var sizeSlotValues: [CGFloat]
+    var sizeSlotIndex: Int
+    var sizeSlotMeaning: OverlaySizeMeaning
+    /// 表情面板里当前选中的那一个（下标）
+    var selectedEmojiIndex: Int
 }
 
 /// 放大镜要画的东西。由控制器算好（几何全在 `MarqueeCore.MagnifierLayout`）。
@@ -198,6 +217,9 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     /// 由控制层用 `OverlayToolbar.button(at:in:)` 判断点的是哪个按钮 ——
     /// 视图只负责"这一下点在工具栏里"，不做语义判断。
     func overlayView(_ view: SelectionOverlayView, clickedToolbarAt globalPoint: CGPoint)
+    /// 点在了展开的弹层上（色板/尺寸 或 表情）。坐标同样是 **Cocoa 全局点**，
+    /// 语义判断（点到哪一格、是选色还是选尺寸）留给控制层。
+    func overlayView(_ view: SelectionOverlayView, clickedPaletteAt globalPoint: CGPoint)
 
     // 文字输入框（ticket 22）。三条都来自那个真的 `NSTextField`：
     /// 框里的内容变了（每次击键）
@@ -252,22 +274,27 @@ final class SelectionOverlayView: NSView {
         }
     }
 
-    // MARK: - 工具条背景（ticket 17）
+    // MARK: - 工具条与弹层的背景（ticket 17 / 24）
 
     /// 工具条的材质底。**必须是与前景并列的子视图**，不能挂在覆盖层自己身上 ——
     /// AppKit 里子视图永远画在父视图自己的 `draw` 之上（见 `ChromeForegroundView`）。
     private var toolbarChrome: NSView?
     /// 工具条的前景（描边 / 分隔线 / 图标）。
     private var toolbarForeground: ChromeForegroundView?
+    /// 弹层的材质底与前景。与工具条同一套做法。
+    private var paletteChrome: NSView?
+    private var paletteForeground: ChromeForegroundView?
 
-    /// 把工具条的两个子视图摆到当前位置。
+    /// 把工具条与弹层的子视图摆到当前位置。
     ///
     /// **不在 `draw` 里懒创建**：绘制过程中改视图树会让本次绘制作废，
-    /// 表现是工具条第一次出现时闪一下。
+    /// 表现是它第一次出现时闪一下。
     private func syncToolbarChrome() {
         guard let toolbar = presentation.toolbar else {
             toolbarChrome?.isHidden = true
             toolbarForeground?.isHidden = true
+            paletteChrome?.isHidden = true
+            paletteForeground?.isHidden = true
             return
         }
 
@@ -291,6 +318,32 @@ final class SelectionOverlayView: NSView {
         toolbarForeground?.frame = box
         toolbarForeground?.isHidden = false
         toolbarForeground?.needsDisplay = true
+
+        guard let palette = presentation.toolbar?.palette else {
+            paletteChrome?.isHidden = true
+            paletteForeground?.isHidden = true
+            return
+        }
+
+        if paletteChrome == nil {
+            let chrome = ChromeBackground.makeBackgroundView(cornerRadius: OverlayToolbar.cornerRadius)
+            chrome.isHidden = true
+            addSubview(chrome)
+            paletteChrome = chrome
+
+            let foreground = ChromeForegroundView()
+            foreground.isHidden = true
+            foreground.render = { [weak self] rect in self?.drawPaletteForeground(in: rect) }
+            addSubview(foreground)
+            paletteForeground = foreground
+        }
+
+        let paletteBox = globalToLocal(palette.frame)
+        paletteChrome?.frame = paletteBox
+        paletteChrome?.isHidden = false
+        paletteForeground?.frame = paletteBox
+        paletteForeground?.isHidden = false
+        paletteForeground?.needsDisplay = true
     }
 
     /// 放大镜占的脏区（局部坐标）。色值框贴在盒子上下、文字还可能很宽，保守地多扩一圈。
@@ -309,6 +362,12 @@ final class SelectionOverlayView: NSView {
         window?.makeFirstResponder(self)
 
         let point = cocoaPoint(of: event)
+        // 弹层最优先：它压在工具条外侧，判定要排在工具条前面 ——
+        // 反过来先判工具条的话，两者重叠的那几个点上会点到工具条。
+        if let palette = presentation.toolbar?.palette?.frame, palette.contains(point) {
+            delegate?.overlayView(self, clickedPaletteAt: point)
+            return
+        }
         // 工具栏优先于一切：点在它上面就是"按了个按钮"，**不能**落进拖拽逻辑 ——
         // 否则按住按钮挪一下就会把刚框好的选区改掉。
         //
@@ -625,7 +684,7 @@ final class SelectionOverlayView: NSView {
         }
     }
 
-    private func draw(toolbarItem slot: OverlayToolbar.Slot,
+    private func draw(toolbarItem slot: OverlayToolbarSlot,
                       in rect: CGRect,
                       state: OverlayToolbarPresentation) {
         switch slot {
@@ -635,15 +694,10 @@ final class SelectionOverlayView: NSView {
             drawSymbol(Self.symbol(for: tool),
                        in: rect,
                        tint: active ? .controlAccentColor : .white)
-        case .color(let index):
-            drawColorSwatch(AnnotationPalette.colors[index],
-                            in: rect,
-                            selected: state.stroke == AnnotationPalette.colors[index])
-        case .lineWidth(let index):
-            drawSizeSwatch(value: state.sizeSlotValues[index],
-                           meaning: state.sizeSlotMeaning,
-                           in: rect,
-                           selected: state.sizeSlotIndex == index)
+        case .style:
+            // 展开时点亮：面板开着却看不出"是它开的"，用户会以为点空了
+            if state.palette != nil { highlight(rect) }
+            drawSymbol("paintpalette", in: rect, tint: state.palette != nil ? .controlAccentColor : .white)
         case .ocr:
             drawSymbol(state.isRecognizing ? "hourglass" : "text.viewfinder",
                        in: rect,
@@ -658,27 +712,81 @@ final class SelectionOverlayView: NSView {
         case .save:
             drawSymbol("square.and.arrow.down", in: rect, tint: .white)
         case .cancel:
-            drawSymbol("xmark", in: rect, tint: .white)
+            // ⚠️ **红**，不是白。参考工具条里 ✗ 是红的、✓ 是绿的 ——
+            // 这两个是"结束这次截图"的两种结果，一眼分得出才有意义。
+            // 对比度是算过的（`OverlayAccent` + 单测），不是挑个好看的颜色。
+            drawSymbol("xmark", in: rect, tint: Self.nsColor(OverlayAccent.cancel))
         case .confirm:
-            drawSymbol("checkmark", in: rect, tint: Self.confirmColor)
+            drawSymbol("checkmark", in: rect, tint: Self.nsColor(OverlayAccent.confirm))
         }
     }
 
-    private static let confirmColor = NSColor(red: 0.24, green: 0.82, blue: 0.42, alpha: 1)
+    static func nsColor(_ rgb: OverlayAccent.RGB) -> NSColor {
+        NSColor(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+    }
 
     /// 图标名与编辑器**保持一致** —— 同一个功能在两处用不同图标，
     /// 用户会以为是两个不同的东西。
     private static func symbol(for tool: OverlayTool) -> String {
         switch tool {
-        case .select: "cursorarrow"
         case .rectangle: "rectangle"
         case .ellipse: "circle"
+        case .emoji: "face.smiling"
         case .arrow: "arrow.up.right"
         case .pen: "pencil.tip"
-        case .text: "textformat"
         case .mosaic: "checkerboard.rectangle"
-        case .blur: "camera.filters"
+        case .text: "textformat"
         }
+    }
+
+    // MARK: - 弹层（色板/尺寸、表情）
+
+    /// 画弹层的**前景**。背景（玻璃/材质）是与它并列的兄弟子视图 —— 同上一条注释。
+    private func drawPaletteForeground(in box: NSRect) {
+        guard let palette = presentation.toolbar?.palette else { return }
+        let layout = OverlayToolbar.paletteLayout(palette.kind)
+
+        let outline = Self.roundedPath(box.insetBy(dx: 0.5, dy: 0.5),
+                                       radius: OverlayToolbar.cornerRadius)
+        outline.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.12).setStroke()
+        outline.stroke()
+
+        for entry in layout.items {
+            let rect = entry.frame.offsetBy(dx: box.minX, dy: box.minY)
+            switch entry.item {
+            case .color(let index):
+                drawColorSwatch(AnnotationPalette.colors[index],
+                                in: rect,
+                                selected: palette.stroke == AnnotationPalette.colors[index])
+            case .lineWidth(let index):
+                drawSizeSwatch(value: palette.sizeSlotValues[index],
+                               meaning: palette.sizeSlotMeaning,
+                               in: rect,
+                               selected: palette.sizeSlotIndex == index)
+            case .emoji(let index):
+                drawEmoji(AnnotationPalette.emojis[index],
+                          in: rect,
+                          selected: palette.selectedEmojiIndex == index)
+            }
+        }
+    }
+
+    /// 表情用字符串直接画（系统自带 emoji 字体），不找图片资源。
+    private func drawEmoji(_ emoji: String, in rect: CGRect, selected: Bool) {
+        if selected {
+            NSColor.white.withAlphaComponent(0.18).setFill()
+            Self.roundedPath(rect.insetBy(dx: -1, dy: -1), radius: 6).fill()
+        }
+        let size = rect.height * 0.86
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: size),
+        ]
+        let text = emoji as NSString
+        let measured = text.size(withAttributes: attributes)
+        text.draw(at: CGPoint(x: rect.midX - measured.width / 2,
+                              y: rect.midY - measured.height / 2),
+                  withAttributes: attributes)
     }
 
     /// 选中态的底：一个比格子略小的圆角块。

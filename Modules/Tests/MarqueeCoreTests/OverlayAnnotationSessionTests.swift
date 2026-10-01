@@ -296,7 +296,7 @@ struct OverlayAnnotationSessionTests {
     func mosaicTooSmallIsDiscarded() {
         var subject = session()
 
-        let committed = draw(&subject, .blur, from: CGPoint(x: 0, y: 0), to: CGPoint(x: 2, y: 2))
+        let committed = draw(&subject, .mosaic, from: CGPoint(x: 0, y: 0), to: CGPoint(x: 2, y: 2))
         #expect(!committed)
         #expect(subject.annotations.isEmpty)
     }
@@ -318,7 +318,7 @@ struct OverlayAnnotationSessionTests {
     @Test("点在一个标注上就选中它")
     func clickingSelects() {
         var subject = sessionWithShapes()
-        subject.toggle(tool: .select)
+        subject.clearTool()
 
         let hit = subject.select(at: CGPoint(x: 30, y: 25))
 
@@ -329,7 +329,7 @@ struct OverlayAnnotationSessionTests {
     @Test("点在空白处清空选择")
     func clickingEmptyClearsSelection() {
         var subject = sessionWithShapes()
-        subject.toggle(tool: .select)
+        subject.clearTool()
         subject.select(at: CGPoint(x: 30, y: 25))
         #expect(!subject.selectedAnnotations.isEmpty)
 
@@ -347,7 +347,7 @@ struct OverlayAnnotationSessionTests {
         subject.beginStroke(at: CGPoint(x: 20, y: 20))
         subject.endStroke(at: CGPoint(x: 80, y: 80))     // 后画，盖在上面
         subject.clearTool()
-        subject.toggle(tool: .select)
+        subject.clearTool()
 
         subject.select(at: CGPoint(x: 50, y: 50))
 
@@ -358,7 +358,7 @@ struct OverlayAnnotationSessionTests {
     func draggingMovesWithoutResizing() {
         var subject = sessionWithShapes()
         let original = subject.annotations[0].frame
-        subject.toggle(tool: .select)
+        subject.clearTool()
 
         subject.beginMove(at: CGPoint(x: 30, y: 25))
         subject.updateMove(to: CGPoint(x: 60, y: 55))
@@ -372,7 +372,7 @@ struct OverlayAnnotationSessionTests {
     @Test("没动过就不算一步改动 —— 点一下不该进撤销栈")
     func clickWithoutMovingIsNotUndoable() {
         var subject = sessionWithShapes()
-        subject.toggle(tool: .select)
+        subject.clearTool()
         let before = subject.canUndo
 
         subject.beginMove(at: CGPoint(x: 30, y: 25))
@@ -386,7 +386,7 @@ struct OverlayAnnotationSessionTests {
     func undoingAMoveRestoresPosition() {
         var subject = sessionWithShapes()
         let original = subject.annotations[0].frame
-        subject.toggle(tool: .select)
+        subject.clearTool()
 
         subject.beginMove(at: CGPoint(x: 30, y: 25))
         subject.endMove(at: CGPoint(x: 80, y: 75))
@@ -401,7 +401,7 @@ struct OverlayAnnotationSessionTests {
     func moveUsesTheAnchorNotThePreviousFrame() {
         var subject = sessionWithShapes()
         let original = subject.annotations[0].frame
-        subject.toggle(tool: .select)
+        subject.clearTool()
 
         subject.beginMove(at: CGPoint(x: 30, y: 25))
         subject.updateMove(to: CGPoint(x: 130, y: 125))
@@ -415,7 +415,7 @@ struct OverlayAnnotationSessionTests {
     @Test("Delete 删掉选中的那个")
     func deleteRemovesSelection() {
         var subject = sessionWithShapes()
-        subject.toggle(tool: .select)
+        subject.clearTool()
         subject.select(at: CGPoint(x: 30, y: 25))
 
         let deleted = subject.deleteSelected()
@@ -449,7 +449,7 @@ struct OverlayAnnotationSessionTests {
         subject.endStroke(at: CGPoint(x: 160, y: 150))     // 后画的那个
         subject.clearTool()
 
-        subject.toggle(tool: .select)
+        subject.clearTool()
         subject.select(at: CGPoint(x: 130, y: 125))        // 选中后画的那个
         #expect(subject.selectedAnnotations.count == 1)
         let ghost = subject.selection.first!
@@ -471,7 +471,7 @@ struct OverlayAnnotationSessionTests {
     @Test("删掉再撤销：标注回来，且选中集合是干净的")
     func undoingADeleteRestoresAndClearsSelection() {
         var subject = sessionWithShapes()
-        subject.toggle(tool: .select)
+        subject.clearTool()
         subject.select(at: CGPoint(x: 30, y: 25))
         subject.deleteSelected()
 
@@ -484,7 +484,7 @@ struct OverlayAnnotationSessionTests {
     @Test("切换工具会清掉选择 —— 否则旧的高亮会挂在画面上")
     func switchingToolClearsSelection() {
         var subject = sessionWithShapes()
-        subject.toggle(tool: .select)
+        subject.clearTool()
         subject.select(at: CGPoint(x: 30, y: 25))
         #expect(!subject.selectedAnnotations.isEmpty)
 
@@ -493,24 +493,24 @@ struct OverlayAnnotationSessionTests {
         #expect(subject.selectedAnnotations.isEmpty)
     }
 
-    @Test("`isDrawing` 与「选了工具」不是一回事 —— 选择工具不画东西")
-    func selectToolIsNotDrawing() {
+    @Test("`isDrawing` 与「没选工具」不是一回事 —— 没选工具时不画东西")
+    func idleSessionIsNotDrawing() {
         var subject = session()
-        subject.toggle(tool: .select)
+        subject.clearTool()
 
-        #expect(subject.tool != nil)
-        #expect(!subject.isDrawing, "把选择也算成画，用户点选时会画出新图形")
-        #expect(subject.isSelecting)
+        #expect(subject.tool == nil)
+        #expect(!subject.isDrawing, "把「没选工具」也算成画，用户点选时会画出新图形")
+        #expect(subject.isSelecting, "没选工具＝改已有标注 / 改选区几何")
 
         subject.toggle(tool: .pen)
         #expect(subject.isDrawing)
         #expect(!subject.isSelecting)
     }
 
-    @Test("选择工具下 beginStroke 是空操作")
-    func selectToolCannotDraw() {
+    @Test("没选工具时 beginStroke 是空操作")
+    func idleSessionCannotDraw() {
         var subject = session()
-        subject.toggle(tool: .select)
+        subject.clearTool()
 
         let began = subject.beginStroke(at: CGPoint(x: 10, y: 10))
 
@@ -518,7 +518,7 @@ struct OverlayAnnotationSessionTests {
         #expect(subject.draft == nil)
     }
 
-    @Test("`usesRedaction` 只在马赛克 / 模糊时为真 —— 控制层靠它决定要不要准备底图")
+    @Test("`usesRedaction` 只在打码时为真 —— 控制层靠它决定要不要准备底图")
     func usesRedactionOnlyForBackdropTools() {
         var subject = session()
         #expect(!subject.usesRedaction, "没选工具时不需要底图")
@@ -529,8 +529,41 @@ struct OverlayAnnotationSessionTests {
         subject.toggle(tool: .mosaic)
         #expect(subject.usesRedaction)
 
-        subject.toggle(tool: .blur)
-        #expect(subject.usesRedaction)
+        // 换到**另一个**工具才算"离开打码" —— `toggle` 同一个工具是关掉它，
+        // 那样第二条断言就永远测不到"从打码切走"这条路（曾经就是这么写错的）。
+        subject.toggle(tool: .pen)
+        #expect(!subject.usesRedaction)
+    }
+
+    // MARK: - 表情贴纸（ticket 24）
+
+    @Test("表情落点：点一下就有一个，且产出的就是文字标注（复用现成路径）")
+    func emojiStampsATextAnnotation() {
+        var subject = session()
+        subject.toggle(tool: .emoji)
+
+        let placed = subject.stampEmoji("🎯", at: CGPoint(x: 40, y: 40))
+
+        #expect(placed)
+        #expect(subject.annotations.count == 1)
+        #expect(subject.annotations.first?.kind == .text,
+                "表情就是文字标注 —— 不该为它新开一条渲染分支")
+        #expect(subject.annotations.first?.text == "🎯")
+        #expect(subject.canUndo, "落一个也要能撤销")
+    }
+
+    @Test("空表情、或当前不是表情工具时，什么都不落")
+    func emojiStampsNothingWhenItShouldNot() {
+        var subject = session()
+        subject.toggle(tool: .emoji)
+        let emptyStamp = subject.stampEmoji("", at: CGPoint(x: 10, y: 10))
+        #expect(!emptyStamp)
+
+        subject.clearTool()
+        let wrongToolStamp = subject.stampEmoji("🎯", at: CGPoint(x: 10, y: 10))
+        #expect(!wrongToolStamp)
+        // 在图上留一个看不见也删不掉的东西，比"点了没反应"更糟
+        #expect(subject.annotations.isEmpty)
     }
 
     @Test("默认打码强度取三档的中间一个 —— 不能一进来是个数组外的值（那样没有一档高亮）")
@@ -690,7 +723,7 @@ struct OverlayAnnotationSessionTests {
     /// 选中第一个矩形（10,10–50,40，标注坐标系 y 向下）
     private func selectedShapeSession() -> OverlayAnnotationSession {
         var subject = sessionWithShapes()
-        subject.toggle(tool: .select)
+        subject.clearTool()
         subject.select(at: CGPoint(x: 30, y: 25))
         return subject
     }
@@ -724,7 +757,7 @@ struct OverlayAnnotationSessionTests {
     @Test("没选中 / 选中多个时不摆控制点 —— 「缩哪一个」没有明确答案")
     func handlesRequireExactlyOneSelection() {
         var subject = sessionWithShapes()
-        subject.toggle(tool: .select)
+        subject.clearTool()
         #expect(subject.selectedHandles.isEmpty, "没选中任何东西")
 
         subject.select(at: CGPoint(x: 30, y: 25))
@@ -871,7 +904,7 @@ struct OverlayAnnotationSessionTests {
         subject.beginStroke(at: CGPoint(x: 0, y: 0))
         subject.endStroke(at: CGPoint(x: 40, y: 40))
         subject.clearTool()
-        subject.toggle(tool: .select)
+        subject.clearTool()
         subject.select(at: CGPoint(x: 20, y: 20))
 
         subject.beginResize(at: CGPoint(x: 40, y: 40))     // 右下角
@@ -890,7 +923,7 @@ struct OverlayAnnotationSessionTests {
         subject.beginText(at: CGPoint(x: 0, y: 0))
         subject.commitText("两倍")
         subject.clearTool()
-        subject.toggle(tool: .select)
+        subject.clearTool()
 
         let before = subject.annotations[0]
         subject.select(at: CGPoint(x: before.frame.midX, y: before.frame.midY))

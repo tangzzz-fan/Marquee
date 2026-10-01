@@ -50,6 +50,25 @@ public enum AnnotationPalette {
     /// 覆盖层里打码强度的默认档（`overlayRedactionStrengths` 的中间一个）。
     public static var defaultRedactionStrength: CGFloat { overlayRedactionStrengths[1] }
 
+    /// 三档尺寸的**格数**。
+    ///
+    /// 三组值（线宽 / 打码强度 / 字号）的**含义**不同，但格数相同 ——
+    /// 工具条上那一排永远只有三格，切工具时换的是"这三格代表什么"（`OverlaySizeMeaning`）。
+    /// 写死 3 会让加第四档时漏改；从实际数据取，加档位时自动跟上。
+    public static var overlaySizeSlotCount: Int { OverlaySizeMeaning.lineWidth.values.count }
+
+    /// 表情贴纸面板里的常用表情。
+    ///
+    /// 挑的是"标注截图时真会用到的"：对错、指向、强调、完成度。
+    /// 不做完整 emoji 选择器（那是系统「表情与符号」面板的活），
+    /// 覆盖层里要的是"一秒点中就落下去"。
+    public static let emojis: [String] = [
+        "😀", "😂", "🥲", "😍", "🤔", "😱",
+        "👍", "👎", "👏", "🙏", "💪", "🤝",
+        "❤️", "🔥", "✨", "⭐️", "💡", "⚠️",
+        "✅", "❌", "❓", "❗️", "🎯", "📌",
+    ]
+
     /// 默认描边色。与 `AnnotationStyle.default` 保持一致。
     public static var defaultColor: AnnotationColor { .red }
 

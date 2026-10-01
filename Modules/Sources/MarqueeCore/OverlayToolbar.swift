@@ -2,73 +2,76 @@ import CoreGraphics
 
 /// 覆盖层浮动工具栏上可以选中的标注工具。
 ///
-/// 顺序即工具条上的顺序，与**编辑器工具栏一致** —— 同一个功能在两处用不同的图标/顺序，
-/// 用户会以为是两个不同的东西。
+/// 顺序即工具条上的顺序。**刻意与编辑器工具栏不同**（编辑器保留「选择」「模糊」）：
+/// 覆盖层上多一格就多一份宽度，而它有一条"整条必须放得进 1024 点的屏"的硬约束。
+/// 两边共同的判据是"同一个功能用同一个图标"，不是"格子数一样"。
 public enum OverlayTool: String, CaseIterable, Sendable, Codable {
-    /// 选择工具：点选已有标注、拖动移动、`Delete` 删除（"画完还能改"）。
-    ///
-    /// 它是**工具**而不是"自带的行为"：不选它的时候，拖动是改**选区**的几何
-    /// （拖角改大小、框内拖动移动整框）。两件事都用拖动，靠工具区分才不会有歧义 ——
-    /// 否则"按在框内"到底该挪标注还是挪选区，只能靠猜。
-    case select
     case rectangle
     case ellipse
+    /// 表情贴纸。
+    ///
+    /// 产出的**仍然是 `.text` 标注**（内容是那个 emoji、字号走字号档），
+    /// 所以绘制/导出/缩放/移动全部复用现成路径，一行新渲染分支都不用加。
+    /// 它只解决"怎么选到那个 emoji"—— 那是交互问题，不是模型问题。
+    case emoji
     case arrow
     case pen
+    /// 打码。**只有一格**（马赛克）。模糊仍然能被渲染、导出、编辑，
+    /// 只是覆盖层不再给它一个入口 —— 长截图那条编辑器路径上它还在。
+    case mosaic
     /// 文字：**点一下**放下输入点，再输入内容（不是拖一笔）。
     case text
-    case mosaic
-    case blur
 
-    /// 绘制时对应的标注类型。`nil` = 这个工具不画东西（选择）。
-    ///
-    /// 做成可选而不是给 `.select` 硬塞一个 `AnnotationKind`：
-    /// 后者会让"它到底能画出什么"这个问题有一个**看起来有答案**的答案。
-    public var kind: AnnotationKind? {
+    /// 落笔方式。
+    public enum Placement: String, Sendable {
+        /// 拖一笔成形（矩形 / 椭圆 / 箭头 / 画笔 / 打码）
+        case stroke
+        /// 点一下放下输入点，再敲内容（文字）
+        case pointInput
+        /// 点一下直接落一个现成的标注（表情 —— 内容在选工具时就定好了）
+        case stamp
+    }
+
+    public var placement: Placement {
         switch self {
-        case .select: nil
-        case .text: .text
+        case .rectangle, .ellipse, .arrow, .pen, .mosaic: .stroke
+        case .text: .pointInput
+        case .emoji: .stamp
+        }
+    }
+
+    /// 绘制时对应的标注类型。
+    public var kind: AnnotationKind {
+        switch self {
         case .rectangle: .rectangle
         case .ellipse: .ellipse
         case .arrow: .arrow
         case .pen: .pen
         case .mosaic: .mosaic
-        case .blur: .blur
+        case .emoji, .text: .text
         }
     }
 
-    /// 这个工具是否"画东西"。
-    public var draws: Bool { kind != nil }
-
-    /// 是否靠"一笔拖出来"成形。
+    /// 这个工具是否"拖一笔"成形。
     ///
-    /// 只有 `.select`（不画东西）与 `.text`（点一下放下、再敲内容）不是。
-    /// 让文字走 `beginStroke` 的话，用户按住鼠标拖一下就会得到一个
+    /// 让文字/表情走 `beginStroke` 的话，用户按住鼠标拖一下就会得到一个
     /// "宽度等于拖拽距离"的空文字框 —— 而正文一个字都还没输。
     /// 所以这条判据是**必须的**，不是分类学上的洁癖。
-    public var isStrokeBased: Bool { draws && self != .text }
+    public var isStrokeBased: Bool { placement == .stroke }
 
     /// 是否需要**底图像素**才能预览。
     ///
-    /// 覆盖层刻意不铺整屏截图，所以这两类的底图得从"冻结的整屏帧"里拼
-    /// （`OverlayRedactionSource`）。拿不到时预览会跳过它们 ——
+    /// 覆盖层刻意不铺整屏截图，所以打码的底图得从"冻结的整屏帧"里拼
+    /// （`OverlayRedactionSource`）。拿不到时预览会跳过它 ——
     /// 但**导出仍然会应用**，所以拿不到底图时必须让用户看得见这件事。
-    public var needsBackdrop: Bool {
-        switch self {
-        case .mosaic, .blur: true
-        case .select, .rectangle, .ellipse, .arrow, .pen, .text: false
-        }
-    }
+    public var needsBackdrop: Bool { self == .mosaic }
 
-    /// 选中这个工具时，工具条上那三档尺寸**代表什么**。
-    ///
-    /// 与编辑器同一套做法：只有一排控件，按当前上下文决定改的是哪个参数
-    /// （**不新增控件** —— 工具条每多一格就更宽，而它有一条"必须放得进 1024 点的屏"的硬约束）。
+    /// 选中这个工具时，三档尺寸**代表什么**。
     public var sizeMeaning: OverlaySizeMeaning {
         switch self {
-        case .mosaic, .blur: .redactionStrength
-        case .text: .fontSize
-        case .select, .rectangle, .ellipse, .arrow, .pen: .lineWidth
+        case .mosaic: .redactionStrength
+        case .text, .emoji: .fontSize
+        case .rectangle, .ellipse, .arrow, .pen: .lineWidth
         }
     }
 }
@@ -77,14 +80,14 @@ public enum OverlayTool: String, CaseIterable, Sendable, Codable {
 ///
 /// 把"含义"做成一个枚举、而不是让各处自己 switch 工具，是因为它有三处用户：
 /// 控制层（改哪个字段）、视图（画成圆点 / 方块 / 字号），以及测试。
-/// 三处各自写一遍 `tool == .mosaic || tool == .blur` 的话，加第二类需要底图的工具时
-/// 一定会漏掉一处 —— 而漏掉的表现是"某一档点了没反应"。
+/// 三处各自写一遍判断的话，加一类含义时一定会漏掉一处 ——
+/// 而漏掉的表现是"某一档点了没反应"。
 public enum OverlaySizeMeaning: String, CaseIterable, Sendable {
     /// 图形工具的线宽
     case lineWidth
     /// 打码强度（马赛克块边长 / 模糊半径）
     case redactionStrength
-    /// 文字的字号
+    /// 文字与表情的字号
     case fontSize
 
     /// 这一组的值（点）。
@@ -96,8 +99,7 @@ public enum OverlaySizeMeaning: String, CaseIterable, Sendable {
         }
     }
 
-    /// 默认值。**必须落在 `values` 里**，否则一进来三档全不高亮
-    /// （`AnnotationStyle.default` 的 36 是原图像素的数，落在覆盖层那三档之外）。
+    /// 默认值。**必须落在 `values` 里**，否则一进来三档全不高亮。
     public var defaultValue: CGFloat {
         switch self {
         case .lineWidth: AnnotationPalette.defaultLineWidth
@@ -105,6 +107,114 @@ public enum OverlaySizeMeaning: String, CaseIterable, Sendable {
         case .fontSize: AnnotationPalette.defaultOverlayFontSize
         }
     }
+}
+
+/// 工具条上的两个「确认 / 取消」强调色。
+///
+/// 放 Core 是为了**能单测**：这两条颜色承担的是"一眼看出哪个是完成、哪个是取消"，
+/// 而"对比度够不够"是可以算的（相对亮度 + 对比度比），不必靠眼睛。
+///
+/// ⚠️ 参考工具条里 ✗ 是红的、✓ 是绿的 —— 初版我们两个都是白的，
+/// 用户的原话是"取消按钮使用红色，有对比度"。
+public enum OverlayAccent {
+
+    public struct RGB: Equatable, Sendable {
+        public let red: Double
+        public let green: Double
+        public let blue: Double
+
+        public init(red: Double, green: Double, blue: Double) {
+            self.red = red
+            self.green = green
+            self.blue = blue
+        }
+
+        /// WCAG 相对亮度（sRGB → 线性 → 加权）。
+        public var relativeLuminance: Double {
+            func linear(_ channel: Double) -> Double {
+                channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        }
+
+        /// 与另一个颜色的对比度比（WCAG，1:1 ~ 21:1）。`4.5` 是正文的及格线。
+        public func contrast(against other: RGB) -> Double {
+            let a = relativeLuminance
+            let b = other.relativeLuminance
+            return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+        }
+    }
+
+    /// 完成：绿。
+    public static let confirm = RGB(red: 0.24, green: 0.82, blue: 0.42)
+
+    /// 取消：红（偏珊瑚，在深色底上比纯红亮一档，才够对比度）。
+    public static let cancel = RGB(red: 0.98, green: 0.33, blue: 0.28)
+
+    /// 悬浮面板的**最坏情况**底色：玻璃/材质之上垫的深衬底（见 `ChromeStyle`）。
+    ///
+    /// 用最坏情况而不是"看起来的平均值"：验收项写的是"压在白底网页上也可读"。
+    public static let chromeBackdrop = RGB(red: 0.11, green: 0.11, blue: 0.11)
+}
+
+/// 工具条上的一格。
+public enum OverlayToolbarSlot: Hashable, Sendable {
+    case tool(OverlayTool)
+    /// 打开「样式」面板（色板 ×6 + 尺寸 ×3）。
+    ///
+    /// **它们不再各占一格**：12 格色板/尺寸把工具条撑到 799 点，
+    /// 而参考的那条只有一排纯图标。收进面板后工具条降到 ~545 点。
+    case style
+    /// 识别选区里的文字（ticket 23）。是**动作**不是工具。
+    case ocr
+    /// 把这张图钉在屏幕上（ticket 14）。同样是动作。
+    case pin
+    case undo
+    case redo
+    case save
+    case cancel
+    case confirm
+
+    /// 点这一格之后，**正在进行的文字输入还留着吗**。
+    ///
+    /// ⚠️ 「结算」不等于「丢弃」：结算＝把已打的内容落成一个真的标注。只有 `Esc` 才丢。
+    public var preservesTextEditing: Bool {
+        switch self {
+        case .undo, .redo, .style: true
+        case .tool, .ocr, .pin, .save, .cancel, .confirm: false
+        }
+    }
+
+    /// 分组序号。相邻两格分组不同 → 中间画一条分隔线。
+    ///
+    /// 分组照着参考那条排：**绘制 | 智能 | 动作**。多出来的一组是我们自己的「样式」
+    /// （参考把颜色与线宽放在子菜单里，我们收进面板，入口需要一格）。
+    public var group: Int {
+        switch self {
+        case .tool: 0
+        case .style: 1
+        case .ocr: 2
+        case .undo, .redo, .save, .pin, .cancel, .confirm: 3
+        }
+    }
+
+    /// 可点击的边长。
+    var side: CGFloat { OverlayToolbar.buttonSize }
+}
+
+/// 工具条上那两个**弹层**里的一格。
+public enum OverlayPaletteItem: Hashable, Sendable {
+    case color(Int)
+    case lineWidth(Int)
+    case emoji(Int)
+}
+
+/// 弹层有哪几个。
+public enum OverlayPalette: String, CaseIterable, Sendable {
+    /// 色板 ×6 + 尺寸 ×3（由「样式」格打开）
+    case style
+    /// 常用表情（选中「表情」工具时自动打开）
+    case emoji
 }
 
 /// 覆盖层上那排浮动工具栏的**内容、几何与位置计算**。
@@ -120,111 +230,65 @@ public enum OverlaySizeMeaning: String, CaseIterable, Sendable {
 /// 尺寸、每格的位置、分隔线的位置**全部由 `layout()` 一次算出**。
 /// 之前这三样是分开推的：宽度按"间距在两组之间"算、按钮偏移按"间距在末尾"算，
 /// 差 4 点，最后一个按钮探出右边一点。两条规则各自都对，凑在一起才错。
-/// 现在只要 `layout()` 是对的，画出来的框和点得到的区域就**不可能**对不上。
 public enum OverlayToolbar {
 
     // MARK: - 尺寸
 
     /// 工具 / 动作按钮的边长
     public static let buttonSize: CGFloat = 28
-    /// 色板与线宽块的边长
+    /// 色块 / 尺寸块 / 表情块的边长
     public static let swatchSize: CGFloat = 20
+    /// 弹层里表情格的边长（emoji 比色块需要更大才认得出）
+    public static let emojiSize: CGFloat = 24
     /// 同类相邻两格之间的间距
     public static let itemGap: CGFloat = 4
+    /// 弹层里同类相邻两格之间的间距
+    public static let paletteGap: CGFloat = 6
     /// 分组边界的额外留白（分隔线两侧各一份）
     public static let groupGap: CGFloat = 9
     /// 工具条自身的内边距
     public static let padding: CGFloat = 6
     /// 工具条与选区之间的间距
     public static let gap: CGFloat = 10
+    /// 弹层与它依附的控件之间的间距
+    public static let paletteGapFromAnchor: CGFloat = 8
     /// 夹取时与屏幕边缘留的余量
     public static let screenMargin: CGFloat = 8
     /// 分组分隔线的宽度
     public static let separatorWidth: CGFloat = 1
     /// 圆角
     public static let cornerRadius: CGFloat = 10
+    /// 弹层里色板占几列
+    public static let paletteColumns = 6
+    /// 弹层里表情占几列
+    public static let emojiColumns = 8
 
     // MARK: - 内容
 
-    /// 工具条上的一格。
-    public enum Slot: Hashable, Sendable {
-        case tool(OverlayTool)
-        case color(Int)
-        case lineWidth(Int)
-        /// 识别选区里的文字（ticket 23）
-        ///
-        /// 是**动作**不是工具：它不改文档、只产出一份文本，与编辑器里的做法一致
-        /// （PRD 3.1 把 9 个工具位列满了，OCR 本来就不在其中）。
-        case ocr
-        /// 把这张图钉在屏幕上（ticket 14）。
-        ///
-        /// 与 OCR 同一类：动作，不占工具位。它**不改这张图**，只是多留一份在屏幕上。
-        case pin
-        case undo
-        case redo
-        case save
-        case cancel
-        case confirm
-
-        /// 点这一格之后，**正在进行的文字输入还留着吗**。
-        ///
-        /// 留着的只有"纯改样式"的那几格（颜色 / 尺寸三档）与撤销重做 ——
-        /// 那时用户想改的就是**正在打的那行字**。
-        /// 其余（换工具、识别文字、保存 / 取消 / 完成）都该先把输入结算掉：
-        /// 不结算的话，"切到矩形工具"会把半截文字**无声地丢掉**。
-        ///
-        /// ⚠️ 注意"结算"不等于"丢弃"：结算＝把已打的内容落成一个真的标注。
-        /// 只有 `Esc` 才丢。
-        public var preservesTextEditing: Bool {
-            switch self {
-            case .color, .lineWidth, .undo, .redo: true
-            case .tool, .ocr, .pin, .save, .cancel, .confirm: false
-            }
-        }
-
-        /// 分组序号。相邻两格分组不同 → 中间画一条分隔线。
-        public var group: Int {
-            switch self {
-            case .tool: 0
-            case .color: 1
-            case .lineWidth: 2
-            case .ocr, .pin: 3
-            case .undo, .redo: 4
-            case .save, .cancel, .confirm: 5
-            }
-        }
-
-        /// 这一格是方形按钮还是小色块。
-        var isSwatch: Bool {
-            switch self {
-            case .color, .lineWidth: true
-            default: false
-            }
-        }
-
-        /// 可点击的边长。
-        ///
-        /// 色块只有 20 点，直接当命中区偏小（手指/光标容易差一两像素）。
-        /// 但**命中区与绘制区取同一个值**是这里的硬约束，所以不加"隐形的外扩" ——
-        /// 外扩会让"看着没点到却点上了"，同样是错位，只是方向相反。
-        var side: CGFloat { isSwatch ? swatchSize : buttonSize }
-    }
-
     /// 工具条上的全部格子，从左到右。
-    public static let slots: [Slot] =
-        OverlayTool.allCases.map(Slot.tool)
-        + AnnotationPalette.colors.indices.map(Slot.color)
-        + AnnotationPalette.lineWidths.indices.map(Slot.lineWidth)
-        + [.ocr, .pin]
-        + [.undo, .redo]
-        + [.save, .cancel, .confirm]
+    public static let slots: [OverlayToolbarSlot] =
+        OverlayTool.allCases.map(OverlayToolbarSlot.tool)
+        + [.style]
+        + [.ocr]
+        + [.undo, .redo, .save, .pin, .cancel, .confirm]
+
+    /// 某个弹层里的全部格子。
+    public static func paletteItems(_ palette: OverlayPalette) -> [OverlayPaletteItem] {
+        switch palette {
+        case .style:
+            AnnotationPalette.colors.indices.map(OverlayPaletteItem.color)
+                + (0..<AnnotationPalette.overlaySizeSlotCount).map(OverlayPaletteItem.lineWidth)
+        case .emoji:
+            AnnotationPalette.emojis.indices.map(OverlayPaletteItem.emoji)
+        }
+    }
 
     // MARK: - 排布
 
     /// 一次算好的排布结果。
     public struct Layout: Equatable, Sendable {
         public struct Item: Equatable, Sendable {
-            public let slot: Slot
+            public let slot: OverlayToolbarSlot
             /// 相对工具条**左下角**（与 AppKit 视图坐标一致）
             public let frame: CGRect
         }
@@ -233,7 +297,7 @@ public enum OverlayToolbar {
         public let separators: [CGRect]
         public let size: CGSize
 
-        public func frame(of slot: Slot) -> CGRect? {
+        public func frame(of slot: OverlayToolbarSlot) -> CGRect? {
             items.first { $0.slot == slot }?.frame
         }
     }
@@ -274,6 +338,110 @@ public enum OverlayToolbar {
     /// 工具条尺寸（点）。
     public static var toolbarSize: CGSize { layout().size }
 
+    // MARK: - 弹层排布
+
+    /// 一个弹层里各格的位置（相对弹层左下角）。
+    public struct PaletteLayout: Equatable, Sendable {
+        public struct Item: Equatable, Sendable {
+            public let item: OverlayPaletteItem
+            public let frame: CGRect
+        }
+        public let items: [Item]
+        public let size: CGSize
+
+        public func frame(of item: OverlayPaletteItem) -> CGRect? {
+            items.first { $0.item == item }?.frame
+        }
+    }
+
+    /// 弹层里每格多大。
+    static func paletteSide(_ palette: OverlayPalette) -> CGFloat {
+        palette == .emoji ? emojiSize : swatchSize
+    }
+
+    /// 弹层排布。
+    ///
+    /// 「样式」是两行（上排色板、下排尺寸）—— 一行放 9 格会把弹层撑得很宽，
+    /// 而它是要贴在工具条边上的，太宽反而盖住选区。
+    public static func paletteLayout(_ palette: OverlayPalette) -> PaletteLayout {
+        let side = paletteSide(palette)
+        let items = paletteItems(palette)
+        let columns = palette == .emoji ? emojiColumns : paletteColumns
+        var result: [PaletteLayout.Item] = []
+        // 从**上往下**排：AppKit 的 y 向上，所以起始 y 是总高减去一行
+        let rows = Int(ceil(Double(items.count) / Double(columns)))
+        let contentHeight = CGFloat(rows) * side + CGFloat(max(0, rows - 1)) * paletteGap
+        let contentWidth = CGFloat(columns) * side + CGFloat(columns - 1) * paletteGap
+
+        for (index, item) in items.enumerated() {
+            let column = index % columns
+            let row = index / columns
+            result.append(PaletteLayout.Item(
+                item: item,
+                frame: CGRect(x: padding + CGFloat(column) * (side + paletteGap),
+                              y: padding + CGFloat(rows - 1 - row) * (side + paletteGap),
+                              width: side,
+                              height: side)))
+        }
+
+        return PaletteLayout(items: result,
+                             size: CGSize(width: contentWidth + padding * 2,
+                                          height: contentHeight + padding * 2))
+    }
+
+    /// 弹层贴在**谁**身上。用来算它该往哪边弹。
+    public static func paletteAnchor(_ palette: OverlayPalette,
+                                     toolbar: CGRect) -> CGRect {
+        switch palette {
+        case .style:
+            return hitFrame(of: .style, in: toolbar) ?? toolbar
+        case .emoji:
+            return hitFrame(of: .tool(.emoji), in: toolbar) ?? toolbar
+        }
+    }
+
+    /// 弹层位置（**Cocoa 全局点**）。
+    ///
+    /// 优先弹在工具条**外侧**（远离选区那一侧），放不下再翻到内侧，最后夹进屏幕。
+    /// 与 `frame(for:)` 同一个套路：**夹取必须最后做**。
+    public static func paletteFrame(_ palette: OverlayPalette,
+                                    toolbar: CGRect,
+                                    screenFrame: CGRect,
+                                    gap: CGFloat = paletteGapFromAnchor) -> CGRect {
+        let size = paletteLayout(palette).size
+        let screen = screenFrame.standardized
+        let anchor = paletteAnchor(palette, toolbar: toolbar)
+
+        // 工具条在选区下方时，"外侧"是下边；但工具条也可能被翻到选区上方 ——
+        // 判据用"哪边离屏幕边缘更远"更稳：往外弹总是往空间大的那侧。
+        let below = anchor.minY - gap - size.height
+        let above = anchor.maxY + gap
+        var origin = CGPoint(x: anchor.minX, y: below)
+        let roomBelow = below - screen.minY
+        let roomAbove = screen.maxY - above
+        if roomBelow < 0, roomAbove > roomBelow {
+            origin.y = above
+        }
+
+        // 最后统一夹进屏幕，水平竖直都要（同 `frame(for:)`）
+        let minX = screen.minX + screenMargin
+        let maxX = max(minX, screen.maxX - screenMargin - size.width)
+        let minY = screen.minY + screenMargin
+        let maxY = max(minY, screen.maxY - screenMargin - size.height)
+        origin.x = min(max(minX, origin.x), maxX)
+        origin.y = min(max(minY, origin.y), maxY)
+
+        return CGRect(origin: origin, size: size)
+    }
+
+    /// 点在弹层的哪一格上（`nil` = 不在任何格子上）。
+    public static func paletteItem(at point: CGPoint,
+                                   in palette: CGRect,
+                                   kind: OverlayPalette) -> OverlayPaletteItem? {
+        let local = CGPoint(x: point.x - palette.minX, y: point.y - palette.minY)
+        return paletteLayout(kind).items.first { $0.frame.contains(local) }?.item
+    }
+
     // MARK: - 位置
 
     /// 算出工具栏该放在哪（**Cocoa 全局点**，y 向上）。
@@ -312,7 +480,7 @@ public enum OverlayToolbar {
     }
 
     /// 某一格的命中区域（Cocoa 全局点）。
-    public static func hitFrame(of slot: Slot, in toolbar: CGRect) -> CGRect? {
+    public static func hitFrame(of slot: OverlayToolbarSlot, in toolbar: CGRect) -> CGRect? {
         guard let local = layout().frame(of: slot) else { return nil }
         return local.offsetBy(dx: toolbar.minX, dy: toolbar.minY)
     }
@@ -321,7 +489,7 @@ public enum OverlayToolbar {
     ///
     /// 顺序遍历即可（格子互不重叠）。用 `layout()` 而不是写死若干 `if`，
     /// 这样以后加一个工具不必再改这里。
-    public static func slot(at point: CGPoint, in toolbar: CGRect) -> Slot? {
+    public static func slot(at point: CGPoint, in toolbar: CGRect) -> OverlayToolbarSlot? {
         let local = CGPoint(x: point.x - toolbar.minX, y: point.y - toolbar.minY)
         return layout().items.first { $0.frame.contains(local) }?.slot
     }

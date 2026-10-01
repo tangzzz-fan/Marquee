@@ -114,6 +114,16 @@ public final class SelectionOverlayController {
     /// 标注状态机（工具、落笔、撤销栈）。坐标在**选区局部点**里，见它的文档。
     private var annotationSession = OverlayAnnotationSession()
 
+    /// 工具条上展开的弹层（色板/尺寸 或 表情）。`nil` = 没展开。
+    ///
+    /// 它是**会话状态**（跟工具、跟选区走），不是瞬时标志位 ——
+    /// 这一点很要紧：瞬时标志位一旦决定常驻 UI 的可见性，某条分支漏了收尾
+    /// 就会让那个东西**再也不出现**（PITFALLS 66）。
+    private var palette: OverlayPalette?
+
+    /// 表情面板里当前选中的那一枚（下标）。
+    private var selectedEmojiIndex = 0
+
     // 选区几何编辑（ticket 19）
     /// 鼠标正按着的那一次拖拽**是哪一种**。
     ///
@@ -496,12 +506,20 @@ public final class SelectionOverlayController {
             stopAutoScroll()
             return
         }
-        // 标注分三级退，**不会一步把整次截图丢掉**：
+        // 标注分**四级**退，**不会一步把整次截图丢掉**：
+        //   ⓪ 弹层开着 → 只收弹层（色板/尺寸 或 表情）
         //   ① 拖到一半 / 画到一半 → 只结束这一次拖拽
         //   ② 选了工具   → 取消工具（回到"调整选区"）
         //   ③ 其它       → 取消整次截图
-        // 少了前两级的话，用户画了五个箭头想退出画标注模式，
+        // 少了前面几级的话，用户画了五个箭头想退出画标注模式，
         // 一下 `Esc` 全部作废，而这张图可能已经很难再复现。
+        //
+        // ⓪ 必须排在最前：面板是最浅的一层，"关掉刚打开的那东西"是所有人的第一直觉。
+        if palette != nil {
+            palette = nil
+            refresh()
+            return
+        }
         if case .annotationResize = dragMode {
             // 缩放到一半按 Esc = 退回按下时那一版（与拖选区几何一致）
             dragMode = .none
@@ -530,7 +548,7 @@ public final class SelectionOverlayController {
             refresh()
             return
         }
-        // 任何工具（含「选择」）都先退出工具 —— 少了这一档，
+        // 任何工具都先退出工具（回到"调整选区"）—— 少了这一档，
         // 选了「选择」再按 Esc 会**直接取消整次截图**，而用户只是想退出选择模式。
         if annotationSession.tool != nil {
             annotationSession.clearTool()
@@ -1141,9 +1159,10 @@ public final class SelectionOverlayController {
         // 散开写成 `tool == .mosaic || tool == .blur` 的话，加第四种含义时一定漏一处。
         let meaning = annotationSession.sizeMeaning
         let sizeValues = meaning.values
+        let barFrame = OverlayToolbar.frame(for: rect, screenFrame: visibleFrame)
 
         return OverlayToolbarPresentation(
-            frame: OverlayToolbar.frame(for: rect, screenFrame: visibleFrame),
+            frame: barFrame,
             activeTool: annotationSession.tool,
             stroke: annotationSession.style.stroke,
             sizeSlotValues: sizeValues,
@@ -1151,7 +1170,29 @@ public final class SelectionOverlayController {
             sizeSlotMeaning: meaning,
             isRecognizing: textRecognition?.isRunning ?? false,
             canUndo: annotationSession.canUndo,
-            canRedo: annotationSession.canRedo
+            canRedo: annotationSession.canRedo,
+            palette: palettePresentation(barFrame: barFrame, screenFrame: visibleFrame)
+        )
+    }
+
+    /// 展开的弹层要画成什么样。
+    ///
+    /// 位置**从工具条的矩形算**（`OverlayToolbar.paletteFrame`），不另起一套 ——
+    /// 弹层与工具条各算各的必然出现"面板飘在离按钮半格的地方"，
+    /// 而那种偏差看起来像是设计如此。
+    private func palettePresentation(barFrame: CGRect,
+                                     screenFrame: CGRect) -> OverlayPalettePresentation? {
+        guard let kind = palette else { return nil }
+        let meaning = annotationSession.sizeMeaning
+        let values = meaning.values
+        return OverlayPalettePresentation(
+            kind: kind,
+            frame: OverlayToolbar.paletteFrame(kind, toolbar: barFrame, screenFrame: screenFrame),
+            stroke: annotationSession.style.stroke,
+            sizeSlotValues: values,
+            sizeSlotIndex: Self.nearestIndex(of: Self.selectedSizeValue(for: meaning, in: annotationSession), in: values),
+            sizeSlotMeaning: meaning,
+            selectedEmojiIndex: selectedEmojiIndex
         )
     }
 
@@ -1359,7 +1400,7 @@ public final class SelectionOverlayController {
             let count = annotationSession.selectedAnnotations.count
             return count > 0
                 ? L10n.t("已选中 \(count) 个标注  ·  拖动移动  ·  Delete 删除  ·  Esc 取消选择")
-                : L10n.t("点一个标注选中它  ·  再点一次工具图标退出  ·  Esc 取消工具")
+                : L10n.t("点一个标注选中它  ·  拖角改大小  ·  选个工具可直接标注")
         }
         if annotationSession.isDrawing {
             if annotationSession.usesRedaction, redactionBackdrop == nil {
@@ -1488,6 +1529,19 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         // 不这样的话：点一下会先把文字提交掉、再顺手在别处落一个新输入点。
         if annotationSession.isEditingText {
             commitTextEditing()
+            return
+        }
+
+        // 表情工具：**点一下落一个**，内容在选工具时就定好了，所以既不拖一笔也不开输入框。
+        // 放在文字分支**之前**：两者都是"点一下"，判据只能是工具本身。
+        if annotationSession.tool == .emoji, !hasScrollSession {
+            guard let rect = annotationRect(), rect.contains(globalPoint),
+                  let local = annotationPoint(globalPoint) else {
+                logger.info("表情工具已选中，但落点在选区之外 —— 忽略")
+                return
+            }
+            annotationSession.stampEmoji(AnnotationPalette.emojis[selectedEmojiIndex], at: local)
+            refresh()
             return
         }
 
@@ -1836,7 +1890,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         guard !isFinishing, let bar = toolbarPresentationIfSettled(),
               let slot = OverlayToolbar.slot(at: globalPoint, in: bar.frame) else { return }
         // 点工具条**不会把正在打的字扔掉**：
-        // - 改颜色 / 改尺寸 / 撤销重做 → 输入继续（用户想改的就是这一行）
+        // - 改样式 / 撤销重做 → 输入继续（用户想改的就是这一行）
         // - 换工具 / 识别 / 保存 / 取消 / 完成 → 先**结算**（把内容落成标注），再执行动作
         //
         // 结算 ≠ 丢弃。只有 `Esc` 才丢 —— 这一条得写清楚，
@@ -1847,42 +1901,39 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         perform(toolbarSlot: slot)
     }
 
+    func overlayView(_ view: SelectionOverlayView, clickedPaletteAt globalPoint: CGPoint) {
+        guard !isFinishing, let kind = palette,
+              let frame = currentPaletteFrame() else { return }
+        guard let item = OverlayToolbar.paletteItem(at: globalPoint, in: frame, kind: kind) else {
+            // 点在面板的空白处（格与格之间）：**什么都不做**，也不收起 ——
+            // 收起会让"手抖了一下"变成"面板没了"，而用户只是想再点一次那个色。
+            return
+        }
+        commitTextEditing()
+        perform(paletteItem: item)
+    }
+
     /// 工具栏每一格的动作。
     ///
     /// 「完成」/「保存」与 `⏎`/`⌘S` 走**同一套收尾通道**（`performCommit`），
     /// 「取消」与 `Esc` 走同一个 `cancel()` —— 不另起一套，否则两条路的收尾行为迟早分叉。
-    private func perform(toolbarSlot slot: OverlayToolbar.Slot) {
+    private func perform(toolbarSlot slot: OverlayToolbarSlot) {
         switch slot {
         case .tool(let tool):
             annotationSession.toggle(tool: tool)
             let current = annotationSession.tool?.rawValue ?? L10n.t("无")
             logger.info("工具栏：点了工具 \(tool.rawValue, privacy: .public) → 当前选中 \(current, privacy: .public)")
-
-        case .color(let index):
-            guard AnnotationPalette.colors.indices.contains(index) else { return }
-            annotationSession.style.stroke = AnnotationPalette.colors[index]
-
-        case .lineWidth(let index):
-            // 那三档按当前工具改不同的参数（与编辑器同一套做法）：
-            // 画图形改线宽、画打码改打码强度、写文字改字号。
-            let meaning = annotationSession.sizeMeaning
-            let values = meaning.values
-            guard values.indices.contains(index) else { return }
-            switch meaning {
-            case .lineWidth:
-                annotationSession.style.lineWidth = values[index]
-            case .redactionStrength:
-                annotationSession.style.effectStrength = values[index]
-                logger.info("工具栏：打码强度 → \(self.annotationSession.style.effectStrength, privacy: .public) 点")
-            case .fontSize:
-                annotationSession.style.fontSize = values[index]
-                // 正在输入的字号也要跟着变：用户是想"把这行字调大"，
-                // 若只影响下一个字，他会以为这个键没用（谁改谁推）。
-                if let pending = annotationSession.textEditor?.text {
-                    annotationSession.updateText(pending)
-                }
-                logger.info("工具栏：字号 → \(self.annotationSession.style.fontSize, privacy: .public) 点")
+            // 选中「表情」就把表情面板打开。不打开的话，用户点一下画布只会得到
+            // **上一次选的那一枚** —— 而他根本不知道那是哪一枚，只会觉得"点错了"。
+            if annotationSession.tool == .emoji {
+                palette = .emoji
+            } else if palette == .emoji {
+                palette = nil
             }
+
+        case .style:
+            // 再点一次收起（同一个键开也同一个键关，不留"另一个地方才能关"）
+            palette = (palette == .style) ? nil : .style
 
         case .undo, .redo:
             let isRedo = (slot == .redo)
@@ -1922,6 +1973,56 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             return
         }
         refresh()
+    }
+
+    /// 弹层里每一格的动作。
+    private func perform(paletteItem item: OverlayPaletteItem) {
+        switch item {
+        case .color(let index):
+            guard AnnotationPalette.colors.indices.contains(index) else { return }
+            annotationSession.style.stroke = AnnotationPalette.colors[index]
+
+        case .lineWidth(let index):
+            applySizeSlot(index)
+
+        case .emoji(let index):
+            guard AnnotationPalette.emojis.indices.contains(index) else { return }
+            selectedEmojiIndex = index
+            // 选完**收起面板**：接下来用户要点画布落点，面板留着会挡住那一片。
+            // 想换一枚再点一次「表情」格就有了。
+            palette = nil
+            logger.info("工具栏：选了第 \(index, privacy: .public) 枚表情")
+        }
+        refresh()
+    }
+
+    /// 那三档尺寸的点击：按当前工具改**不同的参数**（与编辑器同一套做法）。
+    private func applySizeSlot(_ index: Int) {
+        let meaning = annotationSession.sizeMeaning
+        let values = meaning.values
+        guard values.indices.contains(index) else { return }
+        switch meaning {
+        case .lineWidth:
+            annotationSession.style.lineWidth = values[index]
+        case .redactionStrength:
+            annotationSession.style.effectStrength = values[index]
+            logger.info("工具栏：打码强度 → \(self.annotationSession.style.effectStrength, privacy: .public) 点")
+        case .fontSize:
+            annotationSession.style.fontSize = values[index]
+            // 正在输入的字号也要跟着变：用户是想"把这行字调大"，
+            // 若只影响下一个字，他会以为这个键没用（谁改谁推）。
+            if let pending = annotationSession.textEditor?.text {
+                annotationSession.updateText(pending)
+            }
+            logger.info("工具栏：字号 → \(self.annotationSession.style.fontSize, privacy: .public) 点")
+        }
+    }
+
+    /// 当前展开的弹层该放在哪（**Cocoa 全局点**）。`nil` = 没展开或工具条不在。
+    ///
+    /// 直接取呈现里的那一份，不再自己算一遍 —— 命中与绘制必须是同一份几何。
+    private func currentPaletteFrame() -> CGRect? {
+        toolbarPresentationIfSettled()?.palette?.frame
     }
 
     /// 把就地画的标注打包给采集流程。

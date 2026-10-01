@@ -94,15 +94,19 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     public var isEmpty: Bool { annotations.isEmpty && draft == nil && textEditor == nil }
     public var canUndo: Bool { !undoStack.isEmpty }
     public var canRedo: Bool { !redoStack.isEmpty }
-    /// 是否正处在"画标注"模式。
+    /// 是否正处在"画标注"模式（＝选了任一工具）。
     ///
-    /// ≠ "选了工具"：`.select` 也是工具，但它不画东西 —— 它是在改已有的标注。
-    /// 两者混在一个判据里的话，选「选择」工具会让"拖动 = 画一笔"成立，
+    /// 与"能不能改已有标注"**不是同一个问题**：没选工具时是"改已有标注"的模式，
+    /// 那时拖动是改**选区几何**、按在某个标注上就选中它。
+    /// 两者混在一个判据里的话，"拖动 = 画一笔"会在没选工具时也成立，
     /// 于是用户想点选一个箭头，结果在它旁边画了个新矩形。
-    public var isDrawing: Bool { tool?.draws == true }
+    public var isDrawing: Bool { tool != nil }
 
-    /// 是否处在"改已有标注"模式。
-    public var isSelecting: Bool { tool == .select }
+    /// 是否处在"改已有标注 / 改选区几何"的模式 —— 即**没选任何工具**。
+    ///
+    /// 「选择」原先是工具条上的一个显式格子（ticket 22）。收掉它之后，
+    /// "未选工具"就承担了那个角色：按在标注上＝选中并拖动，按在别处＝动选区。
+    public var isSelecting: Bool { tool == nil }
 
     /// 选中的那些标注（按画的先后）。
     public var selectedAnnotations: [Annotation] {
@@ -348,9 +352,9 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     /// 得到一个"宽度等于拖拽距离"的空文字框（见 `OverlayTool.isStrokeBased`）。
     @discardableResult
     public mutating func beginStroke(at point: CGPoint) -> Bool {
-        guard let tool, let kind = tool.kind, tool.isStrokeBased, draft == nil else { return false }
+        guard let tool, tool.isStrokeBased, draft == nil else { return false }
         strokeStart = point
-        draft = makeAnnotation(kind: kind, at: point)
+        draft = makeAnnotation(kind: tool.kind, at: point)
         return true
     }
 
@@ -466,6 +470,30 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     /// 丢掉正在输入的文字（`Esc` / 换工具 / 收场时用）。已提交的标注不动。
     public mutating func cancelText() {
         textEditor = nil
+    }
+
+    // MARK: - 表情贴纸（ticket 24）
+
+    /// 落一个表情。**点一下**就有，不拖一笔 —— 内容在选工具时就定好了。
+    ///
+    /// 产出的标注**就是 `.text`**：绘制、导出、缩放、移动、撤销全部复用现成路径，
+    /// 一行新的渲染分支都不用加。表情只解决"怎么选到那一枚"，那是交互问题。
+    ///
+    /// - Returns: 是否真的落上了一个。空串与"当前不是表情工具"都返回 `false`
+    ///   （在图上留一个看不见的空文字，用户既看不到也删不掉）。
+    @discardableResult
+    public mutating func stampEmoji(_ emoji: String, at point: CGPoint) -> Bool {
+        guard tool == .emoji, !emoji.isEmpty else { return false }
+        cancelStroke()
+        var annotation = Annotation(kind: .text,
+                                    frame: AnnotationText.frame(text: emoji,
+                                                                fontSize: style.fontSize,
+                                                                origin: point),
+                                    style: style,
+                                    zIndex: annotations.count)
+        annotation.text = emoji
+        commit(annotation)
+        return true
     }
 
     // MARK: - 撤销

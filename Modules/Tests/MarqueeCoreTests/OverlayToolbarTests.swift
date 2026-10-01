@@ -159,15 +159,15 @@ struct OverlayToolbarTests {
         }
     }
 
-    @Test("工具条内容与用户预期一致：7 个工具 + 色板 + 尺寸三档 + 识别/钉图 + 撤销重做 + 保存取消完成")
+    @Test("工具条内容与顺序都要钉死 —— 顺序就是照着参考那条排的")
     func slotInventory() {
-        #expect(OverlayToolbar.slots.count
-                == OverlayTool.allCases.count
-                + AnnotationPalette.colors.count
-                + AnnotationPalette.lineWidths.count
-                + 7)
-        // 「选择」在最左（与编辑器一致）：它是"不动手画"的那个，摆在最前面最不容易误点
-        #expect(OverlayToolbar.slots.first == .tool(.select))
+        // 「绘制 | 样式 | 智能 | 动作」四组。**色板与尺寸不再各占一格**：
+        // 12 格把整条撑到 799 点，收进「样式」面板后降到 ~545 点。
+        let expected: [OverlayToolbarSlot] =
+            OverlayTool.allCases.map(OverlayToolbarSlot.tool)
+            + [.style, .ocr, .undo, .redo, .save, .pin, .cancel, .confirm]
+        #expect(OverlayToolbar.slots == expected, "工具条的内容或顺序变了")
+        #expect(OverlayToolbar.slots.first == .tool(.rectangle))
         #expect(OverlayToolbar.slots.last == .confirm)
         // OCR 是**动作**不是工具：它必须在工具区之外，否则以后数工具数会把它算进去
         #expect(OverlayToolbar.slots.contains(.ocr))
@@ -192,13 +192,12 @@ struct OverlayToolbarTests {
         #expect(!OverlayToolbar.contains(CGPoint(x: toolbar.maxX + 20, y: toolbar.midY), in: toolbar))
     }
 
-    @Test("色板与线宽的格子尺寸一致，且都小于工具按钮")
+    @Test("色块比工具按钮小，且弹层里的格子尺寸一致")
     func swatchesAreCompact() {
         #expect(OverlayToolbar.swatchSize < OverlayToolbar.buttonSize)
-        for slot in [OverlayToolbar.Slot.color(0), .lineWidth(0)] {
-            let frame = OverlayToolbar.layout().frame(of: slot)!
-            #expect(frame.width == OverlayToolbar.swatchSize)
-            #expect(frame.height == OverlayToolbar.swatchSize)
+        for item in OverlayToolbar.paletteLayout(.style).items {
+            #expect(item.frame.width == OverlayToolbar.swatchSize)
+            #expect(item.frame.height == OverlayToolbar.swatchSize)
         }
     }
 
@@ -239,25 +238,24 @@ struct OverlayToolbarTests {
         #expect(AnnotationPalette.overlayRedactionStrengths.contains(AnnotationPalette.defaultRedactionStrength))
     }
 
-    @Test("需要底图的工具就是马赛克与模糊这两类")
+    @Test("需要底图的工具只有打码")
     func backdropTools() {
         #expect(OverlayTool.mosaic.needsBackdrop)
-        #expect(OverlayTool.blur.needsBackdrop)
-        for tool in OverlayTool.allCases where tool != .mosaic && tool != .blur {
+        for tool in OverlayTool.allCases where tool != .mosaic {
             #expect(!tool.needsBackdrop)
         }
     }
 
-    @Test("「选择」不是绘图工具：它没有 kind，`draws` 为假")
-    func selectToolDrawsNothing() {
-        // 这条是本类里最容易写错的一处：把 `.select` 也算成"选了工具就画"，
-        // 用户想点选一个箭头，结果在旁边画了个新矩形。
-        #expect(OverlayTool.select.kind == nil)
-        #expect(!OverlayTool.select.draws)
-        for tool in OverlayTool.allCases where tool != .select {
-            #expect(tool.kind != nil)
-            #expect(tool.draws)
-        }
+    @Test("工具集与顺序：没有「选择」也没有「模糊」，多了「表情」")
+    func toolInventory() {
+        // 「选择」原先是显式一格（ticket 22）。收掉之后，"未选工具"承担了那个角色：
+        // 按在标注上＝选中并移动，按在别处＝动选区几何（见 `OverlayAnnotationSession.isSelecting`）。
+        // 「模糊」也不再占格 —— 但 `AnnotationKind.blur` 与它的渲染/导出路径一字未动，
+        // 编辑器（长截图那条路）里它还在。
+        #expect(OverlayTool.allCases.map(\.rawValue)
+                == ["rectangle", "ellipse", "emoji", "arrow", "pen", "mosaic", "text"])
+        #expect(!OverlayTool.allCases.contains { $0.rawValue == "select" })
+        #expect(!OverlayTool.allCases.contains { $0.rawValue == "blur" })
     }
 
     // MARK: - 文字工具（ticket 22）
@@ -267,22 +265,26 @@ struct OverlayToolbarTests {
         // ⚠️ 这条是关键的行为差别：文字若走 `beginStroke`，用户按住鼠标拖一下
         // 就会得到一个"宽度等于拖拽距离"的文字框，而正文根本还没输入。
         #expect(OverlayTool.text.kind == .text)
-        #expect(OverlayTool.text.draws, "它仍然是个绘图工具（会被画到图上）")
+        #expect(OverlayTool.text.placement == .pointInput)
         #expect(!OverlayTool.text.isStrokeBased)
         #expect(!OverlayTool.text.needsBackdrop, "文字不需要底图像素")
 
-        for tool in OverlayTool.allCases where tool != .text {
-            #expect(tool.isStrokeBased || !tool.draws,
-                    "\(tool.rawValue) 不是点放式工具，却被打上了 isStrokeBased=false")
+        // 点放式的两类必须点名：加第三种点放工具时，这里会提醒你补一条分支
+        #expect(OverlayTool.allCases.filter { $0.placement == .pointInput } == [.text])
+        #expect(OverlayTool.allCases.filter { $0.placement == .stamp } == [.emoji])
+        // 这条才是真正的判据：`isStrokeBased` 只能是"落笔方式"的函数，
+        // 不能有工具自己另立一套 —— 那正是"拖一下得到一个空框"的来源
+        for tool in OverlayTool.allCases {
+            #expect(tool.isStrokeBased == (tool.placement == .stroke))
         }
     }
 
     @Test("那三档尺寸的含义由当前工具决定 —— 加新工具时只改一处")
     func sizeMeaningFollowsTheTool() {
         #expect(OverlayTool.mosaic.sizeMeaning == .redactionStrength)
-        #expect(OverlayTool.blur.sizeMeaning == .redactionStrength)
         #expect(OverlayTool.text.sizeMeaning == .fontSize)
-        for tool in [OverlayTool.select, .rectangle, .ellipse, .arrow, .pen] {
+        #expect(OverlayTool.emoji.sizeMeaning == .fontSize, "表情复用的就是字号档，不新增控件")
+        for tool in [OverlayTool.rectangle, .ellipse, .arrow, .pen] {
             #expect(tool.sizeMeaning == .lineWidth)
         }
     }
@@ -304,11 +306,101 @@ struct OverlayToolbarTests {
     func toolbarClicksDoNotDiscardTyping() {
         // 这条钉的是**一条产品决定**：`结算`（把内容落成标注）与 `丢弃` 是两件事。
         // 换工具 / 识别 / 保存 / 取消 / 完成 都该先结算；只有 `Esc` 才丢。
-        for slot in [OverlayToolbar.Slot.color(0), .lineWidth(1), .undo, .redo] {
+        for slot in [OverlayToolbarSlot.style, .undo, .redo] {
             #expect(slot.preservesTextEditing, "\(slot) 属于「改这一行」，不该把输入结算掉")
         }
-        for slot in [OverlayToolbar.Slot.tool(.rectangle), .ocr, .pin, .save, .cancel, .confirm] {
+        for slot in [OverlayToolbarSlot.tool(.rectangle), .ocr, .pin, .save, .cancel, .confirm] {
             #expect(!slot.preservesTextEditing, "\(slot) 会离开「写文字」这件事，必须先结算输入")
+        }
+    }
+
+    // MARK: - 配色（ticket 24）
+
+    @Test("取消是红的、完成是绿的，且对比度算得过")
+    func accentColorsReadCorrectly() {
+        // 参考工具条里 ✗ 是红的、✓ 是绿的 —— 这两个是"结束这次截图"的两种结果，
+        // 一眼分得出才有意义。初版我们两个都是白的。
+        #expect(OverlayAccent.cancel.red > OverlayAccent.cancel.green, "取消得是红的")
+        #expect(OverlayAccent.cancel.green < 0.5 && OverlayAccent.cancel.blue < 0.5,
+                "得真的读得出是红，不是一块偏暖的白")
+        #expect(OverlayAccent.confirm.green > OverlayAccent.confirm.red, "完成得是绿的")
+
+        // "有对比度"是**可以算的**：WCAG 的 4.5:1 是正文的及格线。
+        // 拿最坏情况的底色算 —— 验收项写的正是"压在白底网页上也可读"。
+        let backdrop = OverlayAccent.chromeBackdrop
+        for (name, color) in [("取消", OverlayAccent.cancel), ("完成", OverlayAccent.confirm)] {
+            let ratio = color.contrast(against: backdrop)
+            #expect(ratio >= 4.5, "\(name)色在面板底色上的对比度只有 \(ratio)，低于 4.5:1")
+        }
+    }
+
+    @Test("对比度算法本身是对的 —— 先证明尺子能用，再用它量")
+    func contrastFormulaSelfCheck() {
+        let white = OverlayAccent.RGB(red: 1, green: 1, blue: 1)
+        let black = OverlayAccent.RGB(red: 0, green: 0, blue: 0)
+        // 黑白是 21:1，这是 WCAG 定义的极值
+        #expect(abs(white.contrast(against: black) - 21) < 0.01)
+        #expect(abs(white.contrast(against: white) - 1) < 0.001)
+    }
+
+    // MARK: - 弹层（ticket 24）
+
+    @Test("弹层里的格子互不重叠，且都落在弹层内")
+    func paletteItemsFitInside() {
+        for kind in OverlayPalette.allCases {
+            let layout = OverlayToolbar.paletteLayout(kind)
+            #expect(!layout.items.isEmpty)
+            for item in layout.items {
+                #expect(item.frame.minX >= 0 && item.frame.maxX <= layout.size.width + 0.001)
+                #expect(item.frame.minY >= 0 && item.frame.maxY <= layout.size.height + 0.001)
+            }
+            for (index, a) in layout.items.enumerated() {
+                for b in layout.items.dropFirst(index + 1) {
+                    #expect(!a.frame.intersects(b.frame), "\(kind) 里两格叠在一起了：\(a.item) / \(b.item)")
+                }
+            }
+        }
+    }
+
+    @Test("弹层的命中与绘制是同一份几何")
+    func paletteHitTestMatchesLayout() {
+        let bar = OverlayToolbar.frame(for: CGRect(x: 400, y: 400, width: 300, height: 200),
+                                       screenFrame: screen)
+        for kind in OverlayPalette.allCases {
+            let frame = OverlayToolbar.paletteFrame(kind, toolbar: bar, screenFrame: screen)
+            for item in OverlayToolbar.paletteLayout(kind).items {
+                let point = CGPoint(x: frame.minX + item.frame.midX, y: frame.minY + item.frame.midY)
+                #expect(OverlayToolbar.paletteItem(at: point, in: frame, kind: kind) == item.item)
+            }
+            #expect(OverlayToolbar.paletteItem(at: CGPoint(x: frame.minX - 10, y: frame.midY),
+                                               in: frame, kind: kind) == nil)
+        }
+    }
+
+    @Test("弹层必须整块落在屏幕内 —— 否则最边上那几格点不到")
+    func paletteStaysOnScreen() {
+        // ⚠️ 光用"大屏 + 四个角"是**盲的**：那种组合下弹层无论怎么放都放得下，
+        // 把 `paletteFrame` 里的夹取整段删掉，这条也不会变红（变异实测踩到过）。
+        // 真正逼出夹取的是**屏幕很矮**、上下两侧都塞不下一个弹层的时候。
+        // `140` 那个高度是**故意逼到极限**的：屏幕比"工具条 + 弹层 + 两圈边距"还矮，
+        // 只有靠最后那一步夹取才能让弹层留在屏幕里 —— 去掉夹取这条就会变红。
+        let screens = [CGRect(x: 0, y: 0, width: 1024, height: 768),
+                       CGRect(x: 0, y: 0, width: 1024, height: 260),
+                       CGRect(x: 0, y: 0, width: 700, height: 200),
+                       CGRect(x: 0, y: 0, width: 1024, height: 140)]
+        for screen in screens {
+            let low = max(0, screen.height - 160)
+            for corner in [CGPoint(x: 0, y: 0), CGPoint(x: screen.width - 320, y: 0),
+                           CGPoint(x: 0, y: low), CGPoint(x: screen.width - 320, y: low)] {
+                let selection = CGRect(origin: corner, size: CGSize(width: 300, height: 140))
+                let bar = OverlayToolbar.frame(for: selection, screenFrame: screen)
+                for kind in OverlayPalette.allCases {
+                    let frame = OverlayToolbar.paletteFrame(kind, toolbar: bar, screenFrame: screen)
+                    #expect(frame.width > 0 && frame.height > 0)
+                    #expect(screen.contains(frame),
+                            "\(kind) 弹层跑出屏幕了：弹层 \(frame)，屏幕 \(screen)")
+                }
+            }
         }
     }
 
