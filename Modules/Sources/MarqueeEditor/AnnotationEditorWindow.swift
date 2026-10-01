@@ -6,8 +6,13 @@ import SwiftUI
 @MainActor
 public final class AnnotationEditorPresenter {
     private var controllers: [AnnotationEditorWindowController] = []
+    /// 文字识别器（ticket 13）。`nil` 时编辑器里不出现「识别文字」——
+    /// 依赖由宿主注入：`MarqueeEditor` 不依赖 `MarqueeCapture`（模块依赖方向）。
+    private let recognizer: TextRecognizing?
 
-    public init() {}
+    public init(recognizer: TextRecognizing? = nil) {
+        self.recognizer = recognizer
+    }
 
     /// `seed` 用来预置标注（开发演示用：`-marqueeDemoEditor`），正常流程为空。
     ///
@@ -16,7 +21,10 @@ public final class AnnotationEditorPresenter {
     public func present(image: CGImage,
                         seed: [Annotation] = [],
                         onCopyPNG: @escaping @MainActor (Data) -> Void) {
-        let controller = AnnotationEditorWindowController(image: image, onCopyPNG: onCopyPNG, seed: seed)
+        let controller = AnnotationEditorWindowController(image: image,
+                                                          onCopyPNG: onCopyPNG,
+                                                          seed: seed,
+                                                          recognizer: recognizer)
         controller.onClosed = { [weak self, weak controller] in
             guard let self, let controller else { return }
             self.controllers.removeAll { $0 === controller }
@@ -30,23 +38,54 @@ public final class AnnotationEditorPresenter {
 final class AnnotationEditorWindowController: NSWindowController, NSWindowDelegate {
     var onClosed: (() -> Void)?
 
-    init(image: CGImage, onCopyPNG: @escaping @MainActor (Data) -> Void, seed: [Annotation] = []) {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 680),
+    /// 编辑器窗口的默认尺寸。
+    ///
+    /// ⚠️ 宽度不是拍脑袋定的：工具栏那一排控件（9 个标注工具 + 5 个色点 + 3 档线宽
+    /// + 「识别文字」+ 缩放 + 提示文本，外加十几处间距）实测约 **1110 点**。
+    /// 原来给的 960 **放不下** —— `HStack` 里的 `Spacer()` 在空间不足时会缩成 0，
+    /// 超出的部分被直接挤掉，**最右边的「识别文字」和缩放控件首当其冲**。
+    /// 用户当时的反馈正是"OCR 入口我不知道在哪"：不是没找到，是它压根没画出来。
+    ///
+    /// `minSize` 同理：窗口窄到放不下工具栏就没有意义了，所以下限也抬到工具栏宽度之上。
+    private static let defaultSize = NSSize(width: 1180, height: 760)
+    /// 图标化之后工具栏约 850 点，下限给 900 就够 ——
+    /// 但也不能再低：窄过它右边那几个动作按钮又会被挤出可视区。
+    private static let minimumSize = NSSize(width: 900, height: 540)
+
+    init(image: CGImage,
+         onCopyPNG: @escaping @MainActor (Data) -> Void,
+         seed: [Annotation] = [],
+         recognizer: TextRecognizing? = nil) {
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.defaultSize),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered,
                               defer: false)
         window.title = "标注"
-        window.minSize = NSSize(width: 640, height: 420)
+        window.minSize = Self.minimumSize
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.backgroundColor = NSColor(white: 0.11, alpha: 1)
         super.init(window: window)
         window.delegate = self
 
-        let root = AnnotationEditorView(image: image, onCopyPNG: onCopyPNG, seed: seed) { [weak self] in
+        let root = AnnotationEditorView(image: image,
+                                        onCopyPNG: onCopyPNG,
+                                        seed: seed,
+                                        recognizer: recognizer) { [weak self] in
             self?.close()
         }
         contentViewController = NSHostingController(rootView: root)
+
+        // ⚠️ 尺寸必须在设置 `contentViewController` **之后**再定一次。
+        //
+        // `contentViewController` 的 setter 会按视图的 `fittingSize` 重排窗口，
+        // 而画布用的是 `GeometryReader` —— 它**没有固有尺寸**（ideal size 就是 10×10），
+        // 于是上面 `NSWindow(contentRect:)` 里给的 960×680 会被这一步覆盖掉，
+        // 窗口缩成"工具栏那一条"。用户看到的现象是"编辑器没弹出来"。
+        //
+        // 这类问题的坑点在于：**窗口确实创建了、也叫到前台了**，
+        // 只是面积几乎为零 —— 从现象上完全看不出是尺寸问题。
+        window.setContentSize(Self.defaultSize)
         window.center()
     }
 
@@ -55,10 +94,24 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
         fatalError("AnnotationEditorWindowController 只支持代码创建")
     }
 
+    /// 呈现窗口。
+    ///
+    /// ⚠️ `orderFrontRegardless()` **不能省**。
+    ///
+    /// Marquee 是 `.accessory` 应用（`main.swift` 的 `setActivationPolicy(.accessory)`，
+    /// 无 Dock 图标），而 `makeKeyAndOrderFront` **依赖应用已经是 active 的** ——
+    /// 一个刚从前台退下来的 accessory 应用调它，窗口很可能开在别的窗口后面。
+    /// 用户看到的现象是"按了 `⏎`，编辑器窗口没出来"（其实已经开好了，
+    /// 只是被盖住 —— 而"窗口没出来"和"截图失败"在他眼里是完全一样的）。
+    ///
+    /// 覆盖层没有暴露这个问题，是因为它用的是高层级 `NSPanel`（盖在所有东西上）；
+    /// 编辑器是普通层级的 `NSWindow`，正好踩中。
+    /// `orderFrontRegardless()` 不看应用的激活状态，是 Apple 给这类场景的 API。
     func present() {
         NSApp.activate()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -76,6 +129,10 @@ private struct AnnotationEditorView: View {
     let image: CGImage
     let onCopyPNG: (Data) -> Void
     let onClose: () -> Void
+
+    /// 文字识别（ticket 13）。`nil` = 宿主没注入，工具栏上就不出现「识别文字」。
+    @State private var ocr: TextRecognitionService?
+    @State private var showOCRPanel = false
 
     @State private var session: AnnotationEditorSession
     @State private var viewport = CanvasViewport()
@@ -110,10 +167,14 @@ private struct AnnotationEditorView: View {
     init(image: CGImage,
          onCopyPNG: @escaping (Data) -> Void,
          seed: [Annotation] = [],
+         recognizer: TextRecognizing? = nil,
          onClose: @escaping () -> Void) {
         self.image = image
         self.onCopyPNG = onCopyPNG
         self.onClose = onClose
+        // 识别器只在**首次**建视图时被用一次：`State(initialValue:)` 之后重建视图不会重置它，
+        // 否则识别到一半重建一次就会把结果丢掉。
+        _ocr = State(initialValue: recognizer.map { TextRecognitionService(recognizer: $0) })
         var initial = AnnotationEditorSession(pixelSize: CGSize(width: image.width, height: image.height))
         initial.document.annotations = seed
         _session = State(initialValue: initial)
@@ -125,40 +186,24 @@ private struct AnnotationEditorView: View {
             canvas
         }
         .background(Color(white: 0.11))
+        .overlay(alignment: .topTrailing) { ocrPanel }
     }
 
     private var toolbar: some View {
-        HStack(spacing: 8) {
-            toolButton("选择", tool: .select)
-            toolButton("矩形", tool: .rectangle)
-            toolButton("椭圆", tool: .ellipse)
-            toolButton("箭头", tool: .arrow)
-            toolButton("画笔", tool: .pen)
-            toolButton("文字", tool: .text)
-            toolButton("马赛克", tool: .mosaic)
-            toolButton("模糊", tool: .blur)
-            // 裁切是**模式**不是工具：它不改文档，只是让你调好框再回车
-            Button {
-                if session.isCropping {
-                    session.cancelCrop()
-                } else {
-                    session.beginCrop()
-                }
-            } label: {
-                Text("裁切")
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(session.isCropping ? Color.white.opacity(0.18) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .help("拖框调整裁切范围，回车应用，Esc 取消")
+        HStack(spacing: 4) {
+            toolButton(.select, systemImage: "cursorarrow", title: "选择")
+            toolButton(.rectangle, systemImage: "rectangle", title: "矩形")
+            toolButton(.ellipse, systemImage: "circle", title: "椭圆")
+            toolButton(.arrow, systemImage: "arrow.up.right", title: "箭头")
+            toolButton(.pen, systemImage: "pencil.tip", title: "画笔")
+            toolButton(.text, systemImage: "textformat", title: "文字")
+            toolButton(.mosaic, systemImage: "checkerboard.rectangle", title: "马赛克")
+            toolButton(.blur, systemImage: "camera.filters", title: "模糊")
+            cropButton
 
             // 序号是**文字工具的一个预设**，不占独立工具位（PRD：工具栏 ≤ 9 个工具）
             if session.tool == .text {
-                Divider().frame(height: 18)
+                toolbarSeparator
                 presetButton("文字", preset: .plain)
                 presetButton("序号", preset: .counter)
                 if session.textPreset == .counter {
@@ -166,7 +211,7 @@ private struct AnnotationEditorView: View {
                         Text("起始 \(session.nextCounter)")
                             .font(.system(size: 11))
                             .foregroundStyle(.white.opacity(0.6))
-                            .frame(width: 46, alignment: .trailing)
+                            .frame(width: 44, alignment: .trailing)
                         Stepper("", value: counterBinding, in: 1...99)
                             .labelsHidden()
                             .controlSize(.mini)
@@ -175,39 +220,148 @@ private struct AnnotationEditorView: View {
                 }
             }
 
-            Divider().frame(height: 18)
+            toolbarSeparator
             ForEach(colors, id: \.self) { color in
                 Button {
                     session.setStrokeColor(color)
                 } label: {
                     Circle()
                         .fill(swiftUI(color))
-                        .frame(width: 16, height: 16)
+                        .frame(width: 14, height: 14)
                         .overlay(Circle().stroke(Color.white.opacity(session.style.stroke == color ? 0.95 : 0.25), lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
                 .help("描边颜色")
             }
-            Divider().frame(height: 18)
+            toolbarSeparator
             sizeControls
-            Spacer()
-            Button { zoom(by: 1 / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-            Text("\(Int((viewport.scale * 100).rounded()))%")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.8))
-                .frame(width: 48)
-            Button { zoom(by: 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-            Text(session.isCropping ? "回车应用裁切 · Esc 取消" : "Esc 复制并关闭")
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.55))
+            Spacer(minLength: 8)
+
+            zoomControls
+            toolbarSeparator
+
+            // ── 动作区（右侧）──────────────────────────────────────
+            //
+            // 布局参考截图工具的通例：**工具在左、动作在右，取消与完成永远压在最右**，
+            // 而且用 ✗ / ✓ 这种不需要解释的符号。
+            // 原来这里只有一行「Esc 复制并关闭」的小字 —— 用户不会天然想到"Esc = 完成"，
+            // 而"取消"这个动作干脆没有入口。
+            if let ocr {
+                iconButton(ocr.isRunning ? "识别中…" : "识别文字",
+                           systemImage: ocr.isRunning ? "hourglass" : "text.viewfinder",
+                           isActive: showOCRPanel,
+                           isEnabled: !ocr.isRunning) {
+                    showOCRPanel = true
+                    Task { await ocr.recognize(image) }
+                }
+                toolbarSeparator
+            }
+
+            iconButton("撤销", systemImage: "arrow.uturn.backward",
+                       isEnabled: session.canUndo) {
+                session.undo()
+            }
+            iconButton("重做", systemImage: "arrow.uturn.forward",
+                       isEnabled: session.canRedo) {
+                session.redo()
+            }
+
+            toolbarSeparator
+
+            iconButton("取消（丢弃刚画的标注，不改剪贴板）", systemImage: "xmark") {
+                onClose()
+            }
+            iconButton("完成（复制到剪贴板并关闭）",
+                       systemImage: "checkmark",
+                       tint: Color(red: 0.24, green: 0.82, blue: 0.42)) {
+                copyAndClose()
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .background(Color(white: 0.16))
+    }
+
+    // MARK: - 文字识别（ticket 13）
+
+    /// 识别结果面板。
+    ///
+    /// 三条刻意的做法：
+    /// 1. 用 `Text` + `textSelection` 而不是可编辑控件 —— 用户要的是「能划、能 ⌘C」，
+    ///    不需要改。可编辑会多出"改了但没生效"这一整类疑惑。
+    /// 2. 状态文案**必须有**（识别中 / 没有文字 / 失败原因）—— 留白会让人以为是坏了。
+    /// 3. 面板浮在画布上，不挤占画布宽度 —— 识别结果只是"顺手看一眼"的东西。
+    @ViewBuilder
+    private var ocrPanel: some View {
+        if showOCRPanel, let service = ocr {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("识别文字")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Button {
+                        showOCRPanel = false
+                        service.reset()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .help("关闭")
+                }
+
+                if let message = service.message {
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if case .ready(let result) = service.state {
+                    ScrollView {
+                        Text(result.fullText)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(6)
+                    }
+                    .frame(maxHeight: 240)
+                    .background(Color.black.opacity(0.28))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                    Button {
+                        copyText(result.fullText)
+                    } label: {
+                        Text("全部复制")
+                            .font(.system(size: 12, weight: .medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.16))
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                }
+            }
+            .padding(12)
+            .frame(width: 320)
+            .background(Color(white: 0.17))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
+            .padding(12)
+        }
+    }
+
+    /// 复制的是**文本**，不是图 —— 与「Esc 复制并关闭」那条走 PNG 的链路是两回事，
+    /// 没必要为它再引一层剪贴板依赖。
+    private func copyText(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 
     /// 这一排控件按**当前上下文**决定改的是哪个参数：线宽 / 字号 / 打码强度。
@@ -646,19 +800,79 @@ private struct AnnotationEditorView: View {
         editingFocused = false
     }
 
-    private func toolButton(_ title: String, tool: AnnotationEditorTool) -> some View {
-        Button {
-            session.tool = tool
-        } label: {
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(session.tool == tool ? Color.white.opacity(0.18) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+    // MARK: - 工具栏按钮
+
+    /// 工具栏按钮的统一形态：**图标 + tooltip（中文标签进 `help`）**。
+    ///
+    /// ## 为什么从文字改成图标
+    ///
+    /// 原来每个工具是一个文字按钮（"选择""矩形"…），整排实测约 **1110 点**，
+    /// 而窗口默认只有 960 —— `HStack` 空间不足时 `Spacer()` 缩成 0，
+    /// **右边那几个控件被直接挤出可视区**。用户报的"OCR 入口我不知道在哪"、
+    /// "工具栏我没有看到"，根子都在这里：不是没找到，是压根没画出来。
+    ///
+    /// 图标按钮约 30 点一个，同样的功能占用不到一半宽度，还顺手腾出了右侧动作区。
+    /// 悬停提示保留了全部中文说明，可发现性不降。
+    private func iconButton(_ title: String,
+                            systemImage: String,
+                            isActive: Bool = false,
+                            isEnabled: Bool = true,
+                            tint: Color = .white,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 30, height: 26)
+                .background(isActive ? Color.white.opacity(0.20) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.white)
+        .foregroundStyle(isEnabled ? tint : tint.opacity(0.3))
+        .disabled(!isEnabled)
+        .help(title)
+    }
+
+    /// 分组线。用自绘的细线而不是 `Divider()`：后者的颜色由系统给，
+    /// 在深色工具栏上时有时无，分隔感不稳定。
+    private var toolbarSeparator: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.14))
+            .frame(width: 1, height: 20)
+            .padding(.horizontal, 2)
+    }
+
+    /// 裁切是**模式**不是工具：它不改文档，只是让你调好框再回车。
+    private var cropButton: some View {
+        iconButton(session.isCropping ? "裁切中：回车应用 · Esc 取消" : "裁切",
+                   systemImage: "crop",
+                   isActive: session.isCropping) {
+            if session.isCropping {
+                session.cancelCrop()
+            } else {
+                session.beginCrop()
+            }
+        }
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 0) {
+            iconButton("缩小", systemImage: "minus.magnifyingglass") { zoom(by: 1 / 1.25) }
+            Text("\(Int((viewport.scale * 100).rounded()))%")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.75))
+                .frame(width: 40)
+            iconButton("放大", systemImage: "plus.magnifyingglass") { zoom(by: 1.25) }
+        }
+    }
+
+    private func toolButton(_ tool: AnnotationEditorTool,
+                            systemImage: String,
+                            title: String) -> some View {
+        iconButton(session.tool == tool ? "\(title)（当前工具）" : title,
+                   systemImage: systemImage,
+                   isActive: session.tool == tool) {
+            session.tool = tool
+        }
     }
 
     private func zoom(by factor: CGFloat) {

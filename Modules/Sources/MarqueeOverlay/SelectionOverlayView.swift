@@ -185,6 +185,14 @@ final class SelectionOverlayView: NSView {
         delegate?.overlayViewDidRequestCancel(self)
     }
 
+    /// ⚠️ 这条路径**在生产里基本走不到**。
+    ///
+    /// 覆盖层的键盘由 `SelectionOverlayController.handleOverlayKeyDown` 经**应用级本地监听**
+    /// 统一处理（原因见那里：面板是 `.nonactivatingPanel`，"视图 `keyDown` 能收到按键"
+    /// 依赖它是 key window 且自己是 first responder —— 实测这条并不成立，
+    /// `⏎` 就是因此在用户手里完全没反应）。
+    ///
+    /// 保留它是为了"万一本地监听没装上"时还有一条退路，**不是**主路径。
     override func keyDown(with event: NSEvent) {
         switch Int(event.keyCode) {
         case 0x35: // kVK_Escape

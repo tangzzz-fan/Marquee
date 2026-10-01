@@ -49,6 +49,10 @@ final class ShortcutPreferencesWindowController: NSWindowController {
         NSApp.activate()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        // 与编辑器窗口同一个坑：Marquee 是 `.accessory` 应用，
+        // `makeKeyAndOrderFront` 依赖应用已激活 —— 少了这一行，
+        // 刚从前台退下来的应用开这个窗口可能开在别的窗口后面（见 PITFALLS 54）。
+        window?.orderFrontRegardless()
         window?.makeFirstResponder(recorder)
     }
 

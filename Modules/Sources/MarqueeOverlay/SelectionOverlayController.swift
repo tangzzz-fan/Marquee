@@ -1,5 +1,6 @@
 import AppKit
 import MarqueeCore
+import os
 
 /// 逐屏覆盖层的调度者（ticket 03 选区、ticket 04 窗口识别）。
 ///
@@ -66,6 +67,8 @@ public final class SelectionOverlayController {
     private static let dragSlop: CGFloat = 4
     /// 一次 `Esc` 退出。不靠各块屏的面板各自消化，否则多屏要点好几次。
     private var keyMonitor: Any?
+
+    private let logger = Logger(subsystem: "dev.tango.Marquee", category: "overlay")
     /// 前台应用变化（⌘Tab / 点了别的应用）→ 重取窗口清单
     private var activationObserver: NSObjectProtocol?
 
@@ -238,12 +241,70 @@ public final class SelectionOverlayController {
     private func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 0x35 else { return event }
-            MainActor.assumeIsolated {
-                self?.handleEscape()
-            }
-            return nil
+            guard let self else { return event }
+            // 只回传"消费了没有"：`NSEvent` 不是 `Sendable`，跨隔离域回传它编译不过。
+            let consumed = MainActor.assumeIsolated { self.handleOverlayKeyDown(event) }
+            return consumed ? nil : event
         }
+    }
+
+    /// 覆盖层的**唯一**键盘入口。
+    ///
+    /// ## 为什么全部功能键都走这里，而不是交给视图的 `keyDown`
+    ///
+    /// 面板是 `.nonactivatingPanel`（刻意不激活本应用，免得把用户从当前应用拽走），
+    /// 而"视图的 `keyDown` 能收到按键"依赖**面板是 key window 且视图是 first responder**。
+    /// 这条链路在真实使用里并不可靠 —— 实测（2026-10-01，用户跑出来的日志）：
+    /// `Esc` 生效（它走的就是这个本地监听），而 **`⏎` 杳无音讯**（它走视图 `keyDown`）。
+    /// 用户看到的现象是"拖完选区按 `⏎` 什么都没发生"，然后按 `Esc` 退出 ——
+    /// 还以为截图坏了。这正是 `STATUS-AND-ACCEPTANCE.md` 里标为"最没把握"的 B1。
+    ///
+    /// 本地监听是**应用级**的、与"哪个窗口是 key"无关。既然 `Esc` 已经证明它能稳定收到事件，
+    /// 功能键就都放这里 —— 一条路走通，就不要留第二条只在特定前提下成立的路。
+    ///
+    /// - Returns: 是否已消费（`true` = 不再向下分发）
+    private func handleOverlayKeyDown(_ event: NSEvent) -> Bool {
+        guard !isFinishing else { return true }
+
+        switch Int(event.keyCode) {
+        case 0x35: // Esc
+            handleEscape()
+            return true
+        case 0x24, 0x4C: // ⏎ / 小键盘 Enter
+            logger.info("覆盖层按键：⏎ 提交")
+            performCommit(saveToDisk: false)
+            return true
+        case 0x01 where event.modifierFlags.contains(.command): // ⌘S
+            logger.info("覆盖层按键：⌘S 提交并落盘")
+            performCommit(saveToDisk: true)
+            return true
+        case 0x31: // 空格：长截图里开始 / 停止自动滚动
+            logger.info("覆盖层按键：空格")
+            toggleAutoScroll()
+            return true
+        case 0x7B: // ←
+            nudge(dx: -1, dy: 0)
+            return true
+        case 0x7C: // →
+            nudge(dx: 1, dy: 0)
+            return true
+        case 0x7D: // ↓ —— Cocoa 视图坐标 y 向上，"下"是 -1
+            nudge(dx: 0, dy: -1)
+            return true
+        case 0x7E: // ↑
+            nudge(dx: 0, dy: 1)
+            return true
+        default:
+            break
+        }
+
+        // 带 ⌘ / ⌃ 的组合放行给系统：⌘Tab、⌘`、⌘Space 这类是系统快捷键，
+        // 覆盖层既不该吞掉它们，也没理由为它们哔一声
+        //（用户按 ⌘Tab 想换目标应用，结果是"叮"一下什么都不发生，那才是最费解的表现）。
+        if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control) {
+            return false
+        }
+        return true
     }
 
     /// `Esc` 的**唯一入口**。

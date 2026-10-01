@@ -50,7 +50,11 @@ final class CaptureCoordinator {
         handler: { [weak self] in self?.performCapture() }
     )
 
-    private let editor = AnnotationEditorPresenter()
+    /// OCR 识别器（ticket 13）。编辑器与启动预热**共用同一个** ——
+    /// 预热热的正是它之后要用的那份模型。
+    private let textRecognizer = VisionTextRecognizer()
+    private lazy var ocrPreheater = TextRecognitionPreheater(recognizer: textRecognizer)
+    private lazy var editor = AnnotationEditorPresenter(recognizer: textRecognizer)
     private var overlay: SelectionOverlayController?
     private var preferencesWindow: ShortcutPreferencesWindowController?
     /// 防止预检期间连按快捷键叠出两层覆盖层
@@ -74,6 +78,14 @@ final class CaptureCoordinator {
         // 而且这条日志是排查"为什么每次都在要权限"的第一手证据（配合稳定签名一起看）。
         logger.info("屏幕录制权限状态：\(String(describing: self.permission.currentPermission()), privacy: .public)")
 
+        // OCR 预热（ticket 13）。
+        //
+        // 首次调用要 **25 秒**（Vision 模型未缓存，见 R10），缓存后才几百毫秒。
+        // 不预热的话，用户第一次点「识别文字」会盯着一个几十秒不动的界面 ——
+        // 那与卡死没有区别，而且他不会再点第二次。所以这件事必须发生在启动时。
+        // 它是后台任务，不挡任何东西；失败也只是记下状态（真到用户点识别时会自己再走一遍）。
+        ocrPreheater.startIfNeeded()
+
         switch result {
         case .applied(let combo):
             // 成功也记一条：用户反馈"按了没反应"时，第一件要确认的就是当时注册的是哪个键
@@ -91,8 +103,13 @@ final class CaptureCoordinator {
     /// - 没权限时直接给说明，屏幕上不会出现一层盖住一切、却又截不了的变暗蒙层
     /// - 也不会出现"系统授权框叠在我们自己的蒙层上"这种吓人的组合
     func performCapture() {
-        guard overlay?.isPresented != true, !isPreflighting else { return }
+        guard overlay?.isPresented != true, !isPreflighting else {
+            // 用户"按了没反应"时，这一条能立刻区分"请求被自己挡下"与"根本没收到请求"
+            logger.info("忽略这次截屏请求（覆盖层已在或正在预检）")
+            return
+        }
         isPreflighting = true
+        logger.info("截屏请求：屏幕录制权限 = \(String(describing: self.permission.currentPermission()), privacy: .public)")
 
         // 没权限时这一按会引出系统授权框（以及"把 Marquee 登记进屏幕录制列表"那一步）。
         // 我们是 accessory 应用，先激活自己，免得框被压在别的应用后面用户根本看不见。
@@ -112,11 +129,13 @@ final class CaptureCoordinator {
             case .proceed(let grantedJustNow):
                 self.grantedThisSession = self.grantedThisSession || grantedJustNow
                 if self.grantedThisSession {
+                    self.logger.info("权限是这次刚给的：只提示重启，不继续采集")
                     // ScreenCaptureKit 在「刚勾选授权」的同一个进程里还不可用。
                     // 继续弹出覆盖层再采集，会再触发一次系统授权框，并且必然失败。
                     PermissionPrompt.presentPermissionGuidance(grantedJustNow: true)
                     return
                 }
+                self.logger.info("权限放行，呈现覆盖层")
                 self.presentOverlay()
             }
         }
@@ -170,6 +189,7 @@ final class CaptureCoordinator {
         controller.lensSettings = magnifierSettings.load()
         overlay = controller
         controller.present(mode: mode)
+        logger.info("覆盖层已呈现（mode=\(String(describing: mode), privacy: .public)）")
     }
 
     /// 菜单「滚动截屏」入口（ticket 11：手动滚动长截图）。
@@ -179,10 +199,15 @@ final class CaptureCoordinator {
 
     /// 截图已经进了剪贴板。编辑器里 `Esc` 会把带标注的成品再写回去。
     func presentEditor(image: CGImage, seed: [Annotation] = []) {
+        // 先记一条再开窗：用户说"编辑器窗口没出来"时，第一件要确认的是
+        // **我们到底有没有走到这一步** —— 这与"点了没反应先验入口通不通"是同一条教训，
+        // 否则会在窗口呈现那一层白查很久（实际根本没走到那里）。
+        logger.info("打开编辑器：\(image.width)×\(image.height) px，预置标注 \(seed.count) 个")
         editor.present(image: image, seed: seed) { [weak self] png in
             self?.clipboard.writePNG(png)
             self?.logger.info("标注已复制到剪贴板：\(png.count) 字节")
-        }    }
+        }
+    }
 
     func showShortcutPreferences() {
         let controller: ShortcutPreferencesWindowController
@@ -210,13 +235,39 @@ final class CaptureCoordinator {
         return """
         Marquee 诊断
           运行位置        : \(Bundle.main.bundleURL.path)
+          构建时间        : \(Self.buildTimestamp())
           屏幕录制权限    : \(Self.describe(permission.currentPermission()))
           preflight 原始值: \(CGPreflightScreenCaptureAccess() ? "true" : "false")
           当前快捷键      : \(shortcut.current.displayString)
           本次注册结果    : \(registration)
           注册器返回      : \(String(describing: shortcut.lastRegistration))
+          OCR 预热        : \(Self.describe(ocrPreheater.state))
           构建签名        : \(Self.signingSummary())
         """
+    }
+
+    /// 产物自身的修改时间。
+    ///
+    /// 排障时第一个要回答的问题是"**我跑的到底是不是刚才那个构建**" ——
+    /// 界面类问题尤其如此：功能明明写了却"看不到"，十有八九是跑在旧产物上。
+    /// 放在诊断报告里，用户跑一条命令就能自证。
+    private static func buildTimestamp() -> String {
+        guard let url = Bundle.main.executableURL,
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let date = attributes[.modificationDate] as? Date else { return "未知" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: date)
+    }
+
+    /// 预热状态也要能一眼看到：它坏了不会报错，只会让第一次识别变得很慢。
+    private static func describe(_ state: TextRecognitionPreheater.State) -> String {
+        switch state {
+        case .idle: "尚未开始"
+        case .warming: "进行中（首次可能要几十秒）"
+        case .ready: "已完成"
+        case .failed(let reason): "失败：\(reason)（不影响使用，首次识别会慢）"
+        }
     }
 
     private static func describe(_ permission: ScreenRecordingPermission) -> String {

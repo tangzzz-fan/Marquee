@@ -87,3 +87,47 @@
 51. **`NSLock.lock()` 在 async 上下文里不可用**（编译报 "unavailable from asynchronous contexts"）→ 把加解锁收进一个同步闭包（`withLocked`），在闭包外再做异步的事。
 52. **屏幕录制之外还有两个「不弹框也能问」的探针**：`CGPreflightListenEventAccess()`（输入监控）、`CGPreflightPostEventAccess()`（辅助功能/事件注入）。它们的声明**不在头文件里**，但 Swift 能直接调用（符号在 `CoreGraphics.tbd`）。`AXIsProcessTrusted()` 则需要 `import ApplicationServices`。
 53. **状态机类的东西必须放 Core**：`MarqueeOverlay` 里的东西无法自动化测试（需要真实屏幕），只有抽到 Core 才能单测。
+
+## H. 窗口与呈现
+
+54. **`.accessory` 应用（`LSUIElement`）里 `makeKeyAndOrderFront` 不够。**
+    它**依赖应用已经是 active 的**，而 `Marquee` 是 `main.swift` 里
+    `setActivationPolicy(.accessory)` 的后台应用 —— 从覆盖层（高层级 `NSPanel`）退下来、
+    紧接着开一个**普通层级**的 `NSWindow` 时，窗口很可能开在别的窗口后面。
+    用户看到的现象是"`⏎` 按了，编辑器窗口没出来"，而**它其实已经开好了**；
+    更麻烦的是"窗口没出来"和"截图失败"在用户眼里完全一样，很容易查错方向。
+    **修法：`window.orderFrontRegardless()`（不看激活状态）**，编辑器窗口与快捷键偏好窗口都要。
+    > 判据：凡是"用户说某个窗口没出现"的反馈，先看这个窗口是 `NSPanel` 还是 `NSWindow` ——
+    > NSPanel（覆盖层）有 `level` 兜着不容易暴露，`NSWindow` 才会踩到。
+    > 同时补一条日志（"打开编辑器：W×H"），这样能先确认**到底有没有走到开窗那一步**。
+
+55. **设置 `NSWindow.contentViewController` 会按 SwiftUI 视图的 `fittingSize` 重排窗口。**
+    `GeometryReader` **没有固有尺寸**（它的 ideal size 就是 10×10），所以
+    `NSWindow(contentRect: 960×680)` 之后紧跟一句 `contentViewController = NSHostingController(...)`，
+    窗口会被缩成"工具栏那一条"。
+    **修法：尺寸要在设完 `contentViewController` 之后用 `window.setContentSize(_:)` 再定一次**，
+    不能只靠 `init` 里那个 `contentRect`。
+    > 坑点：窗口**确实创建了、也叫到前台了**，只是面积几乎为零。
+    > 现象上完全看不出是尺寸问题（用户只会说"窗口没弹出来"）。
+    > 判据：凡是"`NSWindow` + SwiftUI hosting + 说窗口没出现"，先怀疑尺寸被 hosting 改过。
+
+56. **`.nonactivatingPanel` 上"视图的 `keyDown`"靠不住 —— 覆盖层的功能键必须走应用级本地监听。**
+    覆盖层面板刻意用 `.nonactivatingPanel`（不激活本应用，免得把用户从当前应用拽走），
+    于是"面板是 key window 且视图是 first responder"这条链路在真实使用中**并不成立**。
+    实测（2026-10-01，用户跑出来的日志）：`Esc` 生效（它走 `NSEvent.addLocalMonitorForEvents`），
+    而 **`⏎` 完全没反应**（它走视图 `keyDown`）—— 用户拖完选区按 `⏎` 什么都没发生，
+    只能按 `Esc` 退出，报上来的现象却是"**编辑器窗口弹不出来**"。
+    **修法：把覆盖层全部功能键（`Esc` / `⏎` / `⌘S` / 空格 / 方向键）都放进那个本地监听**，
+    闭包只回传"消费了没有"（`NSEvent` 不是 `Sendable`，跨隔离域回传它编译不过）。
+    > 判据：**`Esc` 能用而别的键不能用 → 就是这个坑**（`Esc` 恰好走了另一条路）。
+    > 更一般的教训：同一个功能绝不能留两条"只在特定前提下成立"的输入路径。
+
+57. **一行控件加起来比窗口还宽时，右边那些会被「挤出可视区」—— 不报错、不压缩、只是看不见。**
+    编辑器工具栏原先用文字按钮（"选择""矩形"…），整排实测约 **1110 点**，而窗口默认只有 960。
+    `HStack` 空间不足时先缩 `Spacer()`（缩到 0），再不够就把超出部分直接裁掉 ——
+    **最右边的控件首当其冲**。用户报的是"OCR 入口我不知道在哪""工具栏我没有看到"，
+    查了半天代码，其实功能一直都在，只是**没画出来**。
+    **修法**：① 控件图标化（30 点/个，中文标签进 `help`）；
+    ② 窗口 `minSize` 不得低于工具栏的实际宽度。
+    > 判据：用户说"某个按钮/入口看不见"时，先把那一行控件的宽度**加起来**跟窗口宽度比一比。
+    > SwiftUI 不会为"放不下"报任何错，这一点和"静默错误"是同一类坑。

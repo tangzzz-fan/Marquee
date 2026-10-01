@@ -34,6 +34,7 @@
 | 权限探针 | 返回 granted / notDetermined / **进程内 denied**（问过仍未授权；**不要**写 UserDefaults）。`requestPermission()` 必须碰一次 `SCShareableContent` **枚举**（不要截帧） |
 | 坐标空间 | **覆盖层内部一律用 Cocoa 全局点坐标**，只在提交采集时经 `ScreenCoordinateConversion` 转 Quartz。两者 y 轴相反，混用会静默错位 |
 | 跨屏选区 | 逐屏取交集后拼接，输出 scale 取参与屏里**最大**的 |
+| OCR（ticket 13） | 入口是**动作**不是工具（工具栏 9 个位置被 PRD 列满，OCR 不在其中）；**启动必须预热**（首次 25 s，不热则第一次点像卡死）；结果面板用 `Text` + `textSelection`（可划可 ⌘C） |
 | 本地 AI / 视觉 | 只做系统级 Vision OCR；Liquid Glass 必须 `if #available(macos 26.0)` |
 
 ## 构建与测试（走脚本，不要手敲裸命令）
