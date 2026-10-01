@@ -24,7 +24,12 @@ public final class SelectionOverlayController {
     }
 
     public enum Outcome: Sendable {
-        case completed(CaptureOutcome)
+        /// - Parameter openEditor: 采集完成后要不要把图送进**编辑器窗口**。
+        ///
+        ///   普通截图从 ticket 20 起在覆盖层里就地完成，所以是 `false` ——
+        ///   这正是用户要的"不阻断"：拖完选区按 `⏎` 直接出图，不弹任何窗口。
+        ///   长截图（图放不进一屏）与工具栏上的「编辑」按钮才是 `true`。
+        case completed(CaptureOutcome, openEditor: Bool)
         case cancelled
     }
 
@@ -84,6 +89,13 @@ public final class SelectionOverlayController {
     private var autoScrollLoop: Task<Void, Never>?
     /// 自动滚动的一句话状态（等停稳 / 正在抓帧 / 为什么停了）
     private var autoScrollMessage: String?
+
+    /// 本次提交要不要在采集完成后**打开编辑器窗口**（ticket 20）。
+    ///
+    /// 默认 `false`：普通截图在覆盖层里就地完成，不弹任何窗口 —— 这正是用户要的"不阻断"。
+    /// 只有工具栏上的「编辑」按钮与长截图会把它置 `true`。
+    /// `teardown()` 里会重置，免得"点了编辑但采集失败"之后把下一次也带偏。
+    private var wantsEditorAfterCapture = false
 
     // 放大镜取色（ticket 10）
     /// 每块屏一份冻结的整屏像素，按需取、取到就留着（放大镜跟随光标时不再采集）
@@ -162,7 +174,8 @@ public final class SelectionOverlayController {
 
         guard !displayGeometries.isEmpty,
               let height = ScreenCoordinateConversion.primaryScreenHeight(in: displayGeometries) else {
-            onFinish(.completed(.failed(CaptureFailure(message: "没找到可用的显示器"))))
+            onFinish(.completed(.failed(CaptureFailure(message: "没找到可用的显示器")),
+                                openEditor: false))
             return
         }
         primaryScreenHeight = height
@@ -223,6 +236,9 @@ public final class SelectionOverlayController {
         removeActivationObserver()
         resetScroll()
         resetMagnifier()
+        // 「这次要不要开编辑器」是**每次提交**的临时状态。
+        // 不在这里清掉的话，"点了编辑但采集失败"会把下一次也带进编辑器。
+        wantsEditorAfterCapture = false
         NSCursor.arrow.set()
     }
 
@@ -633,11 +649,12 @@ public final class SelectionOverlayController {
                 // 复用既有的收尾通道：宿主已经会为这两种结果弹正确的说明
                 self.teardown()
                 self.onFinish(.completed(.permissionBlocked(blockedBy: decision,
-                                                           grantedJustNow: grantedJustNow)))
+                                                           grantedJustNow: grantedJustNow),
+                                        openEditor: false))
 
             case .failed(let failure):
                 self.teardown()
-                self.onFinish(.completed(.failed(failure)))
+                self.onFinish(.completed(.failed(failure), openEditor: false))
             }
         }
     }
@@ -679,7 +696,9 @@ public final class SelectionOverlayController {
             guard let self else { return }
             let outcome = await session.finish(save: save)
             self.teardown()
-            self.onFinish(.completed(outcome))
+            // 长截图**仍然进编辑器**：长图可能几千像素高，放不进一屏 ——
+            // 在覆盖层里既看不到全貌也没法滚动，没法在它上面标注（见 ticket 23）。
+            self.onFinish(.completed(outcome, openEditor: true))
         }
     }
 
@@ -813,8 +832,9 @@ public final class SelectionOverlayController {
             let outcome = await self.regionFlow.capture(selection: quartzRect,
                                                         displays: geometries,
                                                         save: save)
+            let openEditor = self.wantsEditorAfterCapture
             self.teardown()
-            self.onFinish(.completed(outcome))
+            self.onFinish(.completed(outcome, openEditor: openEditor))
         }
     }
 
@@ -830,8 +850,9 @@ public final class SelectionOverlayController {
                                                         style: style,
                                                         displays: geometries,
                                                         save: save)
+            let openEditor = self.wantsEditorAfterCapture
             self.teardown()
-            self.onFinish(.completed(outcome))
+            self.onFinish(.completed(outcome, openEditor: openEditor))
         }
     }
 
@@ -843,8 +864,9 @@ public final class SelectionOverlayController {
         Task { [weak self] in
             guard let self else { return }
             let outcome = await self.fullScreenFlow.capture(save: save)
+            let openEditor = self.wantsEditorAfterCapture
             self.teardown()
-            self.onFinish(.completed(outcome))
+            self.onFinish(.completed(outcome, openEditor: openEditor))
         }
     }
 
@@ -863,6 +885,23 @@ public final class SelectionOverlayController {
     }
 
     // MARK: - 读数与重绘
+
+    /// 浮动工具栏该放哪（**Cocoa 全局点**）。`nil` = 不显示。
+    ///
+    /// 三种情况不显示：
+    /// - 还没落点（拖到一半工具条跟着晃，既干扰又没意义）
+    /// - 长截图期间（那时一切操作由提示行负责，见 ticket 12）
+    /// - 拿不到所在屏
+    ///
+    /// 具体坐标交给 `MarqueeCore.OverlayToolbar.frame`（贴下方 → 放不下翻上方 → 夹进屏幕），
+    /// 那里有单测：贴边与跨屏靠肉眼试不全。
+    private func toolbarFrameIfSettled() -> CGRect? {
+        guard session.isSettled, !hasScrollSession, let cocoaRect = session.rect else { return nil }
+        let visibleFrame = NSScreen.screens.first { $0.frame.intersects(cocoaRect) }?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+        guard let visibleFrame else { return nil }
+        return OverlayToolbar.frame(for: cocoaRect, screenFrame: visibleFrame)
+    }
 
     private func refresh() {
         let cocoaRect = session.rect
@@ -922,6 +961,11 @@ public final class SelectionOverlayController {
         // 刚框定的内容。系统截图工具与微信截图都是这个行为（PRD F4 原话也是「选区时显示」）。
         // 长截图抓帧期间同理不显示 —— 那屏像素是开始滚动之前取的，滚起来后已与屏幕无关。
         presentation.magnifier = (session.showsMagnifier && !hasScrollSession) ? magnifier : nil
+
+        // 浮动工具栏（ticket 20）：对"区域落点"和"窗口落点"一视同仁，
+        // 所以在这里**统一挂一次**，而不是塞进上面每个分支 ——
+        // 那样以后加第三种落点方式时一定会漏掉一处。
+        presentation.toolbar = toolbarFrameIfSettled()
 
         for overlay in overlays {
             overlay.view.presentation = presentation
@@ -1189,6 +1233,33 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     func overlayViewDidToggleAutoScroll(_ view: SelectionOverlayView) {
         toggleAutoScroll()
+    }
+
+    func overlayView(_ view: SelectionOverlayView, clickedToolbarAt globalPoint: CGPoint) {
+        guard !isFinishing, let toolbar = toolbarFrameIfSettled(),
+              let button = OverlayToolbar.button(at: globalPoint, in: toolbar) else { return }
+        perform(toolbarButton: button)
+    }
+
+    /// 工具栏三个按钮的动作。
+    ///
+    /// 「完成」与「取消」是**同一套收尾通道**（`performCommit` / `cancel`），
+    /// 与 `⏎` / `Esc` 走的是同一条路 —— 不另起一套，否则两条路的收尾行为迟早分叉。
+    private func perform(toolbarButton button: OverlayToolbar.Button) {
+        switch button {
+        case .confirm:
+            logger.info("工具栏：完成（就地出图，不开窗口）")
+            performCommit(saveToDisk: false)
+        case .cancel:
+            logger.info("工具栏：取消")
+            cancel()
+        case .edit:
+            // 过渡入口：覆盖层内的标注能力要到 ticket 22 才齐。
+            // 做完之后这个按钮可以留着当"深入编辑"（长图 / 精修），先不删。
+            logger.info("工具栏：编辑（打开编辑器窗口）")
+            wantsEditorAfterCapture = true
+            performCommit(saveToDisk: false)
+        }
     }
 
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView) {

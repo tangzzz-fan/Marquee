@@ -301,12 +301,17 @@ final class CaptureCoordinator {
         switch outcome {
         case .cancelled:
             logger.info("选区已取消")
-        case .completed(let capture):
-            handle(capture)
+        case .completed(let capture, let openEditor):
+            handle(capture, openEditor: openEditor)
         }
     }
 
-    private func handle(_ outcome: CaptureOutcome) {
+    /// - Parameter openEditor: 要不要把图送进编辑器窗口。
+    ///
+    ///   普通截图从 ticket 20 起**就地完成**（`false`）—— 用户要的"不阻断"就是这条：
+    ///   拖完选区按 `⏎` 直接得到图，不弹任何窗口。
+    ///   长截图与工具栏上的「编辑」才是 `true`。
+    private func handle(_ outcome: CaptureOutcome, openEditor: Bool) {
         switch outcome {
         case .copiedToClipboard(let metrics):
             // 正常复制不弹窗。落盘失败才说一声，因为图已经在剪贴板里，不能装成整次失败。
@@ -326,7 +331,11 @@ final class CaptureCoordinator {
             """
             logger.info("\(summary, privacy: .public)")
             if let image = metrics.image {
-                presentEditor(image: image)
+                if openEditor {
+                    presentEditor(image: image)
+                } else {
+                    logger.info("就地完成：不开编辑器窗口（ticket 20 起普通截图不再弹窗口）")
+                }
             }
 
         case .permissionBlocked(_, let grantedJustNow):

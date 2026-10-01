@@ -38,6 +38,13 @@ struct SelectionPresentation: Equatable {
     /// 放大镜取色（ticket 10）。`nil` = 不显示。
     var magnifier: MagnifierPresentation?
 
+    /// 浮动工具栏（ticket 20）。`nil` = 不显示 —— 还在拖拽、或者已经提交。
+    ///
+    /// **Cocoa 全局坐标**。位置由 `MarqueeCore.OverlayToolbar.frame` 算
+    /// （贴选区下方 → 放不下翻上方 → 最后夹进屏幕），那里有单测：
+    /// 贴边与跨屏的情况靠肉眼试不全。
+    var toolbar: CGRect?
+
     static let empty = SelectionPresentation(globalRect: nil,
                                              sizeText: "",
                                              originText: "",
@@ -101,6 +108,10 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     /// 再加就得先合并。而自动滚动本来就只在"长截图进行中"有意义，
     /// 挂在那个状态自己的提示行里，比多一个随时可点但大部分时候点不动的菜单项更合理。
     func overlayViewDidToggleAutoScroll(_ view: SelectionOverlayView)
+    /// 点在了浮动工具栏上（ticket 20）。坐标是 **Cocoa 全局点**，
+    /// 由控制层用 `OverlayToolbar.button(at:in:)` 判断点的是哪个按钮 ——
+    /// 视图只负责"这一下点在工具栏里"，不做语义判断。
+    func overlayView(_ view: SelectionOverlayView, clickedToolbarAt globalPoint: CGPoint)
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView)
 }
 
@@ -150,11 +161,21 @@ final class SelectionOverlayView: NSView {
     override func mouseDown(with event: NSEvent) {
         window?.makeKey()
         window?.makeFirstResponder(self)
+
+        let point = cocoaPoint(of: event)
+        // 工具栏优先于一切：点在它上面就是"按了个按钮"，**不能**落进拖拽逻辑 ——
+        // 否则按住按钮挪一下就会把刚框好的选区改掉。
+        if let toolbar = presentation.toolbar,
+           OverlayToolbar.button(at: point, in: toolbar) != nil {
+            delegate?.overlayView(self, clickedToolbarAt: point)
+            return
+        }
+
         if event.clickCount == 2 {
             delegate?.overlayViewDidRequestWholeScreen(self)
             return
         }
-        delegate?.overlayView(self, beganDragAt: cocoaPoint(of: event))
+        delegate?.overlayView(self, beganDragAt: point)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -254,6 +275,11 @@ final class SelectionOverlayView: NSView {
                    cornerRadius: 0,
                    lineWidth: presentation.isScrollCapturing ? 2 : 1)
             drawReadout(in: localSelection, lines: readoutLines())
+            // 工具栏画在读数之后（更靠上），但**仍在**这个提前 return 之前 ——
+            // 选区一旦存在就走这条分支，漏掉这一句工具栏就永远不出现。
+            if let toolbar = presentation.toolbar {
+                drawToolbar(toolbar)
+            }
             return
         }
 
@@ -378,6 +404,58 @@ final class SelectionOverlayView: NSView {
     private static func roundedPath(_ rect: CGRect, radius: CGFloat) -> NSBezierPath {
         guard radius > 0 else { return NSBezierPath(rect: rect) }
         return NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+    }
+
+    // MARK: - 浮动工具栏（ticket 20）
+
+    /// 画浮动工具栏。
+    ///
+    /// 按钮位置一律走 `OverlayToolbar.hitFrame` —— **绘制与命中用同一个来源**。
+    /// 各画各的必然偏出去几个点，而那种偏差的表现是"按钮看着在这儿、点它没反应"，
+    /// 极难联想到是布局算错了。
+    private func drawToolbar(_ globalToolbar: CGRect) {
+        let box = globalToLocal(globalToolbar)
+
+        NSColor.black.withAlphaComponent(0.72).setFill()
+        Self.roundedPath(box, radius: 10).fill()
+
+        let outline = Self.roundedPath(box.insetBy(dx: 0.5, dy: 0.5), radius: 10)
+        outline.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.10).setStroke()
+        outline.stroke()
+
+        for button in OverlayToolbar.Button.allCases {
+            let local = globalToLocal(OverlayToolbar.hitFrame(of: button, in: globalToolbar))
+            drawToolbarIcon(button, in: local)
+        }
+    }
+
+    private func drawToolbarIcon(_ button: OverlayToolbar.Button, in rect: CGRect) {
+        let (symbol, tint) = Self.appearance(of: button)
+
+        // ⚠️ 模板图直接 `draw(in:)` **不会**用"当前颜色"着色 —— 必须把颜色放进配置里。
+        // 否则三个图标全是黑的，在深色底上等于没画（而且不报错，只会让人以为图标名写错了）。
+        let configuration = NSImage.SymbolConfiguration(paletteColors: [tint])
+            .applying(NSImage.SymbolConfiguration(pointSize: 15, weight: .medium))
+        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) else { return }
+
+        let size = image.size
+        image.draw(in: CGRect(x: rect.midX - size.width / 2,
+                              y: rect.midY - size.height / 2,
+                              width: size.width,
+                              height: size.height))
+    }
+
+    private static func appearance(of button: OverlayToolbar.Button) -> (symbol: String, tint: NSColor) {
+        switch button {
+        case .edit:
+            ("square.and.pencil", .white)
+        case .cancel:
+            ("xmark", .white)
+        case .confirm:
+            ("checkmark", NSColor(red: 0.24, green: 0.82, blue: 0.42, alpha: 1))
+        }
     }
 
     private func drawReadout(in localSelection: CGRect, lines: [(text: String, color: NSColor)]) {
