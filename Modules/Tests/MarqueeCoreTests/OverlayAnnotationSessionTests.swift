@@ -535,6 +535,40 @@ struct OverlayAnnotationSessionTests {
         #expect(!subject.usesRedaction)
     }
 
+    // MARK: - 按下的归属（ticket 25 的回归）
+
+    @Test("**没有画布**时，按下绝不能归「改已有标注」—— 否则拉不出新选区")
+    func pressIsNeverForAnnotationEditingWithoutCanvas() {
+        // ⚠️ 回归测试。上一版的判据只看 `isSelecting`（＝"没选任何工具"），
+        // 而**没选工具正是默认状态** —— 于是每一次按下都被"改已有标注"接走：
+        // `dragMode` 被占成"画一笔"，可草稿根本没开始。
+        // 现象是**拖着鼠标，选区和标注什么也不出现** —— 与"功能没做"长得一模一样。
+        var subject = session()
+        subject.clearTool()
+
+        #expect(subject.isSelecting, "前提：没选工具时确实处于「改已有标注」模式")
+        #expect(!subject.takesPressForAnnotationEditing(local: nil),
+                "没有画布时，按下的唯一含义是「拉一个新选区」")
+    }
+
+    @Test("按下归属：命中标注才归「改已有标注」，空白与「选了工具」都不归")
+    func pressOwnership() {
+        var subject = session()
+        subject.clearTool()
+        #expect(!subject.takesPressForAnnotationEditing(local: CGPoint(x: 10, y: 10)),
+                "画布上还什么都没有")
+
+        _ = draw(&subject, .rectangle, from: CGPoint(x: 20, y: 20), to: CGPoint(x: 80, y: 80))
+        subject.clearTool()
+
+        #expect(subject.takesPressForAnnotationEditing(local: CGPoint(x: 50, y: 50)), "按在框里")
+        #expect(!subject.takesPressForAnnotationEditing(local: CGPoint(x: 500, y: 500)), "按在空白")
+
+        subject.toggle(tool: .rectangle)
+        #expect(!subject.takesPressForAnnotationEditing(local: CGPoint(x: 50, y: 50)),
+                "选了工具时，按在标注上是要**画**，不是要拖它")
+    }
+
     // MARK: - 表情贴纸（ticket 24）
 
     @Test("表情落点：点一下就有一个，且产出的就是文字标注（复用现成路径）")

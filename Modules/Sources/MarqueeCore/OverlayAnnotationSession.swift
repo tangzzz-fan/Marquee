@@ -191,6 +191,27 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
 
     public mutating func clearSelection() { selection = [] }
 
+    /// 这一按要不要交给「改已有标注」处理（隐式选择，ticket 24）。
+    ///
+    /// - Parameter local: 落在**标注坐标系**里的点；`nil` = 现在**没有画布**（还没落点）。
+    ///
+    /// ⚠️ **`local == nil` 必须返回 `false`** —— 这是回归测试钉住的一条（ticket 25）。
+    ///
+    /// 上一版把判据写成"只看 `isSelecting`（＝没选任何工具）"，而**没选工具是默认状态** ——
+    /// 于是每一次按下都被这里接走：`dragMode` 被占成"画一笔"，可草稿根本没开始。
+    /// 表现是**拖着鼠标，选区和标注什么也不出现**，而它坏掉的样子与"功能没做"一模一样。
+    ///
+    /// 判据放在会话里（而不是散在控制层的 `if` 里），就是为了让这条能被单测钉住。
+    public func takesPressForAnnotationEditing(local: CGPoint?) -> Bool {
+        guard isSelecting, let local else { return false }
+        // 与 `beginResize` 用同一个控制点判据：能缩放的，按下也算"改已有标注"
+        if let target = selectedAnnotations.first, selectedAnnotations.count == 1,
+           handle(at: local, on: target.frame.standardized) != nil {
+            return true
+        }
+        return annotation(at: local) != nil
+    }
+
     /// 按下：点在某个标注上就开始拖动它（顺带把它选中）。
     ///
     /// - Returns: 是否开始了拖动。

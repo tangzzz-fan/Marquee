@@ -124,6 +124,48 @@ public final class SelectionOverlayController {
     /// 表情面板里当前选中的那一枚（下标）。
     private var selectedEmojiIndex = 0
 
+    // MARK: - 拖拽性能探针（现场开关）
+
+    /// `defaults write dev.tango.Marquee overlay.traceFrames -bool YES`
+    ///
+    /// "有点卡"这种反馈**没法靠猜定位**：可能是覆盖层重绘、可能是窗口枚举、
+    /// 也可能是玻璃材质的实时采样。所以先给一个能出数字的口子 ——
+    /// 拖一次，日志里就有帧数、平均帧间隔与最大间隔。
+    private static let tracesFrames = UserDefaults.standard.bool(forKey: "overlay.traceFrames")
+
+    private var frameCount = 0
+    private var frameStartedAt: CFTimeInterval = 0
+    private var frameLastAt: CFTimeInterval = 0
+    private var frameMaxGap: CFTimeInterval = 0
+    private var isTracingFrames = false
+
+    private func beginFrameTrace() {
+        guard Self.tracesFrames else { return }
+        isTracingFrames = true
+        frameCount = 0
+        frameMaxGap = 0
+        frameStartedAt = CACurrentMediaTime()
+        frameLastAt = frameStartedAt
+    }
+
+    private func noteFrame() {
+        guard isTracingFrames else { return }
+        let now = CACurrentMediaTime()
+        frameCount += 1
+        frameMaxGap = max(frameMaxGap, now - frameLastAt)
+        frameLastAt = now
+    }
+
+    private func endFrameTrace(_ label: String) {
+        guard isTracingFrames else { return }
+        isTracingFrames = false
+        let total = CACurrentMediaTime() - frameStartedAt
+        let average = frameCount > 0 ? total / Double(frameCount) * 1000 : 0
+        logger.info("""
+        拖拽性能[\(label, privacy: .public)]：\(self.frameCount, privacy: .public) 帧 /         \(total * 1000, privacy: .public) ms，平均 \(average, privacy: .public) ms/帧，        最大间隔 \(self.frameMaxGap * 1000, privacy: .public) ms
+        """)
+    }
+
     // 选区几何编辑（ticket 19）
     /// 鼠标正按着的那一次拖拽**是哪一种**。
     ///
@@ -1280,10 +1322,6 @@ public final class SelectionOverlayController {
     /// 选择工具要拿到点去命中测试；此时若 `annotationRect()` 为 nil，
     /// 说明状态本身就不对（选中工具却还没有选区），当作原点处理即可 ——
     /// 返回 nil 会把调用方逼成"静默什么都不做"，那种失败没人查得出来。
-    private func localAnnotationPoint(_ globalPoint: CGPoint) -> CGPoint {
-        annotationPoint(globalPoint) ?? .zero
-    }
-
     /// 把鼠标位置（Cocoa 全局点）换成标注坐标系里的点。
     private func annotationPoint(_ globalPoint: CGPoint) -> CGPoint? {
         guard let rect = annotationRect() else { return nil }
@@ -1292,6 +1330,8 @@ public final class SelectionOverlayController {
 
     private func refresh() {
         warnIfDragStateLeaked()
+        // 只在"按下→松开"之间记：这样数字对应的是**拖拽手感**，而不是整场会话。
+        noteFrame()
         // 打码底图要在**拼 presentation 之前**算好：落点后的提示行要看它
         // （拿不到底图时得说"预览不可用，但标记仍会写进成品图"）。
         // 放在后面的话，提示行读到的是上一帧的值 —— 表现是"按钮点了，提示慢一拍"。
@@ -1523,6 +1563,7 @@ public final class SelectionOverlayController {
 extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     func overlayView(_ view: SelectionOverlayView, beganDragAt globalPoint: CGPoint) {
+        beginFrameTrace()
         guard !isFinishing else { return }
 
         // 正在输入文字时，这一下点击**只用来结束输入** —— 与编辑器的做法一致。
@@ -1551,31 +1592,39 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             return
         }
 
-        // 选中工具时，拖拽 = **画一笔标注**，而不是重画选区。
-        // （视图不做这个判断：它只负责把"点在工具栏上"和"点在别处"分开，
-        //   工具语义属于控制层 —— 视图那边多一份"什么时候算画标注"迟早跟这里对不上。）
-        // 「选择」工具：拖动 = 挪已有的标注，不是画新东西，也不改选区几何。
-        if annotationSession.isSelecting, !hasScrollSession {
+        // 没选工具时，按在**已有标注上** = 选中并拖动它（隐式选择，ticket 24）。
+        //
+        // ⚠️ 判据是「**有画布 且 命中了东西**」，不是「没选工具」——
+        // 只写后者的话，默认状态下的每一次按下都会被这里接走，
+        // `dragMode` 被占成"画一笔"而草稿根本没开始 ——
+        // 现象是**拖着鼠标，选区什么也不出现**（ticket 25 的回归，正是这么坏的）。
+        //
+        // `annotationPoint` 返回 `nil` 就等于"还没有画布"（它还负责落点判定），
+        // 所以这两道闸写在同一个 `if` 里；判据本身在会话里，能被单测钉住。
+        if !hasScrollSession, let pressPoint = annotationPoint(globalPoint),
+           annotationSession.takesPressForAnnotationEditing(local: pressPoint) {
             lastDragPoint = globalPoint
-            let point = localAnnotationPoint(globalPoint)
-            // 三种按下，**顺序不能换**（与 ticket 19 的选区同一条原则：最"尖"的先判）：
+            // 两种按下，**顺序不能换**（与 ticket 19 的选区同一条原则：最"尖"的先判）：
             //   ① 控制点   → 缩放
             //   ② 标注身上 → 移动
-            //   ③ 空白     → 清空选择
             // ①② 调过来的话，用户想拖角改大小、结果整个标注被挪走 ——
             // 而两者都是"图形跟着鼠标动"，看起来都像生效了。
-            if annotationSession.beginResize(at: point) {
+            if annotationSession.beginResize(at: pressPoint) {
                 dragMode = .annotationResize       // 复用同一条"按下→拖→松"的通道
             } else {
+                annotationSession.beginMove(at: pressPoint)
                 dragMode = .stroke
-                if !annotationSession.beginMove(at: point) {
-                    // 点在空白处：清掉选择。与几乎所有工具的直觉一致 ——
-                    // 不清的话，用户"点一下别的地方"之后那个框还亮着，会以为没点中。
-                    annotationSession.select(at: point)
-                }
             }
             refresh()
             return
+        }
+
+        // 没命中任何标注：把之前选中的清掉（点一下别处那个框还亮着，会让人以为没点中），
+        // **然后继续往下**走到选区几何那条路 —— 这一按的真实意图往往是
+        // "挪一下整框"或"重画一个选区"，不该被"点在了空白处"吞掉。
+        if annotationSession.isSelecting, !annotationSession.selection.isEmpty {
+            annotationSession.clearSelection()
+            refresh()
         }
 
         if annotationSession.isDrawing, !hasScrollSession {
@@ -1674,6 +1723,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     }
 
     func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint, optionDown: Bool) {
+        endFrameTrace("选区几何")   // L10N-EXEMPT: 日志标签，不是给用户看的文案
         guard !isFinishing else { return }
 
         // 先把这次拖拽的"种类"**取走并立刻清空**，再分派。

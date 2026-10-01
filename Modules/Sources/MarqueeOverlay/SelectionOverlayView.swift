@@ -285,12 +285,24 @@ final class SelectionOverlayView: NSView {
     private var paletteChrome: NSView?
     private var paletteForeground: ChromeForegroundView?
 
+    /// 上一次同步过去的工具条 / 弹层内容（含位置）。
+    ///
+    /// ⚠️ 有它才有"只在**真的变了**的时候才让子视图重画"这条：
+    /// `presentation` 的 `didSet` 里有一条快路径 —— "只有放大镜在动"时只重画光标周围一小块。
+    /// 若在这里无条件 `needsDisplay = true`，那条快路径会被抵消：
+    /// **鼠标每动一下都要把整条工具条重画一遍**（15 个图标）。那是可感的卡顿。
+    private var syncedToolbar: OverlayToolbarPresentation?
+    private var syncedPalette: OverlayPalettePresentation?
+
     /// 把工具条与弹层的子视图摆到当前位置。
     ///
     /// **不在 `draw` 里懒创建**：绘制过程中改视图树会让本次绘制作废，
     /// 表现是它第一次出现时闪一下。
     private func syncToolbarChrome() {
         guard let toolbar = presentation.toolbar else {
+            // 收起时把这些标记清掉，下次出现才会重新同步一遍
+            syncedToolbar = nil
+            syncedPalette = nil
             toolbarChrome?.isHidden = true
             toolbarForeground?.isHidden = true
             paletteChrome?.isHidden = true
@@ -298,32 +310,39 @@ final class SelectionOverlayView: NSView {
             return
         }
 
-        if toolbarChrome == nil {
-            let chrome = ChromeBackground.makeBackgroundView(cornerRadius: OverlayToolbar.cornerRadius)
-            chrome.isHidden = true
-            addSubview(chrome)
-            toolbarChrome = chrome
+        if syncedToolbar != toolbar {
+            if toolbarChrome == nil {
+                let chrome = ChromeBackground.makeBackgroundView(cornerRadius: OverlayToolbar.cornerRadius)
+                chrome.isHidden = true
+                addSubview(chrome)
+                toolbarChrome = chrome
 
-            let foreground = ChromeForegroundView()
-            foreground.isHidden = true
-            // 前景自己不做几何判断：矩形就是它的 bounds，内部按工具条布局画。
-            foreground.render = { [weak self] rect in self?.drawToolbarForeground(in: rect) }
-            addSubview(foreground)
-            toolbarForeground = foreground
+                let foreground = ChromeForegroundView()
+                foreground.isHidden = true
+                // 前景自己不做几何判断：矩形就是它的 bounds，内部按工具条布局画。
+                foreground.render = { [weak self] rect in self?.drawToolbarForeground(in: rect) }
+                addSubview(foreground)
+                toolbarForeground = foreground
+            }
+            let box = globalToLocal(toolbar.frame)
+            toolbarChrome?.frame = box
+            toolbarChrome?.isHidden = false
+            toolbarForeground?.frame = box
+            toolbarForeground?.isHidden = false
+            toolbarForeground?.needsDisplay = true
+            syncedToolbar = toolbar
         }
 
-        let box = globalToLocal(toolbar.frame)
-        toolbarChrome?.frame = box
-        toolbarChrome?.isHidden = false
-        toolbarForeground?.frame = box
-        toolbarForeground?.isHidden = false
-        toolbarForeground?.needsDisplay = true
-
-        guard let palette = presentation.toolbar?.palette else {
-            paletteChrome?.isHidden = true
-            paletteForeground?.isHidden = true
+        guard let palette = toolbar.palette else {
+            if syncedPalette != nil {
+                syncedPalette = nil
+                paletteChrome?.isHidden = true
+                paletteForeground?.isHidden = true
+            }
             return
         }
+
+        guard syncedPalette != palette else { return }
 
         if paletteChrome == nil {
             let chrome = ChromeBackground.makeBackgroundView(cornerRadius: OverlayToolbar.cornerRadius)
@@ -344,6 +363,7 @@ final class SelectionOverlayView: NSView {
         paletteForeground?.frame = paletteBox
         paletteForeground?.isHidden = false
         paletteForeground?.needsDisplay = true
+        syncedPalette = palette
     }
 
     /// 放大镜占的脏区（局部坐标）。色值框贴在盒子上下、文字还可能很宽，保守地多扩一圈。
@@ -844,6 +864,16 @@ final class SelectionOverlayView: NSView {
         }
     }
 
+    /// 图标缓存。
+    ///
+    /// ⚠️ 这不是"提前优化"，是**一处实打实的卡顿来源**：
+    /// `NSImage(systemSymbolName:)` + `withSymbolConfiguration` **每次调用都会新建一个图像**，
+    /// 而工具条一帧要画 15 个 —— 鼠标一动就重建 15 个图像。
+    ///
+    /// 键里带上**外观**：动态色（`controlAccentColor`）解析出来的位图随外观变，
+    /// 不区分就会在切换深浅色之后继续用旧位图（而那种错只在切完外观后才看得出来）。
+    private static var symbolCache: [String: NSImage] = [:]
+
     private func drawSymbol(_ symbol: String,
                             in rect: CGRect,
                             tint: NSColor,
@@ -851,10 +881,22 @@ final class SelectionOverlayView: NSView {
         // ⚠️ 模板图直接 `draw(in:)` **不会**用"当前颜色"着色 —— 必须把颜色放进配置里。
         // 否则图标全是黑的，在深色底上等于没画（而且不报错，只会让人以为图标名写错了）。
         let color = dimmed ? tint.withAlphaComponent(0.28) : tint
-        let configuration = NSImage.SymbolConfiguration(paletteColors: [color])
-            .applying(NSImage.SymbolConfiguration(pointSize: 14, weight: .medium))
-        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(configuration) else { return }
+        // `usingColorSpace` 而不是 `.redComponent`：后者对动态色（强调色）会**抛异常**。
+        let resolved = color.usingColorSpace(.sRGB) ?? .white
+        let key = "\(symbol)|\(dimmed)|\(effectiveAppearance.name.rawValue)|"
+            + "\(resolved.redComponent),\(resolved.greenComponent),\(resolved.blueComponent),\(resolved.alphaComponent)"
+
+        let image: NSImage
+        if let cached = Self.symbolCache[key] {
+            image = cached
+        } else {
+            let configuration = NSImage.SymbolConfiguration(paletteColors: [color])
+                .applying(NSImage.SymbolConfiguration(pointSize: 14, weight: .medium))
+            guard let made = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(configuration) else { return }
+            Self.symbolCache[key] = made
+            image = made
+        }
 
         let size = image.size
         image.draw(in: CGRect(x: rect.midX - size.width / 2,
