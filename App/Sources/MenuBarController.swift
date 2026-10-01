@@ -11,22 +11,34 @@ import MarqueeCore
 /// 与其摆一个点不动的「设置…」占位、再另开一个只能改快捷键的窗口，
 /// 不如让唯一存在的设置入口直达唯一存在的设置项。
 /// ticket 15 做完整四页偏好设置时，把这一项改回「设置…」即可。
+///
+/// ## 回调必须由 init 注入（**不要**改回可选 `var`）
+///
+/// ticket 11 漏接过 `onScrollCapture`：菜单里能看到「滚动截屏」、项也是启用的，
+/// 但点下去完全没反应 —— 可选闭包为 nil 时是**静默 no-op**，
+/// 从"用户点了没反应"到"原来是没接线"之间没有任何线索。
+/// 做成必填参数后，漏接就是编译错误。
 @MainActor
 final class MenuBarController {
 
     /// 点击「截屏」
-    var onCapture: (() -> Void)?
+    private let onCapture: () -> Void
     /// 点击「滚动截屏」
-    var onScrollCapture: (() -> Void)?
+    private let onScrollCapture: () -> Void
     /// 点击「快捷键…」
-    var onShowShortcuts: (() -> Void)?
+    private let onShowShortcuts: () -> Void
 
     private let statusItem: NSStatusItem
     private let captureItem = NSMenuItem(title: "截屏",
                                          action: #selector(triggerCapture),
                                          keyEquivalent: "a")
 
-    init() {
+    init(onCapture: @escaping () -> Void,
+         onScrollCapture: @escaping () -> Void,
+         onShowShortcuts: @escaping () -> Void) {
+        self.onCapture = onCapture
+        self.onScrollCapture = onScrollCapture
+        self.onShowShortcuts = onShowShortcuts
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let image = NSImage(systemSymbolName: "crop", accessibilityDescription: "Marquee")
         image?.isTemplate = true
@@ -99,14 +111,14 @@ final class MenuBarController {
     }
 
     @objc private func triggerCapture() {
-        onCapture?()
+        onCapture()
     }
 
     @objc private func triggerScrollCapture() {
-        onScrollCapture?()
+        onScrollCapture()
     }
 
     @objc private func showShortcuts() {
-        onShowShortcuts?()
+        onShowShortcuts()
     }
 }

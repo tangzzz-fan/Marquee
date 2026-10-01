@@ -11,10 +11,15 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let coordinator = CaptureCoordinator()
-        let menuBar = MenuBarController()
 
-        menuBar.onCapture = { [weak coordinator] in coordinator?.performCapture() }
-        menuBar.onShowShortcuts = { [weak coordinator] in coordinator?.showShortcutPreferences() }
+        // 菜单项的回调在构造时就注入（`MenuBarController` 的必填参数），
+        // 漏接一个就是编译错误 —— ticket 11 曾经漏接「滚动截屏」，
+        // 症状是菜单项看着正常、点下去静默无反应。
+        let menuBar = MenuBarController(
+            onCapture: { [weak coordinator] in coordinator?.performCapture() },
+            onScrollCapture: { [weak coordinator] in coordinator?.performScrollCapture() },
+            onShowShortcuts: { [weak coordinator] in coordinator?.showShortcutPreferences() }
+        )
         coordinator.onShortcutChanged = { [weak menuBar] combo in menuBar?.updateShortcut(combo) }
 
         self.coordinator = coordinator
