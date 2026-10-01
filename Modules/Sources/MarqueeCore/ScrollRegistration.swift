@@ -76,8 +76,11 @@ public struct ScrollRegistrationPolicy: Equatable, Sendable {
     public var minimumScrollRows: Double
     /// 至少要有多少行重叠才认这次配准
     public var minimumOverlapRows: Int
-    /// 连续多少帧判定"没动"就认为滚到底
-    public var stationaryFramesBeforeStop: Int
+    /// 连续多少帧判定"没动"就**提示**可能到底了。
+    ///
+    /// 注意这只是一个**提示**，不是终局：会话在 `atBottom` 下仍然继续抓帧，
+    /// 用户接着滚就能继续拼。名字里刻意不叫 "beforeStop" —— 它不停任何东西。
+    public var stationaryFramesBeforeBottomHint: Int
     /// 连续多少帧配准失败就停下来提示用户，而不是继续堆积错图
     public var failuresBeforeStall: Int
     /// 低于这个置信度视为不可信
@@ -85,12 +88,12 @@ public struct ScrollRegistrationPolicy: Equatable, Sendable {
 
     public init(minimumScrollRows: Double = 1.5,
                 minimumOverlapRows: Int = 48,
-                stationaryFramesBeforeStop: Int = 3,
+                stationaryFramesBeforeBottomHint: Int = 3,
                 failuresBeforeStall: Int = 3,
                 minimumConfidence: Double = 0.15) {
         self.minimumScrollRows = minimumScrollRows
         self.minimumOverlapRows = minimumOverlapRows
-        self.stationaryFramesBeforeStop = stationaryFramesBeforeStop
+        self.stationaryFramesBeforeBottomHint = stationaryFramesBeforeBottomHint
         self.failuresBeforeStall = failuresBeforeStall
         self.minimumConfidence = minimumConfidence
     }

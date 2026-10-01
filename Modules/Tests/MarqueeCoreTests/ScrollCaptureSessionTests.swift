@@ -72,25 +72,55 @@ struct ScrollCaptureSessionTests {
         #expect(second.accumulatedRows == 600)
     }
 
-    @Test("连续几帧没动 = 滚到底：停止追加并提示，而不是一直等")
-    func stopsAtBottom() async {
-        let harness = makeHarness(shifts: [.shift(0), .shift(0.2), .shift(0)])
+    @Test("**还没滚动过**时一连几帧没动，不该报「滚到底」—— 那是「还没开始」")
+    func doesNotClaimBottomBeforeAnyScroll() async {
+        let harness = makeHarness(shifts: [.shift(0), .shift(0.2), .shift(0), .shift(0), .shift(0)])
+        _ = await harness.session.begin(selection: region, displays: [TestDisplays.retina])
+
+        for _ in 0..<5 {
+            let progress = await harness.session.captureFrame()
+            #expect(progress.phase == .capturing, "还没滚过就不该进 atBottom")
+            #expect(progress.warning == nil, "还没滚过不该报警 —— 进门 1 秒就说「到底了」会让人以为坏了")
+        }
+    }
+
+    @Test("滚动之后停止不动：提示可能到底，但**不停止抓帧**（用户还能接着滚）")
+    func hintsBottomAfterScrollingWithoutStopping() async {
+        let harness = makeHarness(shifts: [.shift(300), .shift(0), .shift(0), .shift(0)])
+        _ = await harness.session.begin(selection: region, displays: [TestDisplays.retina])
+
+        let scrolled = await harness.session.captureFrame()
+        #expect(scrolled.phase == .capturing)
+        #expect(scrolled.frameCount == 2)
+
+        _ = await harness.session.captureFrame()
+        _ = await harness.session.captureFrame()
+        let hinted = await harness.session.captureFrame()
+
+        #expect(hinted.phase == .atBottom)
+        #expect(hinted.warning?.contains("滚到底") == true)
+        #expect(hinted.frameCount == 2, "静止帧不该被追加")
+        #expect(hinted.phase.isAcceptingFrames, "atBottom 只是提示，必须继续收帧")
+    }
+
+    @Test("提示「到底」之后继续滚：接着拼，不用重来")
+    func resumesAfterBottomHint() async {
+        let harness = makeHarness(shifts: [.shift(300),
+                                           .shift(0), .shift(0), .shift(0),
+                                           .shift(300)])
         _ = await harness.session.begin(selection: region, displays: [TestDisplays.retina])
         await harness.session.captureFrame()
+        await harness.session.captureFrame()
+        await harness.session.captureFrame()
+        let hinted = await harness.session.captureFrame()
+        #expect(hinted.phase == .atBottom)
 
-        var progress = await harness.session.captureFrame()
-        #expect(progress.phase == .capturing, "只静止一帧时还不该停下来")
-        #expect(progress.warning != nil)
+        let resumed = await harness.session.captureFrame()
 
-        progress = await harness.session.captureFrame()
-        #expect(progress.phase == .atBottom)
-        #expect(progress.warning?.contains("滚到底") == true)
-        #expect(progress.frameCount == 1, "静止帧不该被追加")
-
-        // 到底之后再调用，不应继续产生新状态
-        let after = await harness.session.captureFrame()
-        #expect(after.phase == .atBottom)
-        #expect(after.frameCount == 1)
+        #expect(resumed.phase == .capturing, "继续滚应当回到正常抓帧")
+        #expect(resumed.warning == nil, "继续拼之后告警要清掉")
+        #expect(resumed.canvasHeight == viewHeight + 600, "新内容要接着 300 之后拼，不能重来")
+        #expect(resumed.frameCount == 3)
     }
 
     @Test("滚动幅度过大（与前帧几乎不重叠）：连续几次后停下来提示，但不丢已拼内容")

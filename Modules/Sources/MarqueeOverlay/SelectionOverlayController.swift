@@ -290,6 +290,10 @@ public final class SelectionOverlayController {
 
     /// 按会话给定的节奏反复抓帧。**不在这里做配准或拼接**，那些都归 Core 的会话，
     /// 这里只负责"按节拍敲一下"和把进度画出来。
+    ///
+    /// 循环退出条件是 `isAcceptingFrames` —— 注意 `atBottom`（"看起来到底了"）
+    /// **仍算可接收**，所以这里不会因为误判到底就把抓帧停掉：
+    /// 停了之后用户再滚就彻底没反应，长图还会缺后半段。
     private func startScrollDriver(_ session: ScrollCaptureSession) {
         scrollDriver?.cancel()
         let interval = session.settings.frameInterval

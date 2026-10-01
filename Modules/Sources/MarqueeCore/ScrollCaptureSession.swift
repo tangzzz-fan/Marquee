@@ -44,7 +44,7 @@ public final class ScrollCaptureSession {
     public enum Phase: Equatable, Sendable {
         case idle
         case capturing
-        /// 已经滚到底：不再追加，等用户结束
+        /// 看起来滚到底了 —— **只是提示，不是终局**（见 `isAcceptingFrames`）
         case atBottom
         /// 连续配准失败 / 抓帧失败：停止追加，保留已有内容等用户决定
         case stalled(String)
@@ -53,7 +53,13 @@ public final class ScrollCaptureSession {
         case finished
         case cancelled
 
-        public var isAcceptingFrames: Bool { self == .capturing }
+        /// 还收不收新帧。
+        ///
+        /// `atBottom` **刻意也算 true**：那只是"看起来到底了"的提示 ——
+        /// 用户很可能只是停下来读一会儿，接着还要滚。
+        /// 若在这里把抓帧循环停掉，用户再往下滚就**彻底没反应**，
+        /// 而且长图会缺掉后半段（比误报更糟）。
+        public var isAcceptingFrames: Bool { self == .capturing || self == .atBottom }
     }
 
     public struct Progress: Equatable, Sendable {
@@ -135,6 +141,11 @@ public final class ScrollCaptureSession {
 
     /// 已采到的帧数（诊断与断言用）
     public var frameCount: Int { frames.count }
+
+    /// 已经真正拼进过长图内容（不只是那一帧基线）。
+    ///
+    /// 用它区分"用户还没开始滚"和"滚过之后停下来了" —— 前者不该报"到底了"。
+    public var hasAppendedContent: Bool { frames.count > 1 }
 
     // MARK: - 起步
 
@@ -242,9 +253,20 @@ public final class ScrollCaptureSession {
             stationaryCount += 1
             progress.frameCount = frames.count
             progress.canvasHeight = stitcher.totalHeight
-            if stationaryCount >= settings.policy.stationaryFramesBeforeStop {
+
+            // 「滚到底」的前提是**真的滚过**。
+            //
+            // 一进长截图用户还没开始滚，帧帧都一样 —— 那是"还没开始"，不是"到底了"。
+            // 不区分这两者的话，进门约 1 秒（3 帧 × 0.35 s）就会误报"已经滚到底"。
+            // 用户实测踩到过，且那个提示会让人以为功能坏了。
+            guard hasAppendedContent else {
+                progress.warning = nil
+                return progress
+            }
+
+            if stationaryCount >= settings.policy.stationaryFramesBeforeBottomHint {
                 progress.phase = .atBottom
-                progress.warning = "已经滚到底了，按 ⏎ 结束"
+                progress.warning = "看起来已经滚到底了 · 还可以继续滚，或按 ⏎ 结束"
             } else {
                 progress.warning = "没检测到滚动…继续往下滚"
             }

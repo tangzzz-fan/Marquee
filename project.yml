@@ -37,7 +37,13 @@ schemes:
       targets:
         Marquee: all
     run:
-      config: Debug
+      # Run 走 **Release**：截图工具的性能预算（落点→剪贴板 ≤150 ms、选区拖拽 120fps、
+      # 编辑器重绘 ≤4 ms）只有在优化构建下才有意义 —— Debug 的数字不具参考性，
+      # 而且打开面板、抓帧配准这些路径在 Debug 下会明显偏慢。
+      #
+      # 代价：调试体验下降（Release 下断点与变量查看会被优化打乱）。
+      # 需要单步排查时把这里临时改回 Debug，或直接切 scheme 的 Run 配置。
+      config: Release
     test:
       config: Debug
     profile:
