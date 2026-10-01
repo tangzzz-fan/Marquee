@@ -25,6 +25,8 @@
 | 快捷键可配置 | **从 ticket 02 起就是可配置的**（用户明确要求"启动后能换键"）。`UserDefaults` 键 `shortcut.fullScreenCapture`，**默认 `⌃Q`**（2026-09-30 由用户从 ⌃⌘A 改过来 —— ⌃⌘A 被微信独占占用）；入口＝菜单栏「快捷键…」 |
 | 截屏入口 | **ticket 03 起＝选区覆盖层**。拖拽＝区域（松开后停住，方向键微调，`⏎` 提交）；单击或 `⏎` 高亮窗口＝**先停住**，再 `⏎` 才截这一扇窗（带阴影；`⌥` 无阴影）；叠层画面用拖选区。无目标时 `⏎`/双击＝整屏、`Esc`＝取消。**不另设"直接全屏"菜单项** |
 | 滚动截屏入口 | **ticket 11 起＝菜单栏「滚动截屏」**（菜单 6 项，已到 PRD 上限，再加要先合并）。进入后拖区域或点窗口＝**立刻开始抓帧**（不需要"停住再确认"）；`⏎`（无区域）＝指针所在整屏开滚；抓帧中 `⏎` 结束、`⌘S` 结束并落盘、`Esc` 取消。抓帧期间面板 `ignoresMouseEvents = true` 让滚轮穿透（否则用户滚不动）。**已知限制：面板失去 key 焦点后 `⏎`/`Esc` 会失效** |
+| 滚动到底的判定 | **"没动" 只有在"真的滚过"之后才算"到底"**（`hasAppendedContent`）。且 `atBottom` 只是**提示**、不停抓帧（`Phase.isAcceptingFrames` 把它算作可接收）→ 用户接着滚就继续拼。阈值名 `stationaryFramesBeforeBottomHint`（不要改回 `...beforeStop`） |
+| 构建配置 | **Run 走 Release**（`project.yml` 的 `schemes.Marquee.run.config`）：性能预算只有在优化构建下才有参考价值。test/analyze 仍是 Debug。签名写在 `settings.base`，Release 同样用证书，不会退回 ad-hoc |
 | 确认之后 | 原图立刻进剪贴板（`⌘S` 才落盘）。同时打开标注编辑器。编辑器里 `Esc` 把标注栅格化后再写回剪贴板并关闭。裁切界面在 ticket 09 |
 | 测试目标结构 | `MarqueeCoreTests`（纯逻辑）+ **`MarqueeCaptureTests`**（真实 Vision 的装置自检必须打在真实实现上）+ `MarqueeTestSupport`（**测试专用**库：合成长页 / 位图读取 / MAE，不挂宿主 target）。新测试目标要同时改 `Modules/Package.swift` |
 | 签名 | **由 `project.yml` 负责**（`Apple Development` + `DEVELOPMENT_TEAM: UKXWZ3FS84`），**不是**构建脚本重签 —— Xcode Run 不执行脚本，只改脚本等于没修。ad-hoc 会让 TCC 每次都当新应用 → 权限反复索要。见 DEV-NOTES 第 1 节 |
@@ -114,6 +116,8 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 28. **`fillMask(punching:)` 的洞有多大，蒙层就少多少** —— 洞等于整屏时这个分支等于"没画"（只剩四角有蒙层）。长截图空状态就踩过：把整块屏当高亮镂空 → 用户看不出覆盖层在工作，以为"拖不了"。空状态要的是满屏蒙层 + 提示，不是高亮。
 29. **依赖"前台→后台顺序"的命中，必须在应用切换后重取清单**：`NSWorkspace.didActivateApplicationNotification` → 重拉 `SCShareableContent` + 强制重算悬停（`updateHover` 只在鼠标移动时被调用，不动鼠标就会一直停在旧高亮上）。
 30. **可选回调漏接线 = 静默 no-op，且毫无线索。** ticket 11 把 `MenuBarController.onScrollCapture` 写成可选 `var` 却忘了在 app delegate 注入 → 菜单项看着是启用的、点下去什么都不发生。**判据：用户说"点了没反应"时，第一件事是验入口通不通，再看下游渲染。** 修法是把 UI 回调做成 `init` 的必填参数（漏接即编译错误），别用可选 `var`。
+31. **"状态没变"的判定必须先验前提。** 长截图把"连续几帧没动"解读成"滚到底"，但用户**还没开始滚**时它只意味着"还没开始" → 进门 1 秒就误报到底。同类陷阱：任何"结束了/到底了/完成了"的自动判定，都要先问"有没有真的开始过"。
+32. **误判不能做成终局。** 上面那个误报原来还会**停掉抓帧循环** —— 用户再往下滚就彻底没反应，长图还缺后半段，比误报本身更糟。自动判定触发时应当降级为**提示 + 可恢复**，而不是停机。
 
 ## 文档与资产
 
