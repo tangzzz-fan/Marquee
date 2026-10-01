@@ -50,6 +50,10 @@ public final class SelectionOverlayController {
     private let postEventPermission: PostEventPermissionProbing?
     /// 放大镜取色用的整屏像素来源（ticket 10）。`nil` 时整个放大镜不出现。
     private let lensProvider: LensFrameProviding?
+
+    /// 文字识别（ticket 23）。与编辑器**共用同一个识别器实例** ——
+    /// 预热只热一份模型，两个入口各建一个的话，第二次用还得重新付那 25 秒。
+    private let textRecognition: TextRecognitionService?
     /// 复制色值用的剪贴板。`nil` 时 `⌥` 点击不复制。
     private let clipboard: ClipboardWriting?
 
@@ -93,8 +97,44 @@ public final class SelectionOverlayController {
     // 就地标注（ticket 21）
     /// 标注状态机（工具、落笔、撤销栈）。坐标在**选区局部点**里，见它的文档。
     private var annotationSession = OverlayAnnotationSession()
-    /// 鼠标正按着画一笔。用它把"画标注"的三步（按下/拖/松开）串起来。
-    private var isDrawingStroke = false
+
+    // 选区几何编辑（ticket 19）
+    /// 鼠标正按着的那一次拖拽**是哪一种**。
+    ///
+    /// 收成一个枚举而不是几个布尔量：`isDrawingStroke` / `isMovingRect` / `isResizing`
+    /// 这种写法迟早出现两个同时为真的状态，而那种 bug 的表现是
+    /// "拖着拖着变成了另一件事"，且只在特定顺序下复现。
+    private enum DragMode: Equatable {
+        case none
+        /// 重画选区
+        case select
+        /// 移动整框（尺寸不变）。带着按下时那一版矩形当基准。
+        case move(anchor: CGRect)
+        /// 拖控制点改大小。基准同样是按下时那一版矩形 ——
+        /// 每帧都以上一帧为基准的话，误差会累积，而且 `⇧` 锁比例会越锁越歪。
+        case resize(handle: SelectionGeometry.Handle, anchor: CGRect)
+        /// 画一笔标注
+        case stroke
+    }
+    private var dragMode: DragMode = .none
+    /// 拖拽中鼠标最后的位置。存它是因为"按 `⇧` 的那一刻"没有鼠标事件 ——
+    /// 不存就只能等下次移动才看到变化，而用户明明按了键却没反应会以为没生效。
+    private var lastDragPoint: CGPoint?
+    /// 吸附命中的提示线（Cocoa 全局坐标）。`nil` = 这个方向没吸上。
+    private var snapGuide: (vertical: CGFloat?, horizontal: CGFloat?) = (nil, nil)
+
+    // 文字识别（ticket 23）
+    /// 识别的一句话状态（识别中 / 结果 / 为什么没成）。挂在读数框的第三行。
+    private var ocrStatus: String?
+    private var ocrStatusTask: Task<Void, Never>?
+
+    // 打码预览（ticket 22）
+    /// 从**冻结的整屏帧**拼出来的选区底图。只有选中马赛克/模糊时才准备。
+    ///
+    /// 它是"预览用的底图"，与导出时真实采集到的那张是**同一套布局规则**
+    /// （`OverlayRedactionSource` 复用 `SelectionLayout` + `ImageCompositing`），
+    /// 所以预览里看到的打码位置与大小就是导出图里的。
+    private var redactionBackdrop: (image: CGImage, scale: CGFloat)?
 
     // 放大镜取色（ticket 10）
     /// 每块屏一份冻结的整屏像素，按需取、取到就留着（放大镜跟随光标时不再采集）
@@ -127,6 +167,7 @@ public final class SelectionOverlayController {
                 makeScrollWheelEmitter: (@MainActor () -> ScrollWheelEmitting)? = nil,
                 postEventPermission: PostEventPermissionProbing? = nil,
                 lensProvider: LensFrameProviding? = nil,
+                textRecognizer: TextRecognizing? = nil,
                 clipboard: ClipboardWriting? = nil) {
         self.regionFlow = regionFlow
         self.fullScreenFlow = fullScreenFlow
@@ -139,6 +180,7 @@ public final class SelectionOverlayController {
         self.makeScrollWheelEmitter = makeScrollWheelEmitter
         self.postEventPermission = postEventPermission
         self.lensProvider = lensProvider
+        self.textRecognition = textRecognizer.map { TextRecognitionService(recognizer: $0) }
         self.clipboard = clipboard
     }
 
@@ -240,7 +282,14 @@ public final class SelectionOverlayController {
         // 而它们是"对的坐标、错的上下文"，看着像截图工具自己在图上乱画。
         annotationSession.removeAll()
         annotationSession.clearTool()
-        isDrawingStroke = false
+        dragMode = .none
+        lastDragPoint = nil
+        snapGuide = (nil, nil)
+        redactionBackdrop = nil
+        ocrStatusTask?.cancel()
+        ocrStatusTask = nil
+        ocrStatus = nil
+        textRecognition?.reset()
         NSCursor.arrow.set()
     }
 
@@ -337,13 +386,28 @@ public final class SelectionOverlayController {
             return
         }
         // 标注分三级退，**不会一步把整次截图丢掉**：
-        //   ① 画到一半 → 丢掉这一笔
+        //   ① 拖到一半 / 画到一半 → 只结束这一次拖拽
         //   ② 选了工具   → 取消工具（回到"调整选区"）
         //   ③ 其它       → 取消整次截图
         // 少了前两级的话，用户画了五个箭头想退出画标注模式，
         // 一下 `Esc` 全部作废，而这张图可能已经很难再复现。
-        if isDrawingStroke || annotationSession.draft != nil {
-            isDrawingStroke = false
+        if case .move(let anchor) = dragMode {
+            // 移动/缩放拖到一半按 Esc = 退回按下时那一版几何（与系统截图工具一致）
+            dragMode = .none
+            snapGuide = (nil, nil)
+            session.settle(rect: anchor)
+            refresh()
+            return
+        }
+        if case .resize(_, let anchor) = dragMode {
+            dragMode = .none
+            snapGuide = (nil, nil)
+            session.settle(rect: anchor)
+            refresh()
+            return
+        }
+        if dragMode == .stroke || annotationSession.draft != nil {
+            dragMode = .none
             annotationSession.cancelStroke()
             refresh()
             return
@@ -939,17 +1003,56 @@ public final class SelectionOverlayController {
     /// 那里有单测：贴边与跨屏靠肉眼试不全。
     private func toolbarPresentationIfSettled() -> OverlayToolbarPresentation? {
         guard session.isSettled, !hasScrollSession, let rect = annotationRect() else { return nil }
+        // ⚠️ 这里的判据**只能看"会话状态"，不能看"鼠标是不是正按着"**。
+        //
+        // 我原先在这里加过一句"拖几何时收起工具栏"，判据是 `dragMode`。结果：
+        // `dragMode` 是**只有 mouseUp 才会清**的瞬时状态，而 `endedDragAt` 里
+        // "重画选区"那条分支漏了重置 —— 于是拖完选区之后 `dragMode` 永远停在 `.select`，
+        // 工具栏**再也不出现**。而它坏掉的样子和"工具栏没做"一模一样。
+        //
+        // 其实这条规则本来就没必要：工具栏贴在选区**下方 10 点**（见 `OverlayToolbar.frame`），
+        // 而控制点的命中半径是 6 点 —— 两者根本碰不到。去掉它，这一整类 bug 就不存在了。
+        //
+        // 重画选区时工具栏本来就会消失，因为那时 `session` 处于 `.dragging`、
+        // 上面的 `isSettled` 已经是 false —— 判"会话状态"就够了。
         let visibleFrame = NSScreen.screens.first { $0.frame.intersects(rect) }?.visibleFrame
             ?? NSScreen.main?.visibleFrame
         guard let visibleFrame else { return nil }
+        // 那三档尺寸按**当前工具**换意义：画图形时是线宽，画打码时是打码强度。
+        // 与编辑器同一套做法，且**不新增控件** —— 工具栏每多一格就更宽，
+        // 而它有一条"必须放得进 1024 点的屏"的硬约束。
+        let redactionSlots = annotationSession.usesRedaction
+        let sizeValues = redactionSlots
+            ? AnnotationPalette.overlayRedactionStrengths
+            : AnnotationPalette.lineWidths
+        let selectedValue = redactionSlots
+            ? annotationSession.style.effectStrength
+            : annotationSession.style.lineWidth
+
         return OverlayToolbarPresentation(
             frame: OverlayToolbar.frame(for: rect, screenFrame: visibleFrame),
             activeTool: annotationSession.tool,
             stroke: annotationSession.style.stroke,
-            lineWidth: annotationSession.style.lineWidth,
+            sizeSlotValues: sizeValues,
+            sizeSlotIndex: Self.nearestIndex(of: selectedValue, in: sizeValues),
+            sizeSlotsAreRedaction: redactionSlots,
+            isRecognizing: textRecognition?.isRunning ?? false,
             canUndo: annotationSession.canUndo,
             canRedo: annotationSession.canRedo
         )
+    }
+
+    /// 最接近的下标。
+    ///
+    /// 用"最近"而不是"相等"：`AnnotationStyle` 里的值可能来自别处（比如默认样式），
+    /// 用相等比较会一个都匹配不上，表现是"三档里没有任何一档高亮"。
+    private static func nearestIndex(of value: CGFloat, in values: [CGFloat]) -> Int {
+        var best = 0
+        for (index, candidate) in values.enumerated()
+        where abs(candidate - value) < abs(values[best] - value) {
+            best = index
+        }
+        return best
     }
 
     /// 就地标注作用在哪个矩形上（**Cocoa 全局点**）。`nil` = 现在没有可标注的画布。
@@ -966,6 +1069,21 @@ public final class SelectionOverlayController {
         }
         guard let rect = session.rect, rect.width >= 1, rect.height >= 1 else { return nil }
         return rect
+    }
+
+    /// 交叉验证"拖拽状态有没有漏收尾"。
+    ///
+    /// `dragMode` 只在鼠标按着时非空，而它的收尾集中在 `endedDragAt` 的一个 `defer` 里。
+    /// 但**总有人（包括我）会忍不住在别的分支里提前 return** —— 那样它就会一直挂着。
+    /// 这里用一个**独立的事实**去对：真的还有鼠标键按着吗？
+    /// 对不上就记一条 warning —— 它坏掉时的现象是"某个东西再也不出现"，
+    /// 与"那个东西没做"长得一模一样，没有日志根本分不清。
+    ///
+    /// 只记日志、**不自动纠正**：`pressedMouseButtons` 是向窗口服务器查的，
+    /// 万一它偶发不准，自动纠正会让工具栏在拖动中闪一下 —— 那比漏日志更难查。
+    private func warnIfDragStateLeaked() {
+        guard dragMode != .none, NSEvent.pressedMouseButtons == 0 else { return }
+        logger.warning("拖拽状态没收尾：鼠标已松开，dragMode 仍非空 —— 说明有条分支漏了 `defer` 收尾")
     }
 
     /// 标注坐标系的**原点**（Cocoa 全局点）：选区的**视觉左上角**。
@@ -985,6 +1103,11 @@ public final class SelectionOverlayController {
     }
 
     private func refresh() {
+        warnIfDragStateLeaked()
+        // 打码底图要在**拼 presentation 之前**算好：落点后的提示行要看它
+        // （拿不到底图时得说"预览不可用，但标记仍会写进成品图"）。
+        // 放在后面的话，提示行读到的是上一帧的值 —— 表现是"按钮点了，提示慢一拍"。
+        rebuildRedactionBackdropIfNeeded()
         let cocoaRect = session.rect
         var presentation: SelectionPresentation
 
@@ -1010,9 +1133,7 @@ public final class SelectionOverlayController {
                 hoverLabel: "",
                 hoverCornerRadius: 10,
                 // 落点后放大镜已收起，取色随之结束（那时 `⌥` 归 ticket 04 的"无阴影"）
-                actionHintText: annotationSession.isDrawing
-                    ? "在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具"
-                    : "选个工具就能直接标注  ·  ⌘S 保存到磁盘  ·  ⏎ 确认  ·  Esc 取消"
+                actionHintText: settledHintText()
             )
         } else if let hovered = hoveredWindow, session.phase == .awaitingDrag {
             let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: hovered.frame,
@@ -1052,9 +1173,40 @@ public final class SelectionOverlayController {
         presentation.annotationOrigin = annotationOrigin()
         presentation.annotations = annotationSession.visibleAnnotations
 
+        // 选区几何编辑（ticket 19）：控制点只在"能改几何"的时候出现 ——
+        // 选了标注工具时拖动是画标注，这时还摆着控制点会让人以为能拖角。
+        presentation.showsSelectionHandles = session.isSettled && !hasScrollSession && !annotationSession.isDrawing
+        presentation.snapGuideVertical = snapGuide.vertical
+        presentation.snapGuideHorizontal = snapGuide.horizontal
+
+        // 打码预览（ticket 22）：底图与标注一起挂 —— 它们必须同一帧推出，
+        // 否则会出现"底图换了但标注还没换"的一帧，看起来就是打码位置闪一下。
+        // （底图本身在 `refresh()` 开头就算好了，见那里的注释。）
+        presentation.redactionBackdrop = redactionBackdrop.map {
+            RedactionBackdropPresentation(image: $0.image, scale: $0.scale)
+        }
+
         for overlay in overlays {
             overlay.view.presentation = presentation
         }
+    }
+
+    /// 落点后那一行操作提示。
+    ///
+    /// 打码那一条必须**说出来**：底图来自冻结的整屏帧，拿不到时预览不画打码，
+    /// 而导出仍会应用（底图从真实采集里来）。不说的话，用户会看到"导出图里
+    /// 凭空多了一块打码"—— 那是"静默不一致"，正是这个项目最怕的一类。
+    private func settledHintText() -> String {
+        // OCR 的状态**优先于**常规提示：它是刚刚发生的事，而提示行只有那么大。
+        // 识别完会在几秒后自动让位（见 `setOCRStatus`）。
+        if let ocrStatus { return ocrStatus }
+        if annotationSession.isDrawing {
+            if annotationSession.usesRedaction, redactionBackdrop == nil {
+                return "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图"
+            }
+            return "在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具"
+        }
+        return "拖角改大小 · 框内拖动移动  ·  选个工具可直接标注  ·  ⏎ 确认  ·  Esc 取消"
     }
 
     private func updateHover(at cocoaPoint: CGPoint) {
@@ -1182,14 +1334,36 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
                 logger.info("标注工具已选中，但落笔在选区之外 —— 忽略。要重画选区请先点掉工具或按 Esc")
                 return
             }
-            isDrawingStroke = true
+            dragMode = .stroke
+            lastDragPoint = globalPoint
             annotationSession.beginStroke(at: local)
             refresh()
             return
         }
 
         pointerDownAt = globalPoint
+        lastDragPoint = globalPoint
         dragExceededSlop = false
+
+        // 已落点时的按下分三种。**顺序不能换**：
+        //   ① 控制点（最"尖"，先判它）
+        //   ② 框内 → 移动整框
+        //   ③ 框外 → 按住了拖就是重画选区（点一下不动仍是空操作，见 endedDragAt）
+        //
+        // 把 ①② 调过来的话，用户想拖右上角改大小、结果整框被挪走了 ——
+        // 而两者都是"框在跟着鼠标动"，看起来都像"生效了"，很难说清哪里不对。
+        if session.isSettled, !hasScrollSession, let rect = session.rect {
+            if let handle = SelectionGeometry.handle(at: globalPoint, in: rect) {
+                dragMode = .resize(handle: handle, anchor: rect)
+                return
+            }
+            if rect.contains(globalPoint) {
+                dragMode = .move(anchor: rect)
+                return
+            }
+        }
+
+        dragMode = .select
         if !session.isSettled {
             updateHover(at: globalPoint)
         }
@@ -1197,45 +1371,81 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     func overlayView(_ view: SelectionOverlayView, draggedTo globalPoint: CGPoint) {
         guard !isFinishing else { return }
+        lastDragPoint = globalPoint
 
-        if isDrawingStroke {
+        switch dragMode {
+        case .stroke:
             guard let local = annotationPoint(globalPoint) else { return }
             annotationSession.updateStroke(to: local)
             refresh()
-            return
-        }
 
-        guard let start = pointerDownAt else { return }
-        if !dragExceededSlop {
-            let distance = hypot(globalPoint.x - start.x, globalPoint.y - start.y)
-            guard distance >= Self.dragSlop else { return }
-            dragExceededSlop = true
-            session.beginDrag(at: start)
+        case .move(let anchor):
+            guard let delta = dragDelta(to: globalPoint) else { return }
+            let moved = anchor.offsetBy(dx: delta.x, dy: delta.y)
+            // 整框跑出屏幕就整次丢弃 —— 选区与工具栏都会跟着出屏，
+            // 那样连"再拖回来"都做不到，只能按 Esc 重来。
+            guard keepsOnScreen(moved) else { return }
+            apply(moved, edges: .all)
+
+        case .resize(let handle, let anchor):
+            guard dragDelta(to: globalPoint) != nil else { return }
+            apply(resizedRect(anchor: anchor, handle: handle, to: globalPoint),
+                  edges: handle.movingEdges)
+
+        case .select:
+            guard let start = pointerDownAt else { return }
+            if !dragExceededSlop {
+                guard hypot(globalPoint.x - start.x, globalPoint.y - start.y) >= Self.dragSlop else { return }
+                dragExceededSlop = true
+                session.beginDrag(at: start)
+            }
+            session.updateDrag(to: globalPoint)
+            // 拖拽时鼠标移动走的是 mouseDragged，不会触发 mouseMoved —— 放大镜得在这里跟
+            updateMagnifier(at: globalPoint)
+            refresh()
+
+        case .none:
+            break
         }
-        session.updateDrag(to: globalPoint)
-        // 拖拽时鼠标移动走的是 mouseDragged，不会触发 mouseMoved —— 放大镜得在这里跟
-        updateMagnifier(at: globalPoint)
-        refresh()
     }
 
     func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint, optionDown: Bool) {
         guard !isFinishing else { return }
+        // 统一的收尾：不管这次拖拽是哪一种，按下状态都得清干净。
+        //
+        // ⚠️ `dragMode` **必须在这里清**，不能只靠在每条 `case` 里各自清 ——
+        // 我漏过一次 `.select` 分支，后果是拖完选区后 `dragMode` 永远停在 `.select`，
+        // 而依赖它的东西（工具栏显示）就再也不出现。这种"漏一条分支"的写法
+        // **一定会在加第三种拖拽时重演**，所以收尾只留这一处。
+        defer {
+            pointerDownAt = nil
+            dragExceededSlop = false
+            lastDragPoint = nil
+            dragMode = .none
+        }
 
-        if isDrawingStroke {
-            isDrawingStroke = false
+        switch dragMode {
+        case .stroke:
+            dragMode = .none
             guard let local = annotationPoint(globalPoint) else { return }
             let committed = annotationSession.endStroke(at: local)
             let verdict = committed ? "已落一个" : "太短，丢弃"
             logger.info("标注收笔：\(verdict, privacy: .public)，当前共 \(self.annotationSession.annotations.count) 个")
             refresh()
             return
+
+        case .move, .resize:
+            // 松手就结束这次几何编辑，吸附提示线随之收起
+            dragMode = .none
+            snapGuide = (nil, nil)
+            refresh()
+            return
+
+        case .select, .none:
+            break
         }
 
         guard !hasScrollSession else { return }
-        defer {
-            pointerDownAt = nil
-            dragExceededSlop = false
-        }
 
         if dragExceededSlop {
             // 松手 = 选区落点停住，等方向键微调 / ⏎ 确认。立即提交会让微调键永远走不到。
@@ -1284,6 +1494,13 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     func overlayView(_ view: SelectionOverlayView, shiftChanged isDown: Bool) {
         session.setShiftDown(isDown)
+        // 拖控制点时按 `⇧` 必须**当场**变形状，不能等下一次鼠标移动 ——
+        // 用户按了键却看不到任何变化，只会以为这个键没生效（PITFALLS：谁改谁推）。
+        if case .resize(let handle, let anchor) = dragMode, let point = lastDragPoint {
+            apply(resizedRect(anchor: anchor, handle: handle, to: point),
+                  edges: handle.movingEdges)
+            return
+        }
         refresh()
     }
 
@@ -1384,8 +1601,16 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             annotationSession.style.stroke = AnnotationPalette.colors[index]
 
         case .lineWidth(let index):
-            guard AnnotationPalette.lineWidths.indices.contains(index) else { return }
-            annotationSession.style.lineWidth = AnnotationPalette.lineWidths[index]
+            // 那三档按当前工具改不同的参数（与编辑器同一套做法）：
+            // 画图形时改线宽，画打码时改打码强度。
+            if annotationSession.usesRedaction {
+                guard AnnotationPalette.overlayRedactionStrengths.indices.contains(index) else { return }
+                annotationSession.style.effectStrength = AnnotationPalette.overlayRedactionStrengths[index]
+                logger.info("工具栏：打码强度 → \(self.annotationSession.style.effectStrength, privacy: .public) 点")
+            } else {
+                guard AnnotationPalette.lineWidths.indices.contains(index) else { return }
+                annotationSession.style.lineWidth = AnnotationPalette.lineWidths[index]
+            }
 
         case .undo:
             if annotationSession.undo() {
@@ -1396,6 +1621,10 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             if annotationSession.redo() {
                 logger.info("工具栏：重做 → 现在 \(self.annotationSession.annotations.count) 个标注")
             }
+
+        case .ocr:
+            runTextRecognition()
+            return     // runTextRecognition 自己会刷新（它要先显示"正在识别…"）
 
         case .save:
             logger.info("工具栏：完成并保存到磁盘")
@@ -1422,6 +1651,173 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     private func inlineAnnotations() -> InlineAnnotations? {
         guard let rect = annotationRect(), !annotationSession.annotations.isEmpty else { return nil }
         return InlineAnnotations(annotations: annotationSession.annotations, pointSize: rect.size)
+    }
+
+    // MARK: - 选区几何编辑（ticket 19）
+
+    /// 超过 4 点才算"真的在拖"。返回累计位移；没超过返回 `nil`。
+    ///
+    /// 统一在这里判定，是因为"点击"与"拖拽"必须分开：不加这道闸，
+    /// 误点一下就会把选区挪 1 点（或者把框缩到最小），而用户完全看不出自己动了什么。
+    private func dragDelta(to point: CGPoint) -> CGPoint? {
+        guard let start = pointerDownAt else { return nil }
+        let delta = CGPoint(x: point.x - start.x, y: point.y - start.y)
+        if !dragExceededSlop {
+            guard hypot(delta.x, delta.y) >= Self.dragSlop else { return nil }
+            dragExceededSlop = true
+        }
+        return delta
+    }
+
+    /// 选区至少还压在某块屏上。
+    ///
+    /// 整框被拖出屏幕的话，选区与工具栏一起出屏 —— 那时连"再拖回来"都做不到
+    /// （鼠标够不着它了），只能按 `Esc` 重来。所以宁可这一帧不动。
+    private func keepsOnScreen(_ rect: CGRect) -> Bool {
+        NSScreen.screens.contains { $0.frame.intersects(rect) }
+    }
+
+    /// 按 `⇧` 的状态决定要不要锁比例。
+    ///
+    /// 比例取自**按下时那一版**矩形：用"当前矩形"当基准的话，每帧都会以自己为基准
+    /// 重新锁一次，比例会一路漂走（而且越拖越离谱）。
+    private func resizedRect(anchor: CGRect,
+                             handle: SelectionGeometry.Handle,
+                             to point: CGPoint) -> CGRect {
+        let aspect = session.isShiftDown && handle.isCorner
+            ? anchor.width / max(anchor.height, 1)
+            : nil
+        return SelectionGeometry.resized(anchor, handle: handle, to: point, aspect: aspect)
+    }
+
+    /// 吸附并落点。`edges` 决定哪些边参与吸附：移动整框是四条，拖控制点只有动的那一两条。
+    private func apply(_ rect: CGRect, edges: SelectionGeometry.Edge) {
+        let result = SelectionGeometry.snapped(rect, edges: edges, targets: snapTargets())
+        session.settle(rect: result.rect)
+        snapGuide = (result.verticalLine, result.horizontalLine)
+        refresh()
+    }
+
+    // MARK: - 文字识别（ticket 23）
+
+    /// 识别选区里的文字，并把结果直接写进剪贴板。
+    ///
+    /// ## 为什么是"写剪贴板 + 一行状态"，而不是一个面板
+    ///
+    /// OCR 的全部用处就是"把这段文字拿走"。覆盖层的读数框只有三行、又是 CoreGraphics
+    /// 画的，做不出可划选的文本区；为了它去引一个输入控件，代价远大于收益 ——
+    /// **剪贴板本来就是最好的容器**（⌘V 直接能用，也能再粘回任何编辑器）。
+    /// 编辑器里的结果面板保留，那里有空间。
+    ///
+    /// ## 底图从哪来
+    ///
+    /// 与打码同一处：冻结的整屏帧（`OverlayRedactionSource`）。
+    /// 于是不额外采一次屏，也就不会把覆盖层自己拍进去。
+    /// 代价是它与放大镜一样是**那一刻**的画面 —— 覆盖层期间屏幕内容不会变
+    /// （鼠标事件都被覆盖层吃了），所以对识别来说没有实际影响。
+    private func runTextRecognition() {
+        guard let recognition = textRecognition else {
+            setOCRStatus("这台机器上没有可用的文字识别（Vision 不可用）")
+            return
+        }
+        guard !recognition.isRunning else { return }
+        guard !hasScrollSession, let rect = session.rect, rect.width >= 1, rect.height >= 1 else {
+            setOCRStatus("先框出一块区域，再点识别")
+            return
+        }
+
+        let quartz = ScreenCoordinateConversion.quartzRect(fromCocoa: rect,
+                                                           primaryScreenHeight: primaryScreenHeight)
+        ensureLensFrames(for: quartz)
+        guard let source = OverlayRedactionSource.make(selection: quartz,
+                                                       displays: displayGeometries,
+                                                       frames: lensFrames.mapValues(\.image)) else {
+            // 冻结帧还没到（跨屏时会按需去取）。**说清楚**，别让用户以为功能坏了。
+            setOCRStatus("还没拿到这块区域的像素 —— 稍等一下再点一次")
+            return
+        }
+
+        // 不自动消失：识别可能很久（没预热时首次约 25 秒），
+        // 中途被清掉的话用户只会看到"点了没反应"。
+        setOCRStatus("正在识别文字…", autoClearAfter: nil)
+
+        Task { [weak self] in
+            guard let self else { return }
+            await recognition.recognize(source.image)
+            guard !self.isFinishing else { return }
+            if case .ready = recognition.state {
+                self.clipboard?.writeText(recognition.text)
+                self.setOCRStatus((recognition.message ?? "识别完成") + " · 已复制到剪贴板")
+                self.logger.info("OCR 完成，文本已写进剪贴板")
+            } else {
+                self.setOCRStatus(recognition.message ?? "识别失败")
+            }
+        }
+    }
+
+    /// 更新那一行状态。`autoClearAfter` 为 `nil` 时一直留着（识别中就该一直显示）。
+    private func setOCRStatus(_ text: String, autoClearAfter seconds: Double? = 8) {
+        ocrStatus = text
+        refresh()
+
+        ocrStatusTask?.cancel()
+        ocrStatusTask = nil
+        guard let seconds else { return }
+        ocrStatusTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled, let self else { return }
+            self.ocrStatus = nil
+            self.refresh()
+        }
+    }
+
+    /// 准备打码预览的底图。
+    ///
+    /// 只在选中马赛克/模糊时做 —— 其余工具用不到，白拼一次图没有意义。
+    /// 缺哪块屏的冻结帧就**整体放弃**（`nil`）：那时预览不画打码，
+    /// 但导出仍会应用，所以界面必须把这件事说出来（见 `actionHintText`）。
+    private func rebuildRedactionBackdropIfNeeded() {
+        guard annotationSession.usesRedaction,
+              !hasScrollSession,
+              let rect = session.rect, rect.width >= 1, rect.height >= 1 else {
+            redactionBackdrop = nil
+            return
+        }
+        let quartz = ScreenCoordinateConversion.quartzRect(fromCocoa: rect,
+                                                           primaryScreenHeight: primaryScreenHeight)
+        ensureLensFrames(for: quartz)
+        redactionBackdrop = OverlayRedactionSource.make(selection: quartz,
+                                                        displays: displayGeometries,
+                                                        frames: lensFrames.mapValues(\.image))
+    }
+
+    /// 把选区涉及的屏都催一遍冻结帧。
+    ///
+    /// 放大镜只在光标所在那屏取帧，跨屏选区会缺其他屏 —— 缺一块就打不了码。
+    /// 这里按需补齐，取到之后 `requestLensFrameIfNeeded` 会自己再推一次 `refresh`。
+    private func ensureLensFrames(for quartz: CGRect) {
+        guard let provider = lensProvider else { return }
+        for display in displayGeometries where display.frame.intersects(quartz) {
+            requestLensFrameIfNeeded(for: display, using: provider)
+        }
+    }
+
+    /// 吸附线来源：屏幕可见区 + **与当前选区相邻的那些窗口**。
+    ///
+    /// ⚠️ 不能把所有窗口都丢进来。40 扇窗 × 4 条边 = 160 条线，6 点阈值下
+    /// 屏幕上几乎每个位置都会落在某条线的阈值内 —— 表现是"到处都在吸"，
+    /// 比不吸还难对准。**只取相关的那些，线少才吸得准。**
+    private func snapTargets() -> SelectionGeometry.SnapTargets {
+        var rects = NSScreen.screens.map(\.visibleFrame)
+        if let current = session.rect {
+            let vicinity = current.insetBy(dx: -24, dy: -24)
+            for window in cachedWindows {
+                let cocoa = ScreenCoordinateConversion.cocoaRect(fromQuartz: window.frame,
+                                                                 primaryScreenHeight: primaryScreenHeight)
+                if cocoa.intersects(vicinity) { rects.append(cocoa) }
+            }
+        }
+        return SelectionGeometry.SnapTargets.edges(of: rects)
     }
 
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView) {

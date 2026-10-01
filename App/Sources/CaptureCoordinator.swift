@@ -182,6 +182,9 @@ final class CaptureCoordinator {
             // 放大镜取色（ticket 10）：用现成的采集器取一屏像素，覆盖层期间冻结着用。
             // 取不到就只是不显示放大镜，绝不影响选区与采集。
             lensProvider: CapturerLensProvider(capturer: capturer),
+            // 文字识别（ticket 23）：**与编辑器共用同一个识别器** ——
+            // 预热只热一份模型；两个入口各建一个的话，第二次用还要重新付那 25 秒。
+            textRecognizer: textRecognizer,
             clipboard: clipboard
         )
         // 尺寸每次呈现都重读：这三个数只能靠眼睛调，改完不该还要重启应用。

@@ -46,7 +46,8 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     private var redoStack: [[Annotation]] = []
 
     public init(style: AnnotationStyle = AnnotationStyle(stroke: AnnotationPalette.defaultColor,
-                                                         lineWidth: AnnotationPalette.defaultLineWidth)) {
+                                                         lineWidth: AnnotationPalette.defaultLineWidth,
+                                                         effectStrength: AnnotationPalette.defaultRedactionStrength)) {
         self.style = style
     }
 
@@ -57,6 +58,13 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     public var canRedo: Bool { !redoStack.isEmpty }
     /// 是否正处在"画标注"模式。
     public var isDrawing: Bool { tool != nil }
+
+    /// 当前工具是否需要底图像素（马赛克 / 模糊）。
+    ///
+    /// 控制层用它决定"要不要去准备打码底图"。做成会话上的一个查询，而不是让界面
+    /// 各自去判断 `tool == .mosaic || tool == .blur` —— 那种判断散开之后，
+    /// 加第三类需要底图的工具时一定会漏掉一处。
+    public var usesRedaction: Bool { tool?.needsBackdrop == true }
 
     /// 该画到屏幕上的全部标注（已提交的 + 正在画的草稿）。
     ///
@@ -97,7 +105,7 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     public mutating func updateStroke(to point: CGPoint) {
         guard var current = draft, let start = strokeStart else { return }
         switch current.kind {
-        case .rectangle, .ellipse:
+        case .rectangle, .ellipse, .mosaic, .blur:
             // 用 union 而不是自己算 min/max：反向拖拽（右下往左上）时
             // `CGRect(x:y:width:height:)` 会得到一个负尺寸的框，
             // 描边在有的路径上画不出来 —— 表现是"往回拖就什么都没有"。
@@ -113,8 +121,8 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
             }
             current.path.append(point)
             current.frame = Self.boundingBox(current.path)
-        case .text, .mosaic, .blur:
-            // 覆盖层的工具条上目前没有这三类（文字要输入框、打码要底图，见 ticket 22）
+        case .text:
+            // 覆盖层的工具条上暂时没有文字（要输入框，见 ticket 22）
             return
         }
         draft = current
@@ -183,7 +191,7 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
         // zIndex 用序号递增：后画的盖在上面，与数组顺序一致
         let zIndex = annotations.count
         switch tool {
-        case .rectangle, .ellipse:
+        case .rectangle, .ellipse, .mosaic, .blur:
             return Annotation(kind: tool.kind,
                               frame: CGRect(origin: point, size: .zero),
                               style: style,
@@ -206,7 +214,7 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
     /// 一笔是否够格成为标注。
     static func isUsable(_ annotation: Annotation) -> Bool {
         switch annotation.kind {
-        case .rectangle, .ellipse:
+        case .rectangle, .ellipse, .mosaic, .blur:
             let box = annotation.frame.standardized
             return box.width >= minimumExtent && box.height >= minimumExtent
         case .arrow:
@@ -219,7 +227,7 @@ public struct OverlayAnnotationSession: Equatable, Sendable {
                 total += distance(annotation.path[index - 1], annotation.path[index])
             }
             return total >= minimumExtent
-        case .text, .mosaic, .blur:
+        case .text:
             return true
         }
     }

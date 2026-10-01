@@ -12,7 +12,10 @@ struct OverlayAnnotationSessionTests {
 
     private func session() -> OverlayAnnotationSession {
         var session = OverlayAnnotationSession()
-        session.style = AnnotationStyle(stroke: .red, lineWidth: 4)
+        // 只改这两项。**不要整个换掉 style** —— 那样会把打码强度换回 `AnnotationStyle`
+        // 的默认值（12），而那不是工具条三档里的任何一个，于是"没有任何一档高亮"。
+        session.style.stroke = .red
+        session.style.lineWidth = 4
         return session
     }
 
@@ -264,6 +267,60 @@ struct OverlayAnnotationSessionTests {
 
         #expect(subject.annotations[0].style.stroke == .red)
         #expect(subject.annotations[1].style.stroke == AnnotationColor(red: 0, green: 0.5, blue: 1))
+    }
+
+    // MARK: - 打码（ticket 22）
+
+    @Test("马赛克与矩形同构：一笔拖出一个框")
+    func mosaicIsRectLike() {
+        var subject = session()
+
+        draw(&subject, .mosaic, from: CGPoint(x: 10, y: 10), to: CGPoint(x: 60, y: 40))
+
+        #expect(subject.annotations.count == 1)
+        #expect(subject.annotations[0].kind == .mosaic)
+        #expect(subject.annotations[0].frame == CGRect(x: 10, y: 10, width: 50, height: 30))
+    }
+
+    @Test("马赛克的反向拖拽同样成立（与矩形同一条路径）")
+    func mosaicHandlesBackwardDrag() {
+        var subject = session()
+
+        draw(&subject, .mosaic, from: CGPoint(x: 60, y: 40), to: CGPoint(x: 10, y: 10))
+
+        let frame = subject.annotations[0].frame.standardized
+        #expect(frame == CGRect(x: 10, y: 10, width: 50, height: 30))
+    }
+
+    @Test("马赛克的一笔太短也一样丢弃")
+    func mosaicTooSmallIsDiscarded() {
+        var subject = session()
+
+        let committed = draw(&subject, .blur, from: CGPoint(x: 0, y: 0), to: CGPoint(x: 2, y: 2))
+        #expect(!committed)
+        #expect(subject.annotations.isEmpty)
+    }
+
+    @Test("`usesRedaction` 只在马赛克 / 模糊时为真 —— 控制层靠它决定要不要准备底图")
+    func usesRedactionOnlyForBackdropTools() {
+        var subject = session()
+        #expect(!subject.usesRedaction, "没选工具时不需要底图")
+
+        subject.toggle(tool: .rectangle)
+        #expect(!subject.usesRedaction)
+
+        subject.toggle(tool: .mosaic)
+        #expect(subject.usesRedaction)
+
+        subject.toggle(tool: .blur)
+        #expect(subject.usesRedaction)
+    }
+
+    @Test("默认打码强度取三档的中间一个 —— 不能一进来是个数组外的值（那样没有一档高亮）")
+    func defaultRedactionStrengthIsOneOfTheSlots() {
+        let subject = OverlayAnnotationSession()
+        #expect(subject.style.effectStrength == AnnotationPalette.overlayRedactionStrengths[1])
+        #expect(subject.style.lineWidth == AnnotationPalette.lineWidths[1])
     }
 }
 

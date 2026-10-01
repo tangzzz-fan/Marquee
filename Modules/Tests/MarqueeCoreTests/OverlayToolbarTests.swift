@@ -146,23 +146,31 @@ struct OverlayToolbarTests {
     @Test("分组之间画了分隔线，且分隔线不与任何格子重叠")
     func separatorsSitBetweenGroups() {
         let layout = OverlayToolbar.layout()
+        // 不写死条数：加了功能就多一组，写死会让这条断言在无关改动上变红，
+        // 而"该有几条"本来就能从内容推出来。
+        let groups = OverlayToolbar.slots.map(\.group)
+        let expected = Set(groups).count - 1
 
-        #expect(layout.separators.count == 4, "5 组之间应当有 4 条分隔线")
+        #expect(layout.separators.count == expected,
+                "\(Set(groups).count) 个分组之间应当有 \(expected) 条分隔线")
         for separator in layout.separators {
             #expect(layout.items.allSatisfy { !$0.frame.intersects(separator) })
             #expect(separator.minX > 0 && separator.maxX < layout.size.width)
         }
     }
 
-    @Test("工具条内容与用户预期一致：4 个工具 + 色板 + 线宽 + 撤销重做 + 保存取消完成")
+    @Test("工具条内容与用户预期一致：6 个工具 + 色板 + 尺寸三档 + 识别 + 撤销重做 + 保存取消完成")
     func slotInventory() {
         #expect(OverlayToolbar.slots.count
                 == OverlayTool.allCases.count
                 + AnnotationPalette.colors.count
                 + AnnotationPalette.lineWidths.count
-                + 5)
+                + 6)
         #expect(OverlayToolbar.slots.first == .tool(.rectangle))
         #expect(OverlayToolbar.slots.last == .confirm)
+        // OCR 是**动作**不是工具：它必须在工具区之外，否则以后数工具数会把它算进去
+        #expect(OverlayToolbar.slots.contains(.ocr))
+        #expect(!OverlayTool.allCases.contains { $0.rawValue == "ocr" })
     }
 
     @Test("命中测试：点在各格中心能认出来，点在工具条内的空隙上认不出格子但仍在工具条上")
@@ -218,5 +226,24 @@ struct OverlayToolbarTests {
         // 用户看不到也点不到，而工具栏看起来只是"有点长"，不会报任何错。
         #expect(OverlayToolbar.toolbarSize.width < 1024,
                 "工具条现在 \(OverlayToolbar.toolbarSize.width) 点宽，超出这个宽度就得把参数收进弹层")
+    }
+
+    @Test("线宽档与打码强度档的数量必须一致")
+    func sizeSlotCountsMatch() {
+        // 工具条上的格数是按**线宽**那组建的，而控制层按当前工具去**打码强度**那组取下标 ——
+        // 两组长度不一样就会越界（或永远选中不到最后一档），而界面看起来只是"少了一档"。
+        #expect(AnnotationPalette.overlayRedactionStrengths.count == AnnotationPalette.lineWidths.count)
+        #expect(AnnotationPalette.overlayRedactionStrengths.count == 3)
+        // 默认档必须落在数组里，否则一进来就没有任何一档高亮
+        #expect(AnnotationPalette.overlayRedactionStrengths.contains(AnnotationPalette.defaultRedactionStrength))
+    }
+
+    @Test("需要底图的工具就是马赛克与模糊这两类")
+    func backdropTools() {
+        #expect(OverlayTool.mosaic.needsBackdrop)
+        #expect(OverlayTool.blur.needsBackdrop)
+        for tool in OverlayTool.allCases where tool != .mosaic && tool != .blur {
+            #expect(!tool.needsBackdrop)
+        }
     }
 }

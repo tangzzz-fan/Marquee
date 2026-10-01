@@ -26,6 +26,19 @@ public enum AnnotationPalette {
     /// 线宽档位（点）。两档之间要一眼看得出来 —— 2 / 4 / 8 之间是翻倍关系。
     public static let lineWidths: [CGFloat] = [2, 4, 8]
 
+    /// 覆盖层里打码强度的三档（**点**）。
+    ///
+    /// ⚠️ 与编辑器那三档**不是一回事**：编辑器里的强度单位是**原图像素**，
+    /// 而覆盖层里所有长度都是"看起来多大"的**点** —— 同一个数字在 2x 屏上差一倍。
+    /// 所以另立一组，而不是复用。
+    ///
+    /// 数值按"能不能盖住字"定：14 点的汉字要让格子约到 1/4 个字宽才认不出来，
+    /// 也就是 4 点上下（2x 屏上是 8 设备像素）。所以这三档偏小是**故意的**。
+    public static let overlayRedactionStrengths: [CGFloat] = [4, 8, 16]
+
+    /// 覆盖层里打码强度的默认档（上面那一组的中间一个）。
+    public static var defaultRedactionStrength: CGFloat { overlayRedactionStrengths[1] }
+
     /// 默认描边色。与 `AnnotationStyle.default` 保持一致。
     public static var defaultColor: AnnotationColor { .red }
 

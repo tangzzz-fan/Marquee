@@ -50,6 +50,22 @@ struct SelectionPresentation: Equatable {
     /// 就地标注（含正在画的那一笔草稿）。
     var annotations: [Annotation] = []
 
+    /// 打码（马赛克 / 模糊）预览要用的底图。
+    ///
+    /// 覆盖层不铺整屏截图，所以这两类**拿不到底图就画不出来** —— 那时预览会跳过它们，
+    /// 而导出仍然会应用（底图从真实采集里来）。这个差异必须让用户看见，
+    /// 否则"导出图里有一块打码、预览里没有"会被当成灵异事件。
+    var redactionBackdrop: RedactionBackdropPresentation?
+
+    /// 是否画选区控制点（ticket 19）。选了标注工具时为 `false` ——
+    /// 那时拖动是画标注，摆着控制点会让人以为能拖角。
+    var showsSelectionHandles: Bool = false
+
+    /// 吸附命中的提示线（**Cocoa 全局坐标**，各是一条贯穿全屏的线）。
+    /// 没有提示线的话，用户只会觉得"这里有点顿"，说不上来在吸什么。
+    var snapGuideVertical: CGFloat?
+    var snapGuideHorizontal: CGFloat?
+
     static let empty = SelectionPresentation(globalRect: nil,
                                              sizeText: "",
                                              originText: "",
@@ -67,7 +83,19 @@ struct SelectionPresentation: Equatable {
     }
 }
 
-/// 浮动工具栏要画的东西（ticket 21）。
+/// 打码预览的底图。
+struct RedactionBackdropPresentation: Equatable {
+    var image: CGImage?
+    /// 底图每 1 个标注点对应多少像素（＝屏幕倍率）。传错只会让格子大小不对，不会崩。
+    var scale: CGFloat = 1
+
+    /// `CGImage` 没有值相等，按**引用**比 —— 同一个引用就不必重画。
+    static func == (lhs: RedactionBackdropPresentation, rhs: RedactionBackdropPresentation) -> Bool {
+        lhs.image === rhs.image && lhs.scale == rhs.scale
+    }
+}
+
+/// 浮动工具栏要画的东西（ticket 21/22）。
 ///
 /// 几何**全部来自 `OverlayToolbar.layout()`** —— 视图自己不算任何一个坐标，
 /// 否则"画出来的"与"点得到的"就会各走各的。
@@ -78,8 +106,21 @@ struct OverlayToolbarPresentation: Equatable {
     var activeTool: OverlayTool?
     /// 将要用的描边色
     var stroke: AnnotationColor
-    /// 将要用的线宽
-    var lineWidth: CGFloat
+    /// 那三档尺寸**此刻代表哪一组值**：画图形时是线宽，画打码时是打码强度。
+    ///
+    /// 与编辑器同一套做法（同一排控件按上下文改不同的参数）。**不新增控件** ——
+    /// 工具栏每多一格，整条就更宽，而它有一条"必须放得进 1024 点的屏"的硬约束。
+    var sizeSlotValues: [CGFloat]
+    /// 三档里当前选中的那一个（用**下标**而不是数值：两组值的数值范围不重叠，
+    /// 拿数值比会一个都匹配不上，表现是"选中的那一档没有高亮"）。
+    var sizeSlotIndex: Int
+    /// 这三档现在是线宽还是打码强度（只影响画法：圆点 / 方块）
+    var sizeSlotsAreRedaction: Bool
+    /// 文字识别正在进行 —— 那一格换成"进行中"的样子并置灰。
+    ///
+    /// 不做这个的话，用户点了「识别文字」在界面上**看不到任何变化**
+    /// （识别本身是异步的，首次还可能很久），看起来就是"点了没反应"。
+    var isRecognizing: Bool
     var canUndo: Bool
     var canRedo: Bool
 }
@@ -155,6 +196,12 @@ final class SelectionOverlayView: NSView {
     var presentation: SelectionPresentation = .empty {
         didSet {
             guard presentation != oldValue else { return }
+            // 控制点 / 选区变了就得重算光标区，否则"看着有控制点、拖起来却是十字"
+            if presentation.showsSelectionHandles != oldValue.showsSelectionHandles
+                || presentation.globalRect != oldValue.globalRect
+                || presentation.hoverRect != oldValue.hoverRect {
+                window?.invalidateCursorRects(for: self)
+            }
             // 只有放大镜在动时只重画它那一小块。
             //
             // 放大镜跟着光标走，鼠标一动就要重画；整屏重绘在 5K 屏上是实打实的开销，
@@ -276,6 +323,28 @@ final class SelectionOverlayView: NSView {
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .crosshair)
+        // 控制点上换成对应的缩放光标（ticket 19）。这是"这里能拖"的唯一提示 ——
+        // 没有它，用户得先试一下才知道能不能拖角。
+        guard presentation.showsSelectionHandles,
+              let global = presentation.globalRect ?? presentation.hoverRect else { return }
+        let local = globalToLocal(global)
+        for handle in SelectionGeometry.Handle.allCases {
+            addCursorRect(SelectionGeometry.handleFrame(handle, on: local),
+                          cursor: Self.cursor(for: handle))
+        }
+    }
+
+    private static func cursor(for handle: SelectionGeometry.Handle) -> NSCursor {
+        switch handle {
+        case .top: .frameResize(position: .top, directions: .all)
+        case .bottom: .frameResize(position: .bottom, directions: .all)
+        case .left: .frameResize(position: .left, directions: .all)
+        case .right: .frameResize(position: .right, directions: .all)
+        case .topLeft: .frameResize(position: .topLeft, directions: .all)
+        case .topRight: .frameResize(position: .topRight, directions: .all)
+        case .bottomLeft: .frameResize(position: .bottomLeft, directions: .all)
+        case .bottomRight: .frameResize(position: .bottomRight, directions: .all)
+        }
     }
 
     // MARK: - 绘制
@@ -301,7 +370,11 @@ final class SelectionOverlayView: NSView {
                    lineWidth: presentation.isScrollCapturing ? 2 : 1)
             // 标注画在镂空**之后**：镂空是挖洞，标注要落在洞里那层图上
             drawAnnotations(clippingTo: localSelection)
+            drawSnapGuides()
             drawReadout(in: localSelection, lines: readoutLines())
+            if presentation.showsSelectionHandles {
+                drawSelectionHandles(on: localSelection)
+            }
             // 工具栏画在读数之后（更靠上），但**仍在**这个提前 return 之前 ——
             // 选区一旦存在就走这条分支，漏掉这一句工具栏就永远不出现。
             if let toolbar = presentation.toolbar {
@@ -314,11 +387,15 @@ final class SelectionOverlayView: NSView {
             let radius = presentation.hoverCornerRadius
             fillMask(punching: localHover, cornerRadius: radius)
             stroke(localHover, cornerRadius: radius, lineWidth: 2)
-            // 窗口落点（单击某扇窗停住）同样能就地标注，所以这条分支也要画
+            // 窗口落点（单击某扇窗停住）同样能就地标注、同样能拖角，所以这两句也要
             drawAnnotations(clippingTo: localHover)
+            drawSnapGuides()
             if !presentation.hoverLabel.isEmpty {
                 drawReadout(in: localHover,
                             lines: [(presentation.hoverLabel, ReadoutStyle.normal)])
+            }
+            if presentation.showsSelectionHandles {
+                drawSelectionHandles(on: localHover)
             }
             if let toolbar = presentation.toolbar {
                 drawToolbar(toolbar)
@@ -487,9 +564,15 @@ final class SelectionOverlayView: NSView {
                             in: rect,
                             selected: state.stroke == AnnotationPalette.colors[index])
         case .lineWidth(let index):
-            drawWidthSwatch(AnnotationPalette.lineWidths[index],
-                            in: rect,
-                            selected: state.lineWidth == AnnotationPalette.lineWidths[index])
+            drawSizeSwatch(value: state.sizeSlotValues[index],
+                           isRedaction: state.sizeSlotsAreRedaction,
+                           in: rect,
+                           selected: state.sizeSlotIndex == index)
+        case .ocr:
+            drawSymbol(state.isRecognizing ? "hourglass" : "text.viewfinder",
+                       in: rect,
+                       tint: .white,
+                       dimmed: state.isRecognizing)
         case .undo:
             drawSymbol("arrow.uturn.backward", in: rect, tint: .white, dimmed: !state.canUndo)
         case .redo:
@@ -505,12 +588,16 @@ final class SelectionOverlayView: NSView {
 
     private static let confirmColor = NSColor(red: 0.24, green: 0.82, blue: 0.42, alpha: 1)
 
+    /// 图标名与编辑器**保持一致** —— 同一个功能在两处用不同图标，
+    /// 用户会以为是两个不同的东西。
     private static func symbol(for tool: OverlayTool) -> String {
         switch tool {
         case .rectangle: "rectangle"
         case .ellipse: "circle"
         case .arrow: "arrow.up.right"
         case .pen: "pencil.tip"
+        case .mosaic: "checkerboard.rectangle"
+        case .blur: "camera.filters"
         }
     }
 
@@ -532,13 +619,23 @@ final class SelectionOverlayView: NSView {
         path.stroke()
     }
 
-    /// 线宽用它本身的粗细表达 —— 写数字（2/4/8）既看不懂又占地方。
-    private func drawWidthSwatch(_ value: CGFloat, in rect: CGRect, selected: Bool) {
+    /// 尺寸档用**它本身的大小**表达 —— 写数字（2/4/8）既看不懂又占地方。
+    ///
+    /// 线宽画圆点、打码强度画方块：两组值范围不同（线宽 2–8 点、强度 4–16 点），
+    /// 光看大小容易混。形状不一样就一眼分得清"现在调的是哪一组"。
+    private func drawSizeSwatch(value: CGFloat,
+                                isRedaction: Bool,
+                                in rect: CGRect,
+                                selected: Bool) {
         if selected { highlight(rect) }
         let side = min(rect.width - 4, 4 + value * 1.4)
-        let circle = CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2, width: side, height: side)
+        let box = CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2, width: side, height: side)
         NSColor.white.setFill()
-        NSBezierPath(ovalIn: circle).fill()
+        if isRedaction {
+            NSBezierPath(rect: box).fill()
+        } else {
+            NSBezierPath(ovalIn: box).fill()
+        }
     }
 
     private func drawSymbol(_ symbol: String,
@@ -583,8 +680,57 @@ final class SelectionOverlayView: NSView {
         AnnotationDrawing.draw(presentation.annotations,
                                in: cgContext,
                                colorSpace: window?.colorSpace?.cgColorSpace
-                                   ?? CGColorSpace(name: CGColorSpace.sRGB)!)
+                                   ?? CGColorSpace(name: CGColorSpace.sRGB)!,
+                               source: presentation.redactionBackdrop?.image,
+                               // 标注坐标是点、底图是像素 —— 这个倍率不传下去，
+                               // 马赛克格子会小一半（而"格子小了点"只会被当成强度没调对）
+                               sourceScale: presentation.redactionBackdrop?.scale ?? 1)
         cgContext.restoreGState()
+    }
+
+    // MARK: - 选区控制点与吸附提示（ticket 19）
+
+    /// 画八个控制点。尺寸与命中区都取自 `SelectionGeometry` —— 各写一份的话，
+    /// 会出现"小方块画在这儿、可拖的是旁边那一点"，而这种偏差肉眼几乎看不出来。
+    private func drawSelectionHandles(on localSelection: CGRect) {
+        let side = SelectionGeometry.handleVisualSide
+        for handle in SelectionGeometry.Handle.allCases {
+            let center = handle.center(on: localSelection)
+            let box = CGRect(x: center.x - side / 2,
+                             y: center.y - side / 2,
+                             width: side,
+                             height: side)
+            let path = NSBezierPath(rect: box)
+            // 白底 + 强调色描边：白底在深色蒙层上看得见，描边在浅色内容上也看得见
+            NSColor.white.setFill()
+            path.fill()
+            path.lineWidth = 1
+            NSColor.controlAccentColor.setStroke()
+            path.stroke()
+        }
+    }
+
+    /// 画吸附提示线：一条贯穿屏幕的细线，标出"吸到了哪条边"。
+    ///
+    /// 没有它的话，用户只会觉得"拖到这里有点顿"，说不出在吸什么 ——
+    /// 而"可感知"恰恰是吸附能不能用的关键。
+    private func drawSnapGuides() {
+        let vertical = presentation.snapGuideVertical.map { globalToLocal(CGPoint(x: $0, y: 0)).x }
+        let horizontal = presentation.snapGuideHorizontal.map { globalToLocal(CGPoint(x: 0, y: $0)).y }
+        guard vertical != nil || horizontal != nil else { return }
+
+        let path = NSBezierPath()
+        if let vertical {
+            path.move(to: CGPoint(x: vertical, y: bounds.minY))
+            path.line(to: CGPoint(x: vertical, y: bounds.maxY))
+        }
+        if let horizontal {
+            path.move(to: CGPoint(x: bounds.minX, y: horizontal))
+            path.line(to: CGPoint(x: bounds.maxX, y: horizontal))
+        }
+        path.lineWidth = 1
+        NSColor.controlAccentColor.withAlphaComponent(0.9).setStroke()
+        path.stroke()
     }
 
     private func drawReadout(in localSelection: CGRect, lines: [(text: String, color: NSColor)]) {

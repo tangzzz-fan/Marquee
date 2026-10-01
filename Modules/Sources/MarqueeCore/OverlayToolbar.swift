@@ -2,13 +2,15 @@ import CoreGraphics
 
 /// 覆盖层浮动工具栏上可以选中的标注工具。
 ///
-/// 刻意**只有形状类**：文字要一个输入框、打码/模糊要底图像素（ticket 22），
-/// 两者的前提都不一样，先不摆上去 —— 摆一个按了没反应的按钮比少一个按钮糟糕得多。
+/// 顺序即工具条上的顺序。文字暂不在其中：它要一个输入框，而覆盖层的键盘统一走
+/// 控制层的应用级本地监听，有输入框在编辑时必须整条让行 —— 那是个独立的前提（ticket 22）。
 public enum OverlayTool: String, CaseIterable, Sendable, Codable {
     case rectangle
     case ellipse
     case arrow
     case pen
+    case mosaic
+    case blur
 
     public var kind: AnnotationKind {
         switch self {
@@ -16,11 +18,25 @@ public enum OverlayTool: String, CaseIterable, Sendable, Codable {
         case .ellipse: .ellipse
         case .arrow: .arrow
         case .pen: .pen
+        case .mosaic: .mosaic
+        case .blur: .blur
         }
     }
 
-    /// 是否靠"一笔拖出来"成形。四类目前都是。
+    /// 是否靠"一笔拖出来"成形。六类目前都是。
     public var isStrokeBased: Bool { true }
+
+    /// 是否需要**底图像素**才能预览。
+    ///
+    /// 覆盖层刻意不铺整屏截图，所以这两类的底图得从"冻结的整屏帧"里拼
+    /// （`OverlayRedactionSource`）。拿不到时预览会跳过它们 ——
+    /// 但**导出仍然会应用**，所以拿不到底图时必须让用户看得见这件事。
+    public var needsBackdrop: Bool {
+        switch self {
+        case .mosaic, .blur: true
+        case .rectangle, .ellipse, .arrow, .pen: false
+        }
+    }
 }
 
 /// 覆盖层上那排浮动工具栏的**内容、几何与位置计算**。
@@ -67,6 +83,11 @@ public enum OverlayToolbar {
         case tool(OverlayTool)
         case color(Int)
         case lineWidth(Int)
+        /// 识别选区里的文字（ticket 23）
+        ///
+        /// 是**动作**不是工具：它不改文档、只产出一份文本，与编辑器里的做法一致
+        /// （PRD 3.1 把 9 个工具位列满了，OCR 本来就不在其中）。
+        case ocr
         case undo
         case redo
         case save
@@ -79,8 +100,9 @@ public enum OverlayToolbar {
             case .tool: 0
             case .color: 1
             case .lineWidth: 2
-            case .undo, .redo: 3
-            case .save, .cancel, .confirm: 4
+            case .ocr: 3
+            case .undo, .redo: 4
+            case .save, .cancel, .confirm: 5
             }
         }
 
@@ -105,6 +127,7 @@ public enum OverlayToolbar {
         OverlayTool.allCases.map(Slot.tool)
         + AnnotationPalette.colors.indices.map(Slot.color)
         + AnnotationPalette.lineWidths.indices.map(Slot.lineWidth)
+        + [.ocr]
         + [.undo, .redo]
         + [.save, .cancel, .confirm]
 
