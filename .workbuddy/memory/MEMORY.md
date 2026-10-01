@@ -27,6 +27,7 @@
 | 滚动截屏入口 | **ticket 11 起＝菜单栏「滚动截屏」**（菜单 6 项，已到 PRD 上限，再加要先合并）。进入后拖区域或点窗口＝**立刻开始抓帧**（不需要"停住再确认"）；`⏎`（无区域）＝指针所在整屏开滚；抓帧中 `⏎` 结束、`⌘S` 结束并落盘、`Esc` 取消。抓帧期间面板 `ignoresMouseEvents = true` 让滚轮穿透（否则用户滚不动）。**已知限制：面板失去 key 焦点后 `⏎`/`Esc` 会失效** |
 | 滚动到底的判定 | **"没动" 只有在"真的滚过"之后才算"到底"**（`hasAppendedContent`）。且 `atBottom` 只是**提示**、不停抓帧（`Phase.isAcceptingFrames` 把它算作可接收）→ 用户接着滚就继续拼。阈值名 `stationaryFramesBeforeBottomHint`（不要改回 `...beforeStop`） |
 | 放大镜取色 | **ticket 10 起**。放大镜**只活在落点之前**（`SelectionSession.showsMagnifier`，与 PRD F4「选区时显示」+ 微信截图一致）；落点（区域或窗口）后**收起**，长截图抓帧时也收起。`⌥` 相位：**悬停/拖拽中按住＝显示 HEX/RGB，悬停时点击＝复制色值**；落点后 `⌥` 归 ticket 04 的「无阴影」。不带 `⌥` 的点击始终是"选中这扇窗"。像素来源＝覆盖层出现后**取一屏冻结**（不是每次移动去采）；"什么才算变了"在 `MagnifierTracker`（`idle` / `moved`（只挪盒子、复用放大图）/ `resample`） |
+| 放大镜尺寸 | **采样 40 点 × 3 倍 = 120 点盒子**（2026-10-01 用户实测后从 12×8=96 改过来）。`zoom` 就是**用户感知倍数**（盒子边 ÷ 采样边，与屏幕 scale 无关），且必须取整。**"能对准"靠十字线 + 中心像素框，不靠看清像素** —— 倍数一高，内容就彻底不可辨认。现场调参：`defaults write dev.tango.Marquee lens.zoom -float 4`（`lens.samplePoints` / `lens.gap` 同理，**下次唤起覆盖层即生效**，范围在 `MagnifierSettingsStore` 里夹住）。界面留 ticket 15 |
 | 构建配置 | **Run 走 Release**（`project.yml` 的 `schemes.Marquee.run.config`）：性能预算只有在优化构建下才有参考价值。test/analyze 仍是 Debug。签名写在 `settings.base`，Release 同样用证书，不会退回 ad-hoc |
 | 确认之后 | 原图立刻进剪贴板（`⌘S` 才落盘）。同时打开标注编辑器。编辑器里 `Esc` 把标注栅格化后再写回剪贴板并关闭。裁切界面在 ticket 09 |
 | 测试目标结构 | `MarqueeCoreTests`（纯逻辑）+ **`MarqueeCaptureTests`**（真实 Vision 的装置自检必须打在真实实现上）+ `MarqueeTestSupport`（**测试专用**库：合成长页 / 位图读取 / MAE，不挂宿主 target）。新测试目标要同时改 `Modules/Package.swift` |

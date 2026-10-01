@@ -290,8 +290,14 @@ final class SelectionOverlayView: NSView {
         NSColor.white.withAlphaComponent(0.55).setStroke()
         cross.stroke()
 
+        // 中心像素框：外框 + 淡淡的填充，让它在一堆格子中间仍然一眼可见。
+        //
+        // 线宽固定 1 而不是 1.5：倍数降到 3 之后这个框只有 1~1.5 点见方
+        // （`zoom / backingScale`），1.5 点的描边会把它糊成一坨圆点，反而看不出"是哪一格"。
         let markerPath = NSBezierPath(rect: marker)
-        markerPath.lineWidth = 1.5
+        markerPath.lineWidth = 1
+        NSColor.controlAccentColor.withAlphaComponent(0.25).setFill()
+        markerPath.fill()
         NSColor.controlAccentColor.setStroke()
         markerPath.stroke()
 

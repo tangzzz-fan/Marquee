@@ -104,15 +104,28 @@ public struct MagnifierLayout: Equatable, Sendable {
 
     public struct Settings: Equatable, Sendable {
         /// 取样区域边长（**屏幕点**）。放大镜里看到的就是这么大一块地方。
+        ///
+        /// 这个数决定"能不能认出内容"：太小就只能看到半个字的一角。
         public var samplePoints: Double
-        /// 放大倍数
+        /// 放大倍数 = 盒子边长 ÷ 取样边长（**与屏幕 scale 无关**，是用户感知到的倍数）。
+        ///
+        /// 取整：`boxSide = samplePoints × zoom`，而非整数的 zoom 会让
+        /// "放大后的图"与"盒子"差一点点，最近邻下就表现为格子大小不均。
         public var zoom: Double
         /// 放大镜与光标之间的间距（点）
         public var gap: Double
 
-        public init(samplePoints: Double = 12, zoom: Double = 8, gap: Double = 18) {
+        /// 默认值（2026-10-01 按用户实测反馈调过一轮）。
+        ///
+        /// 初版是 `samplePoints 12 / zoom 8`：采样区只有 12 点（不到一个字的宽度），
+        /// 2x 屏上每个源像素被画成 **4 点**见方 —— 用户看到的是"像素格子"，
+        /// 而不是"放大的内容"。放大镜此时只能用来读色，没法用来认字/看图标。
+        ///
+        /// 现在：**40 点的取样区（≈ 三四个字宽）× 3 倍 = 120 点的盒子**。
+        /// 内容可辨认，边缘仍能靠十字线与中心像素框对准。
+        public init(samplePoints: Double = 40, zoom: Double = 3, gap: Double = 22) {
             self.samplePoints = samplePoints
-            self.zoom = zoom
+            self.zoom = max(1, zoom.rounded())
             self.gap = gap
         }
 

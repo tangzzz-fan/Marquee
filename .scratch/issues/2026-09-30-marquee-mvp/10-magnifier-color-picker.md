@@ -33,6 +33,36 @@
 取色移到悬停相位。**不带 `⌥` 的点击不受影响**，仍然是"选中这扇窗"。
 读色不再"永远挂着"：不按 `⌥` 时放大镜只留一句「按住 ⌥ 取色」提示（否则没人发现这个能力）。
 
+## 尺寸（2026-10-01 按用户实测反馈调过一轮）
+
+用户反馈：「调大放大镜大小，降低放大倍数，现在直接放大到像素级了，此时用户看到的是像素了，
+不是放大后的内容。」
+
+| 参数 | 初版 | 现在 | 理由 |
+| --- | --- | --- | --- |
+| `samplePoints` | 12 | **40** | 采样区（放大镜**里**的内容范围）。12 点不到一个字的宽度，只能看到半格字的边角 |
+| `zoom` | 8 | **3** | 这就是**用户感知到的倍数**（盒子边 ÷ 采样边，与屏幕 scale 无关）。8 倍时 2x 屏上每个源像素占 4 点 → 一片格子 |
+| `gap` | 18 | 22 | 盒子变大后离光标稍远一点 |
+| 盒子边长 | 96 | **120** | = `samplePoints × zoom`，两处一起动了，不是单独放大 |
+
+关键认识：**"能对准"和"能认出内容"是两件事**。
+对准靠十字线 + 中心像素框（那一格始终被标出来），不需要靠"看清像素"；
+而把倍数拉到能看清像素，代价就是内容彻底不可辨认（用户就是在报这个）。
+
+## 调参入口（不必重新构建）
+
+这三个数只能靠眼睛调，所以先给旋钮，界面留 ticket 15：
+
+```bash
+defaults write dev.tango.Marquee lens.samplePoints -float 32
+defaults write dev.tango.Marquee lens.zoom -float 4
+defaults delete dev.tango.Marquee lens.zoom   # 单项回默认
+```
+
+**下一次唤起覆盖层即生效**（`presentOverlay` 里每次重读）。
+范围在 `MagnifierSettingsStore` 里夹住（`samplePoints` 8...200、`zoom` 1...12、`gap` 0...80）——
+一个手滑写进去的 `10000` 会让放大镜铺满整块屏，而这类错误只在用户唤起覆盖层时才暴露。
+
 ## 实现要点
 
 | 关注点 | 落点 |
@@ -41,6 +71,7 @@
 | 取样与放大 | `MarqueeCore.PixelSampling`（夹取、读像素、最近邻放大） |
 | 跟随判定 | `MarqueeCore.MagnifierTracker`（`idle` / `moved` / `resample` 三态，见下） |
 | 尺寸与摆位 | `MarqueeCore.MagnifierLayout`（点→像素换算、边缘避让） |
+| 调参覆盖 | `MarqueeCore.MagnifierSettingsStore`（`lens.samplePoints` / `lens.zoom` / `lens.gap`，带范围夹取；界面留 ticket 15） |
 | 像素来源 | `MarqueeCore.LensFrameProviding` + `CapturerLensProvider`（复用现有采集器） |
 | 绘制 | `MarqueeOverlay.SelectionOverlayView`（放大镜压在最上层，十字线 + 中心像素框 + 色值框） |
 | 复制 | `ClipboardWriting.writeText`（新增；色值是文本，不该包成 PNG） |
@@ -81,6 +112,8 @@
 - [x] 放大镜摆位：四角与边中点都落在屏幕内、不盖住取样点、且**贴着**光标（间距约为 gap）
 - [x] 像素来源失败时返回 nil 而不抛 —— 放大镜是锦上添花，不能拖垮截屏主流程
 - [x] **可见相位**：悬停与拖拽中显示、落点后收起、取消后不显示（`showsMagnifier` 有单测）
+- [x] 默认尺寸是"能认出内容"那组（40 点 × 3 倍），且 `lens.*` 覆盖带范围夹取（有单测）
+- [ ] 放大镜里的内容**可辨认**：能认出字/图标，而不是一片像素格子（人工；用 `lens.zoom` 现场调）
 - [ ] 选区过程中光标旁出现放大视图，放大区域内像素可辨认（人工）
 - [ ] **落点之前都跟随鼠标**：悬停（同一窗口内缓慢移动）与拖拽中 —— 人工，见 §3 J8
 - [ ] **落点之后放大镜消失**（区域与窗口都算）—— 人工，见 §3 J9

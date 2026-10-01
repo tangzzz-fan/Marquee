@@ -25,6 +25,7 @@ final class CaptureCoordinator {
     private let clipboard = SystemClipboard()
     private let displays = SystemDisplayLocator()
     private let outputStore = UserDefaultsOutputStore()
+    private let magnifierSettings = MagnifierSettingsStore()
 
     private lazy var selectionFlow = RegionCaptureFlow(permission: permission,
                                                        capturer: capturer,
@@ -154,6 +155,9 @@ final class CaptureCoordinator {
             lensProvider: CapturerLensProvider(capturer: capturer),
             clipboard: clipboard
         )
+        // 尺寸每次呈现都重读：这三个数只能靠眼睛调，改完不该还要重启应用。
+        // 界面在 ticket 15；现在用 `defaults write dev.tango.Marquee lens.zoom …` 调。
+        controller.lensSettings = magnifierSettings.load()
         overlay = controller
         controller.present(mode: mode)
     }

@@ -218,7 +218,7 @@ cd /Users/tango/Developments/Marquee
 
 | # | 步骤 | 预期 |
 | --- | --- | --- |
-| J1 | 触发覆盖层，把光标放到有细节的地方 | 光标旁出现放大镜，区域内像素可辨认（**不是糊的** —— 插值混色就是 bug） |
+| J1 | 触发覆盖层，把光标放到有细节的地方 | 光标旁出现放大镜，**内容可辨认** —— 能认出字/图标，不是一片像素格子（放大到"看得见像素"就是倍数太高了，用 `lens.zoom` 调） |
 | J2 | 看放大镜中心 | 有十字线与一个中心像素框，指的就是正在取样的那一格 |
 | J3 | 按住 `⌥` | 放大镜下方多出两行：`#RRGGBB` 与 `rgb(r, g, b)`；不按 `⌥` 时只有一句「按住 ⌥ 取色」 |
 | J4 | **悬停时**按住 `⌥` 点一下 | 剪贴板里是 `#RRGGBB` 文本，粘贴到代码编辑器可直接用；放大镜旁出现「已复制 …」 |
@@ -280,6 +280,12 @@ log show --last 5m --predicate 'subsystem == "dev.tango.Marquee"' --style compac
 
 # 清掉所有 Marquee 的屏幕录制授权记录（之后需重新勾选）
 tccutil reset ScreenCapture dev.tango.Marquee
+
+# 放大镜尺寸（下一次唤起覆盖层即生效，不必重启）
+defaults write dev.tango.Marquee lens.samplePoints -float 32   # 取样区边长（点），8...200
+defaults write dev.tango.Marquee lens.zoom -float 4            # 倍数，1...12
+defaults write dev.tango.Marquee lens.gap -float 22            # 与光标的间距，0...80
+defaults delete dev.tango.Marquee lens.zoom                    # 单项回默认
 ```
 
 > `-marqueeDiagnostics` 最后一行是**实际生效的构建签名身份**。权限问题先看它：
