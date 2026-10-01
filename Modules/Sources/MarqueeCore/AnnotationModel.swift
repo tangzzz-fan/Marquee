@@ -25,63 +25,146 @@ public struct AnnotationColor: Equatable, Sendable, Hashable {
     }
 }
 
-/// 描边样式。填充、字体、虚线留给后面的标注类型，本条只需要颜色和线宽。
-public struct AnnotationStyle: Equatable, Sendable {
+/// 描边样式。
+///
+/// `fontSize` 只有文字标注用（它是文字的"粗细"，即缩放文字的方式）；
+/// `lineWidth` 对文字无意义。两者放在同一个样式里，是因为工具栏是同一组控件 ——
+/// 选中文字时改的是字号，选中图形时改的是线宽。
+public struct AnnotationStyle: Equatable, Sendable, Codable {
     public var stroke: AnnotationColor
     public var lineWidth: CGFloat
+    /// 字号（原图像素）。默认按截图常见宽度给，2x 屏下大约相当于 18 点的屏幕文字。
+    public var fontSize: CGFloat
 
-    public init(stroke: AnnotationColor = .red, lineWidth: CGFloat = 4) {
+    public init(stroke: AnnotationColor = .red, lineWidth: CGFloat = 4, fontSize: CGFloat = 36) {
         self.stroke = stroke
         self.lineWidth = lineWidth
+        self.fontSize = fontSize
     }
 
     public static let `default` = AnnotationStyle()
 }
 
-public enum AnnotationKind: Equatable, Sendable {
+public enum AnnotationKind: Equatable, Sendable, Codable {
     case rectangle
     case ellipse
+    /// 箭头：`path` 恰好两个点 `[起点, 终点]`
+    case arrow
+    /// 自由画笔：`path` 是折线点序列
+    case pen
+    /// 文字：内容在 `Annotation.text`，框由 `AnnotationText.measure` 量出来
+    case text
 }
 
 /// 一个可再次编辑的标注。坐标在**原图像素**里，原点左上、y 向下。
 ///
 /// 不跟裁切后的画布走：裁切只改 `cropRect`，对象留在原图上，撤销裁切时位置不用重算。
-public struct Annotation: Equatable, Sendable, Identifiable {
+public struct Annotation: Equatable, Sendable, Identifiable, Codable {
     public var id: UUID
     public var kind: AnnotationKind
+    /// 包围盒。矩形/椭圆就是图形本身；箭头与画笔是路径的包围盒；文字是排版框。
     public var frame: CGRect
     public var style: AnnotationStyle
     public var zIndex: Int
+    /// 路径点（原图像素）。箭头 = `[起点, 终点]`；画笔 = 折线点序列；其它类型为空。
+    ///
+    /// 为什么不塞进 `AnnotationKind` 的关联值：那样 `kind` 就不再是简单的可比较标签，
+    /// 命中测试、工具栏、序列化都要跟着解包 —— 而"这个对象是什么"与"它的点在哪"
+    /// 本来就是两件事。
+    public var path: [CGPoint]
+    /// 文字内容（`kind == .text` 时有意义）。序号标记就是内容为 `"1."` `"2."` 的文字。
+    public var text: String
 
     public init(id: UUID = UUID(),
                 kind: AnnotationKind,
                 frame: CGRect,
                 style: AnnotationStyle = .default,
-                zIndex: Int) {
+                zIndex: Int,
+                path: [CGPoint] = [],
+                text: String = "") {
         self.id = id
         self.kind = kind
         self.frame = frame
         self.style = style
         self.zIndex = zIndex
+        self.path = path
+        self.text = text
     }
 
     /// 点是否落在这个对象上（含半个线宽的命中余量，细线也点得到）。
+    ///
+    /// 箭头与画笔按**到路径的距离**判，不按包围盒 —— 斜线的包围盒里有大片空白，
+    /// 用包围盒会让"点空白处却选中了箭头"。
     public func contains(_ point: CGPoint) -> Bool {
-        let slop = style.lineWidth / 2
-        let rect = frame.standardized.insetBy(dx: -slop, dy: -slop)
+        let slop = max(style.lineWidth / 2, 3)
+        let box = frame.standardized.insetBy(dx: -slop, dy: -slop)
         switch kind {
-        case .rectangle:
-            return rect.contains(point)
+        case .rectangle, .text:
+            return box.contains(point)
         case .ellipse:
-            let radiusX = rect.width / 2
-            let radiusY = rect.height / 2
+            let radiusX = box.width / 2
+            let radiusY = box.height / 2
             guard radiusX > 0, radiusY > 0 else { return false }
-            let dx = (point.x - rect.midX) / radiusX
-            let dy = (point.y - rect.midY) / radiusY
+            let dx = (point.x - box.midX) / radiusX
+            let dy = (point.y - box.midY) / radiusY
             return dx * dx + dy * dy <= 1
+        case .arrow, .pen:
+            guard path.count >= 2 else { return box.contains(point) }
+            return AnnotationGeometry.distance(from: point, toPolyline: path) <= slop
         }
     }
+
+    /// 平移：框与路径一起走。
+    ///
+    /// 分开处理会漏 —— 只挪 `frame` 的话，箭头与画笔会"框走了线还在原地"。
+    public func translated(by delta: CGPoint) -> Annotation {
+        var copy = self
+        copy.frame.origin.x += delta.x
+        copy.frame.origin.y += delta.y
+        copy.path = path.map { CGPoint(x: $0.x + delta.x, y: $0.y + delta.y) }
+        return copy
+    }
+
+    /// 按新框重新贴合（拖控制点时用）。
+    ///
+    /// - 箭头 / 画笔：路径等比缩放
+    /// - 文字：字号按高度比缩放，框由字号重新量出来（拖动它就是在缩放文字）
+    /// - 矩形 / 椭圆：只有框变
+    public mutating func applyFrame(_ newFrame: CGRect) {
+        switch kind {
+        case .rectangle, .ellipse:
+            frame = newFrame
+        case .arrow, .pen:
+            path = AnnotationGeometry.scale(points: path, from: frame, to: newFrame)
+            frame = newFrame
+        case .text:
+            let oldHeight = max(1, frame.standardized.height)
+            let ratio = newFrame.standardized.height / oldHeight
+            let clamped = min(400, max(6, style.fontSize * ratio))
+            style.fontSize = clamped
+            frame = AnnotationText.frame(text: text,
+                                         fontSize: clamped,
+                                         origin: newFrame.standardized.origin)
+        }
+    }
+
+    /// 序号标记用：内容形如 `"3."` 的文字。
+    public static func counter(number: Int,
+                               style: AnnotationStyle,
+                               zIndex: Int,
+                               origin: CGPoint) -> Annotation {
+        let text = "\(number)."
+        return Annotation(kind: .text,
+                          frame: AnnotationText.frame(text: text,
+                                                      fontSize: style.fontSize,
+                                                      origin: origin),
+                          style: style,
+                          zIndex: zIndex,
+                          text: text)
+    }
 }
+
+extension AnnotationColor: Codable {}
 
 public enum AnnotationHandle: CaseIterable, Equatable, Sendable {
     case topLeft
@@ -106,7 +189,10 @@ public enum AnnotationHit: Equatable, Sendable {
 }
 
 /// 一次截图的可编辑文档。图像本身不放在这里（`CGImage` 不好比较），只留像素尺寸。
-public struct AnnotationDocument: Equatable, Sendable {
+///
+/// `Codable`：ticket 16 的"最近截图"要把**矢量**标注存下来重编辑，
+/// 所以模型必须能序列化。有一条测试专门跑"存 → 取 → 再栅格化"的一致性。
+public struct AnnotationDocument: Equatable, Sendable, Codable {
     public var pixelSize: CGSize
     /// 可见区域，原图像素，原点左上。整图时等于 `(0, 0, width, height)`。
     public var cropRect: CGRect

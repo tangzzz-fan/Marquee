@@ -168,12 +168,11 @@ final class CaptureCoordinator {
     }
 
     /// 截图已经进了剪贴板。编辑器里 `Esc` 会把带标注的成品再写回去。
-    func presentEditor(image: CGImage) {
-        editor.present(image: image) { [weak self] png in
+    func presentEditor(image: CGImage, seed: [Annotation] = []) {
+        editor.present(image: image, seed: seed) { [weak self] png in
             self?.clipboard.writePNG(png)
             self?.logger.info("标注已复制到剪贴板：\(png.count) 字节")
-        }
-    }
+        }    }
 
     func showShortcutPreferences() {
         let controller: ShortcutPreferencesWindowController

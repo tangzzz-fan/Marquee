@@ -74,6 +74,15 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // 编辑器演示：`Marquee -marqueeDemoEditor`
+        //
+        // 与冒烟开关的区别：这个**不自动退出**，而且预置了每类标注各一个。
+        // 存在的理由：编辑器里五种标注（矩形/椭圆/箭头/画笔/文字）的渲染没法目视验收时，
+        // 用一张合成图就能把它们全摆出来看 —— **不需要屏幕录制权限**。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeDemoEditor") {
+            coordinator.presentEditor(image: EditorDemo.makeImage(), seed: EditorDemo.annotations)
+        }
+
         if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeOverlay") {
             coordinator.performCapture()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

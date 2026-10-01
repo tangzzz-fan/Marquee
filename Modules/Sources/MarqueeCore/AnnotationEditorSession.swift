@@ -11,6 +11,16 @@ public struct AnnotationEditorSession: Sendable {
     public var selection: Set<UUID>
     /// 下一笔的样式；改色、改线宽时，已选中的对象一起改。
     public var style: AnnotationStyle
+    /// 文字工具的模式：普通文字 / 序号（内容自动为 `1.` `2.` …）
+    public var textPreset: TextPreset = .plain
+    /// 下一个序号标记用的数字。可手动改起始值。
+    public var nextCounter: Int = 1
+    /// 刚落下的、还没输入内容的文字。界面据此弹出输入框。
+    public private(set) var pendingTextEditID: UUID?
+    /// 画笔的采点间隔（原图像素）。见 `pointerMoved` 的注释。
+    public static let penPointSpacing: CGFloat = 2
+    /// 短于这个长度的箭头不算数（手抖点一下不该留下一个看不见的箭头）
+    public static let minimumArrowLength: CGFloat = 6
 
     private var undoStack: [EditorCommand] = []
     private var redoStack: [EditorCommand] = []
@@ -25,6 +35,13 @@ public struct AnnotationEditorSession: Sendable {
 
     public var canUndo: Bool { !undoStack.isEmpty && gesture == nil }
     public var canRedo: Bool { !redoStack.isEmpty && gesture == nil }
+
+    /// 文字工具要不要自动递增序号
+    public enum TextPreset: Equatable, Sendable {
+        case plain
+        /// 序号：内容取 `"\(n)."`，每放一个自增（不回溯重排 —— 删掉 2 号不会让 3 号变 2 号）
+        case counter
+    }
 
     /// 文档加上尚未松手的那一笔。画布用这个画，不要直接画 `document`。
     public func visibleAnnotations() -> [Annotation] {
@@ -44,14 +61,38 @@ public struct AnnotationEditorSession: Sendable {
 
     public mutating func pointerDown(at point: CGPoint, shift: Bool, handleRadius: CGFloat) {
         switch tool {
-        case .rectangle, .ellipse:
-            let kind: AnnotationKind = tool == .rectangle ? .rectangle : .ellipse
-            let draft = Annotation(kind: kind,
+        case .rectangle, .ellipse, .arrow:
+            let kind: AnnotationKind
+            switch tool {
+            case .rectangle: kind = .rectangle
+            case .ellipse: kind = .ellipse
+            default: kind = .arrow
+            }
+            var draft = Annotation(kind: kind,
                                    frame: CGRect(origin: point, size: .zero),
                                    style: style,
                                    zIndex: nextZIndex())
+            if kind == .arrow {
+                // 箭头要先记住起点：松手时才从起点连到终点，途中也才能实时看到方向
+                draft.path = [point, point]
+            }
             gesture = .drawing(start: point, draft: draft)
             selection = []
+
+        case .pen:
+            // 画笔从第一个点就开始收：它没有"拖出框"这一步，框是事后由点序列算出来的
+            let draft = Annotation(kind: .pen,
+                                   frame: AnnotationGeometry.frame(forPath: [point],
+                                                                   lineWidth: style.lineWidth),
+                                   style: style,
+                                   zIndex: nextZIndex(),
+                                   path: [point])
+            gesture = .drawing(start: point, draft: draft)
+            selection = []
+
+        case .text:
+            placeText(at: point)
+
         case .select:
             switch document.hitTest(point, selected: selection, handleRadius: handleRadius) {
             case .handle(let id, let handle):
@@ -79,27 +120,96 @@ public struct AnnotationEditorSession: Sendable {
         }
     }
 
+    /// 落一个文字标注。
+    ///
+    /// 序号预设下内容直接就是 `"1."`、`"2."`…（不需要用户打字）；
+    /// 普通文字先落一个空框，界面弹输入框 —— 空文本也量得出宽度，
+    /// 所以刚落下的框是能看见、能点中的。
+    private mutating func placeText(at point: CGPoint) {
+        let content: String
+        var counterValue: Int?
+        switch textPreset {
+        case .plain:
+            content = ""
+        case .counter:
+            counterValue = nextCounter
+            content = "\(nextCounter)."
+        }
+
+        let annotation = Annotation(kind: .text,
+                                    frame: AnnotationText.frame(text: content,
+                                                                fontSize: style.fontSize,
+                                                                origin: point),
+                                    style: style,
+                                    zIndex: nextZIndex(),
+                                    text: content)
+        push(.add(annotation))
+        document.annotations.append(annotation)
+        selection = [annotation.id]
+        if let counterValue {
+            nextCounter = counterValue + 1
+        } else {
+            pendingTextEditID = annotation.id
+        }
+    }
+
+    public mutating func setCounterStart(_ value: Int) {
+        nextCounter = max(1, value)
+    }
+
+    /// 结束文字输入（无论提交还是取消），界面收起输入框。
+    public mutating func endTextEditing() {
+        pendingTextEditID = nil
+    }
+
+    /// 改文字内容。框按新内容重量，**左上角不动** —— 否则打字时框会一边长一边跑。
+    public mutating func setText(_ text: String, for id: UUID) {
+        guard let index = document.annotations.firstIndex(where: { $0.id == id }) else { return }
+        let before = document.annotations[index]
+        guard before.text != text else { return }
+        var after = before
+        after.text = text
+        after.frame = AnnotationText.frame(text: text,
+                                           fontSize: after.style.fontSize,
+                                           origin: before.frame.standardized.origin)
+        push(.update(before: [before], after: [after]))
+        document.annotations[index] = after
+    }
+
     public mutating func pointerMoved(to point: CGPoint) {
         switch gesture {
         case .drawing(let start, var draft):
-            draft.frame = CGRect(x: min(start.x, point.x),
-                                 y: min(start.y, point.y),
-                                 width: abs(point.x - start.x),
-                                 height: abs(point.y - start.y))
+            switch draft.kind {
+            case .rectangle, .ellipse:
+                draft.frame = CGRect(x: min(start.x, point.x),
+                                     y: min(start.y, point.y),
+                                     width: abs(point.x - start.x),
+                                     height: abs(point.y - start.y))
+            case .arrow:
+                draft.path = [start, point]
+                draft.frame = AnnotationGeometry.frame(forPath: draft.path,
+                                                       lineWidth: draft.style.lineWidth,
+                                                       headFrom: start,
+                                                       headTo: point)
+            case .pen:
+                // 采点要有间隔：不设阈值时一次拖动能收上千个点，
+                // 序列化、命中测试、重绘全跟着变慢，而画出来完全一样。
+                let last = draft.path.last ?? start
+                guard hypot(point.x - last.x, point.y - last.y) >= Self.penPointSpacing else { break }
+                draft.path.append(point)
+                draft.frame = AnnotationGeometry.frame(forPath: draft.path,
+                                                       lineWidth: draft.style.lineWidth)
+            case .text:
+                break
+            }
             gesture = .drawing(start: start, draft: draft)
         case .moving(let origin, let original, _):
-            let deltaX = point.x - origin.x
-            let deltaY = point.y - origin.y
-            let moved = original.map { annotation -> Annotation in
-                var copy = annotation
-                copy.frame.origin.x += deltaX
-                copy.frame.origin.y += deltaY
-                return copy
-            }
+            let delta = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+            let moved = original.map { $0.translated(by: delta) }
             gesture = .moving(origin: origin, original: original, current: moved)
         case .resizing(let handle, let original, _):
             var updated = original
-            updated.frame = AnnotationDocument.resized(original.frame, handle: handle, to: point)
+            updated.applyFrame(AnnotationDocument.resized(original.frame, handle: handle, to: point))
             gesture = .resizing(handle: handle, original: original, current: updated)
         case nil:
             break
@@ -109,15 +219,15 @@ public struct AnnotationEditorSession: Sendable {
     public mutating func pointerUp() {
         switch gesture {
         case .drawing(_, let draft):
-            let box = draft.frame.standardized
-            if box.width >= 2, box.height >= 2 {
-                var committed = draft
-                committed.frame = box
-                committed.zIndex = nextZIndex()
+            if let committed = committableDraft(draft) {
                 push(.add(committed))
                 document.annotations.append(committed)
                 selection = [committed.id]
-                tool = .select
+                // 画笔与文字留在原工具上：连着画几笔 / 连着放几个序号是常态。
+                // 矩形这类"画一个就完事"的回到选择工具，免得想调整时又画出一个框。
+                if committed.kind != .pen, committed.kind != .text {
+                    tool = .select
+                }
             }
         case .moving(_, _, let current):
             commitFrameChange(current)
@@ -127,6 +237,29 @@ public struct AnnotationEditorSession: Sendable {
             break
         }
         gesture = nil
+    }
+
+    /// 松手时这一笔算不算数。太短的都丢掉 —— 手抖点一下不该留下一个看不见的对象。
+    private func committableDraft(_ draft: Annotation) -> Annotation? {
+        var committed = draft
+        switch draft.kind {
+        case .rectangle, .ellipse:
+            let box = draft.frame.standardized
+            guard box.width >= 2, box.height >= 2 else { return nil }
+            committed.frame = box
+        case .arrow:
+            guard draft.path.count >= 2 else { return nil }
+            let start = draft.path[0]
+            let end = draft.path[1]
+            guard hypot(end.x - start.x, end.y - start.y) >= Self.minimumArrowLength else { return nil }
+        case .pen:
+            // 单点等于一个圆点，没有信息量；至少要有一次真正的移动
+            guard draft.path.count >= 2 else { return nil }
+        case .text:
+            break
+        }
+        committed.zIndex = nextZIndex()
+        return committed
     }
 
     public mutating func setStrokeColor(_ color: AnnotationColor) {
@@ -152,6 +285,25 @@ public struct AnnotationEditorSession: Sendable {
         let after = before.map { annotation -> Annotation in
             var copy = annotation
             copy.style.lineWidth = clamped
+            return copy
+        }
+        push(.update(before: before, after: after))
+        replace(after)
+    }
+
+    /// 改字号（选中文字时工具栏的"粗细"就是它）。框按新字号重量，左上角不动。
+    public mutating func setFontSize(_ size: CGFloat) {
+        guard gesture == nil else { return }
+        let clamped = min(400, max(6, size))
+        style.fontSize = clamped
+        let before = selectedAnnotations().filter { $0.kind == .text }
+        guard !before.isEmpty else { return }
+        let after = before.map { annotation -> Annotation in
+            var copy = annotation
+            copy.style.fontSize = clamped
+            copy.frame = AnnotationText.frame(text: copy.text,
+                                              fontSize: clamped,
+                                              origin: annotation.frame.standardized.origin)
             return copy
         }
         push(.update(before: before, after: after))
@@ -232,8 +384,11 @@ public struct AnnotationEditorSession: Sendable {
         let ids = Set(current.map(\.id))
         let before = document.annotations.filter { ids.contains($0.id) }
         let afterByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
+        // 比整个对象而不是只比 frame：拖控制点时箭头/画笔的 path 会一起变，
+        // 文字的字号也会变 —— 只看 frame 会漏掉这些（虽然它们的 frame 也在动，
+        // 但依赖"顺带也变了"是巧合，不是保证）。
         let changed = before.contains { annotation in
-            afterByID[annotation.id]?.frame != annotation.frame
+            afterByID[annotation.id] != annotation
         }
         guard changed else { return }
         push(.update(before: before, after: current))
@@ -289,4 +444,21 @@ public enum AnnotationEditorTool: Equatable, Sendable {
     case select
     case rectangle
     case ellipse
+    case arrow
+    /// 自由画笔（折线）
+    case pen
+    /// 文字；配 `TextPreset.counter` 就是序号标记（**不占独立工具位**）
+    case text
+
+    /// 这个工具画出来的标注类型。`.select` 没有对应类型。
+    public var annotationKind: AnnotationKind? {
+        switch self {
+        case .select: nil
+        case .rectangle: .rectangle
+        case .ellipse: .ellipse
+        case .arrow: .arrow
+        case .pen: .pen
+        case .text: .text
+        }
+    }
 }

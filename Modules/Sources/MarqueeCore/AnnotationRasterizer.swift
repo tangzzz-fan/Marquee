@@ -51,15 +51,61 @@ public enum AnnotationRasterizer {
         for (_, annotation) in ordered {
             context.setStrokeColor(annotation.style.stroke.cgColor(in: colorSpace))
             context.setLineWidth(annotation.style.lineWidth)
+            let color = annotation.style.stroke.cgColor(in: colorSpace)
             let box = annotation.frame.standardized
             switch annotation.kind {
             case .rectangle:
                 context.stroke(box)
             case .ellipse:
                 context.strokeEllipse(in: box)
+            case .arrow:
+                drawArrow(annotation, color: color, in: context)
+            case .pen:
+                drawPen(annotation, in: context)
+            case .text:
+                AnnotationText.draw(annotation.text,
+                                    fontSize: annotation.style.fontSize,
+                                    color: color,
+                                    at: box.origin,
+                                    in: context)
             }
         }
 
         return context.makeImage()
+    }
+
+    /// 箭头 = 线段 + 实心三角头部。
+    private static func drawArrow(_ annotation: Annotation, color: CGColor, in context: CGContext) {
+        guard annotation.path.count >= 2 else { return }
+        let start = annotation.path[0]
+        let end = annotation.path[1]
+
+        context.setLineCap(.round)
+        context.move(to: start)
+        context.addLine(to: end)
+        context.strokePath()
+
+        let head = AnnotationGeometry.arrowHead(from: start,
+                                                to: end,
+                                                lineWidth: annotation.style.lineWidth)
+        guard head.count == 3 else { return }
+        context.setFillColor(color)
+        context.move(to: head[0])
+        context.addLine(to: head[1])
+        context.addLine(to: head[2])
+        context.closePath()
+        context.fillPath()
+    }
+
+    /// 画笔 = 圆头圆角的折线。圆角不能省：默认的斜接会在急弯处戳出尖刺。
+    private static func drawPen(_ annotation: Annotation, in context: CGContext) {
+        guard annotation.path.count >= 2 else { return }
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        context.move(to: annotation.path[0])
+        for point in annotation.path.dropFirst() {
+            context.addLine(to: point)
+        }
+        context.strokePath()
     }
 }
