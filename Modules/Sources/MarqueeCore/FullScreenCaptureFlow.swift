@@ -32,7 +32,12 @@ public final class FullScreenCaptureFlow {
     }
 
     /// 走完一次全屏截图。**任何**失败都会返回携带说明的结果，不会静默什么都不做。
-    public func capture(save: CaptureSaveRequest? = nil) async -> CaptureOutcome {
+    ///
+    /// - Parameter inline: 覆盖层里就地画的标注。目前覆盖层的工具栏只在"落点之后"出现，
+    ///   所以整屏路径一般传 `nil`；留着这个参数是为了三条流程的收尾接口一致 ——
+    ///   一旦有哪条路径开始支持就地标注，不必再改签名。
+    public func capture(save: CaptureSaveRequest? = nil,
+                        inline: InlineAnnotations? = nil) async -> CaptureOutcome {
         let output = CaptureOutput(clipboard: clipboard, clock: clock)
         let startedAt = output.begin()
 
@@ -53,7 +58,7 @@ public final class FullScreenCaptureFlow {
         // ── 3. 采集 + 编码 + 写剪贴板 ───────────────────────────────
         do {
             let captured = try await capturer.captureFullScreen(display)
-            return output.finish(captured.image, startedAt: startedAt, save: save)
+            return output.finish(captured.image, startedAt: startedAt, save: save, inline: inline)
         } catch {
             return output.failure(error, grantedJustNow: grantedJustNow)
         }

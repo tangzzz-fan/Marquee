@@ -149,6 +149,25 @@ public struct Annotation: Equatable, Sendable, Identifiable, Codable {
         return copy
     }
 
+    /// 按比例整体放大 / 缩小（含线宽、字号、打码强度）。
+    ///
+    /// 覆盖层里画的标注存的是**点**，导出要的是**像素**，两者差一个屏幕倍率。
+    /// 只缩 `frame` 与 `path` 是不够的：线宽不跟着走的话，Retina 上导出的线条
+    /// 会细成屏幕上的**一半**（看着像"导出把线变细了"）。
+    public func scaled(by factor: CGFloat) -> Annotation {
+        guard factor != 1 else { return self }
+        var copy = self
+        copy.frame = CGRect(x: frame.minX * factor,
+                            y: frame.minY * factor,
+                            width: frame.width * factor,
+                            height: frame.height * factor)
+        copy.path = path.map { CGPoint(x: $0.x * factor, y: $0.y * factor) }
+        copy.style.lineWidth *= factor
+        copy.style.fontSize *= factor
+        copy.style.effectStrength *= factor
+        return copy
+    }
+
     /// 按新框重新贴合（拖控制点时用）。
     ///
     /// - 箭头 / 画笔：路径等比缩放

@@ -149,16 +149,12 @@ private struct AnnotationEditorView: View {
     @State private var editingText = ""
     @FocusState private var editingFocused: Bool
 
-    private let colors: [AnnotationColor] = [
-        .red,
-        AnnotationColor(red: 1, green: 0.58, blue: 0),
-        AnnotationColor(red: 1, green: 0.84, blue: 0.1),
-        AnnotationColor(red: 0.2, green: 0.78, blue: 0.35),
-        AnnotationColor(red: 0.05, green: 0.48, blue: 1),
-        AnnotationColor(red: 1, green: 1, blue: 1),
-        AnnotationColor(red: 0.1, green: 0.1, blue: 0.1),
-    ]
-    private let lineWidths: [CGFloat] = [2, 4, 8]
+    /// 色板与线宽档位来自 **Core 的共享定义**，与覆盖层浮动工具栏用的是同一份。
+    ///
+    /// 各写一份会分叉，而分叉的表现是"在覆盖层里挑的橙，进编辑器变成了另一个橙" ——
+    /// 没人会往"两份常量"上面想，只会觉得颜色自己变了。
+    private let colors = AnnotationPalette.colors
+    private let lineWidths = AnnotationPalette.lineWidths
     /// 字号档位。文字标注的"粗细"就是字号，和线宽共用同一排控件。
     private let fontSizes: [CGFloat] = [24, 36, 56]
     /// 打码强度档位（马赛克＝块边长、模糊＝半径）。两档之间的差别要一眼看得出来。

@@ -43,69 +43,15 @@ public enum AnnotationRasterizer {
         context.scaleBy(x: 1, y: -1)
         context.translateBy(x: -crop.minX, y: -crop.minY)
 
-        let ordered = document.annotations.enumerated().sorted { lhs, rhs in
-            if lhs.element.zIndex != rhs.element.zIndex {
-                return lhs.element.zIndex < rhs.element.zIndex
-            }
-            return lhs.offset < rhs.offset
-        }
-        for (_, annotation) in ordered {
-            context.setStrokeColor(annotation.style.stroke.cgColor(in: colorSpace))
-            context.setLineWidth(annotation.style.lineWidth)
-            let color = annotation.style.stroke.cgColor(in: colorSpace)
-            let box = annotation.frame.standardized
-            switch annotation.kind {
-            case .rectangle:
-                context.stroke(box)
-            case .ellipse:
-                context.strokeEllipse(in: box)
-            case .arrow:
-                drawArrow(annotation, color: color, in: context)
-            case .pen:
-                drawPen(annotation, in: context)
-            case .text:
-                AnnotationText.draw(annotation.text,
-                                    fontSize: annotation.style.fontSize,
-                                    color: color,
-                                    at: box.origin,
-                                    in: context)
-            case .mosaic, .blur:
-                drawRedaction(annotation, source: cropped, in: context)
-            }
-        }
+        // ③ 标注：与覆盖层**共用同一份绘制代码**（`AnnotationDrawing`）。
+        //    两边各画各的会让线宽、颜色空间、文字基线悄悄漂移，
+        //    而且只在某些图上看得出来 —— "导出跟预览不一样"是最难查的一类反馈。
+        AnnotationDrawing.draw(document.annotations,
+                               in: context,
+                               colorSpace: colorSpace,
+                               source: cropped)
 
         return context.makeImage()
-    }
-
-    /// 打码：把框内那一块**源图**抠出来做滤镜，再贴回去。
-    ///
-    /// ⚠️ 这里必须**局部反翻一次 CTM**。当前 CTM 已经是"左上原点、y 向下"，
-    /// 而 `draw(image, in:)` 在 y 向下的上下文里会把图像**上下颠倒**地放进去
-    /// （它的顶行仍然落在 `rect.maxY`，而那已是视觉上的下边）。
-    /// 马赛克因为细节被抹掉了未必看得出来，**模糊会很明显** —— 有一条用
-    /// "上黑下白"底图的回归专门盯它。
-    private static func drawRedaction(_ annotation: Annotation, source: CGImage, in context: CGContext) {
-        let bounds = CGRect(x: 0, y: 0, width: source.width, height: source.height)
-        // 取整：半个像素的区域会让马赛克的格子与整幅的像素网格错开
-        let region = annotation.frame.standardized.integral.intersection(bounds)
-        guard region.width >= 1, region.height >= 1,
-              let patch = source.cropping(to: region) else { return }
-
-        guard let processed = RedactionFilter.apply(annotation.kind,
-                                                    to: patch,
-                                                    strength: annotation.style.effectStrength) else {
-            // 打码失败就**遮死**：宁可糊掉一块，也绝不能把敏感内容原样导出去
-            let colorSpace = context.colorSpace ?? CGColorSpaceCreateDeviceRGB()
-            context.setFillColor(CGColor(colorSpace: colorSpace, components: [0, 0, 0, 1])!)
-            context.fill(region)
-            return
-        }
-
-        context.saveGState()
-        context.translateBy(x: region.minX, y: region.maxY)
-        context.scaleBy(x: 1, y: -1)
-        context.draw(processed, in: CGRect(origin: .zero, size: region.size))
-        context.restoreGState()
     }
 
     /// 按给定色彩空间建一个 8 位 ARGB 上下文。空间不合适（线性 / 16 位等）时返回 nil，
@@ -121,40 +67,5 @@ public enum AnnotationRasterizer {
                          bytesPerRow: 0,
                          space: space,
                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-    }
-
-    /// 箭头 = 线段 + 实心三角头部。
-    private static func drawArrow(_ annotation: Annotation, color: CGColor, in context: CGContext) {
-        guard annotation.path.count >= 2 else { return }
-        let start = annotation.path[0]
-        let end = annotation.path[1]
-
-        context.setLineCap(.round)
-        context.move(to: start)
-        context.addLine(to: end)
-        context.strokePath()
-
-        let head = AnnotationGeometry.arrowHead(from: start,
-                                                to: end,
-                                                lineWidth: annotation.style.lineWidth)
-        guard head.count == 3 else { return }
-        context.setFillColor(color)
-        context.move(to: head[0])
-        context.addLine(to: head[1])
-        context.addLine(to: head[2])
-        context.closePath()
-        context.fillPath()
-    }
-
-    /// 画笔 = 圆头圆角的折线。圆角不能省：默认的斜接会在急弯处戳出尖刺。
-    private static func drawPen(_ annotation: Annotation, in context: CGContext) {
-        guard annotation.path.count >= 2 else { return }
-        context.setLineCap(.round)
-        context.setLineJoin(.round)
-        context.move(to: annotation.path[0])
-        for point in annotation.path.dropFirst() {
-            context.addLine(to: point)
-        }
-        context.strokePath()
     }
 }

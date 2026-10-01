@@ -29,9 +29,11 @@ public final class RegionCaptureFlow {
 
     /// - Parameter selection: **Quartz 全局点坐标**下的选区（调用方负责从 Cocoa 转换）
     /// - Parameter displays: 当前全部显示器
+    /// - Parameter inline: 覆盖层里就地画的标注（`nil` = 没有）
     public func capture(selection: CGRect,
                         displays: [DisplayGeometry],
-                        save: CaptureSaveRequest? = nil) async -> CaptureOutcome {
+                        save: CaptureSaveRequest? = nil,
+                        inline: InlineAnnotations? = nil) async -> CaptureOutcome {
         let output = CaptureOutput(clipboard: clipboard, clock: clock)
         let startedAt = output.begin()
 
@@ -59,7 +61,7 @@ public final class RegionCaptureFlow {
                                                           slices: slices) else {
                 return .failed(CaptureFailure(message: "拼接选区图像失败"))
             }
-            return output.finish(composed, startedAt: startedAt, save: save)
+            return output.finish(composed, startedAt: startedAt, save: save, inline: inline)
         } catch {
             return output.failure(error, grantedJustNow: grantedJustNow)
         }

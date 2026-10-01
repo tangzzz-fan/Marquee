@@ -39,27 +39,33 @@ public final class WindowCaptureFlow {
     public func capture(window: WindowInfo,
                         style: WindowCaptureStyle,
                         displays: [DisplayGeometry],
-                        save: CaptureSaveRequest? = nil) async -> CaptureOutcome {
+                        save: CaptureSaveRequest? = nil,
+                        inline: InlineAnnotations? = nil) async -> CaptureOutcome {
         switch style {
         case .visibleOnScreen:
             let region = RegionCaptureFlow(permission: permission,
                                            capturer: capturer,
                                            clipboard: clipboard,
                                            clock: clock)
-            return await region.capture(selection: window.frame, displays: displays, save: save)
+            return await region.capture(selection: window.frame,
+                                        displays: displays,
+                                        save: save,
+                                        inline: inline)
 
         case .isolatedWindow(let includeShadow):
             return await captureIsolated(window,
                                         includeShadow: includeShadow,
                                         displays: displays,
-                                        save: save)
+                                        save: save,
+                                        inline: inline)
         }
     }
 
     private func captureIsolated(_ window: WindowInfo,
                                  includeShadow: Bool,
                                  displays: [DisplayGeometry],
-                                 save: CaptureSaveRequest?) async -> CaptureOutcome {
+                                 save: CaptureSaveRequest?,
+                                 inline: InlineAnnotations? = nil) async -> CaptureOutcome {
         let output = CaptureOutput(clipboard: clipboard, clock: clock)
         let startedAt = output.begin()
 
@@ -80,7 +86,7 @@ public final class WindowCaptureFlow {
             let captured = try await capturer.captureWindow(window,
                                                             includeShadow: includeShadow,
                                                             backingScale: scale)
-            return output.finish(captured.image, startedAt: startedAt, save: save)
+            return output.finish(captured.image, startedAt: startedAt, save: save, inline: inline)
         } catch {
             return output.failure(error, grantedJustNow: grantedJustNow)
         }

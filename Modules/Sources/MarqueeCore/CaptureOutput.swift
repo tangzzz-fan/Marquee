@@ -22,10 +22,32 @@ public struct CaptureOutput {
         clock.now()
     }
 
+    /// 收尾。
+    ///
+    /// - Parameter inline: 覆盖层里**就地画**的标注。非空时先把它栅格化到图上，
+    ///   再编码写剪贴板 —— 剪贴板里必须是一张**已经合并好**的图，
+    ///   不能只有底图、把标注留在别处（用户粘贴出去的是他自己贴的图，不是对象）。
     public func finish(_ image: CGImage,
                        startedAt: Double,
-                       save: CaptureSaveRequest? = nil) -> CaptureOutcome {
-        guard let png = ImageEncoding.pngData(from: image) else {
+                       save: CaptureSaveRequest? = nil,
+                       inline: InlineAnnotations? = nil) -> CaptureOutcome {
+        let flatten: CGImage
+        if let inline, !inline.isEmpty {
+            let scaled = inline.scaled(toPixelSize: CGSize(width: image.width, height: image.height))
+            let document = AnnotationDocument(pixelSize: CGSize(width: image.width, height: image.height),
+                                              annotations: scaled)
+            guard let merged = AnnotationRasterizer.image(document: document, source: image) else {
+                // ⚠️ 这里**必须失败**，不能"回退成原图"。
+                // 标注里可能有打码/模糊 —— 静默交出一张没打码的原图，
+                // 是把用户以为已经遮住的内容原样发出去。宁可这次截图作废。
+                return .failed(CaptureFailure(message: "标注没能合成到截图上，这次截图已放弃（避免交出未处理的图）"))
+            }
+            flatten = merged
+        } else {
+            flatten = image
+        }
+
+        guard let png = ImageEncoding.pngData(from: flatten) else {
             return .failed(CaptureFailure(message: "截图编码为 PNG 失败"))
         }
         // 剪贴板先写。落盘失败不能把已经能粘贴的图弄没。
@@ -35,7 +57,7 @@ public struct CaptureOutput {
         var saveFailureMessage: String?
         var savedSequence: Int?
         if let save {
-            switch ScreenshotArchiver.write(image, request: save) {
+            switch ScreenshotArchiver.write(flatten, request: save) {
             case .success(let result):
                 savedFilePath = result.url.path
                 savedSequence = result.sequenceUsed
@@ -45,13 +67,13 @@ public struct CaptureOutput {
         }
 
         return .copiedToClipboard(CaptureMetrics(
-            pixelSize: CGSize(width: image.width, height: image.height),
+            pixelSize: CGSize(width: flatten.width, height: flatten.height),
             pngByteCount: png.count,
             elapsedMilliseconds: (clock.now() - startedAt) * 1000,
             savedFilePath: savedFilePath,
             saveFailureMessage: saveFailureMessage,
             savedSequence: savedSequence,
-            image: image
+            image: flatten
         ))
     }
 

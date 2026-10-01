@@ -38,12 +38,17 @@ struct SelectionPresentation: Equatable {
     /// 放大镜取色（ticket 10）。`nil` = 不显示。
     var magnifier: MagnifierPresentation?
 
-    /// 浮动工具栏（ticket 20）。`nil` = 不显示 —— 还在拖拽、或者已经提交。
+    /// 浮动工具栏（ticket 20/21）。`nil` = 不显示 —— 还在拖拽、或者已经提交。
+    var toolbar: OverlayToolbarPresentation?
+
+    /// 就地标注的**坐标系原点**（Cocoa 全局点，即选区 / 窗口的左上角）。
     ///
-    /// **Cocoa 全局坐标**。位置由 `MarqueeCore.OverlayToolbar.frame` 算
-    /// （贴选区下方 → 放不下翻上方 → 最后夹进屏幕），那里有单测：
-    /// 贴边与跨屏的情况靠肉眼试不全。
-    var toolbar: CGRect?
+    /// 标注本身存的是"相对原点的点坐标、y 向下"（`Annotation` 的约定），
+    /// 视图只负责把它平移到原点上、再翻一次 y。这样覆盖层与导出
+    /// 能用**同一份** `AnnotationDrawing`。
+    var annotationOrigin: CGPoint?
+    /// 就地标注（含正在画的那一笔草稿）。
+    var annotations: [Annotation] = []
 
     static let empty = SelectionPresentation(globalRect: nil,
                                              sizeText: "",
@@ -60,6 +65,23 @@ struct SelectionPresentation: Equatable {
         rhs.magnifier = nil
         return lhs == rhs
     }
+}
+
+/// 浮动工具栏要画的东西（ticket 21）。
+///
+/// 几何**全部来自 `OverlayToolbar.layout()`** —— 视图自己不算任何一个坐标，
+/// 否则"画出来的"与"点得到的"就会各走各的。
+struct OverlayToolbarPresentation: Equatable {
+    /// 工具条矩形，**Cocoa 全局坐标**
+    var frame: CGRect
+    /// 当前选中的工具（`nil` = 没在画标注）
+    var activeTool: OverlayTool?
+    /// 将要用的描边色
+    var stroke: AnnotationColor
+    /// 将要用的线宽
+    var lineWidth: CGFloat
+    var canUndo: Bool
+    var canRedo: Bool
 }
 
 /// 放大镜要画的东西。由控制器算好（几何全在 `MarqueeCore.MagnifierLayout`）。
@@ -165,8 +187,11 @@ final class SelectionOverlayView: NSView {
         let point = cocoaPoint(of: event)
         // 工具栏优先于一切：点在它上面就是"按了个按钮"，**不能**落进拖拽逻辑 ——
         // 否则按住按钮挪一下就会把刚框好的选区改掉。
-        if let toolbar = presentation.toolbar,
-           OverlayToolbar.button(at: point, in: toolbar) != nil {
+        //
+        // 判据是"点在工具条的**整个矩形**里"而不是"点中了某一格"：
+        // 格子之间有空隙，按在空隙上同样不该掉进拖拽（用户以为自己在按工具条）。
+        if let toolbar = presentation.toolbar?.frame,
+           OverlayToolbar.contains(point, in: toolbar) {
             delegate?.overlayView(self, clickedToolbarAt: point)
             return
         }
@@ -274,6 +299,8 @@ final class SelectionOverlayView: NSView {
             stroke(localSelection,
                    cornerRadius: 0,
                    lineWidth: presentation.isScrollCapturing ? 2 : 1)
+            // 标注画在镂空**之后**：镂空是挖洞，标注要落在洞里那层图上
+            drawAnnotations(clippingTo: localSelection)
             drawReadout(in: localSelection, lines: readoutLines())
             // 工具栏画在读数之后（更靠上），但**仍在**这个提前 return 之前 ——
             // 选区一旦存在就走这条分支，漏掉这一句工具栏就永远不出现。
@@ -287,9 +314,14 @@ final class SelectionOverlayView: NSView {
             let radius = presentation.hoverCornerRadius
             fillMask(punching: localHover, cornerRadius: radius)
             stroke(localHover, cornerRadius: radius, lineWidth: 2)
+            // 窗口落点（单击某扇窗停住）同样能就地标注，所以这条分支也要画
+            drawAnnotations(clippingTo: localHover)
             if !presentation.hoverLabel.isEmpty {
                 drawReadout(in: localHover,
                             lines: [(presentation.hoverLabel, ReadoutStyle.normal)])
+            }
+            if let toolbar = presentation.toolbar {
+                drawToolbar(toolbar)
             }
             return
         }
@@ -406,37 +438,118 @@ final class SelectionOverlayView: NSView {
         return NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
     }
 
-    // MARK: - 浮动工具栏（ticket 20）
+    // MARK: - 浮动工具栏（ticket 20/21）
 
     /// 画浮动工具栏。
     ///
-    /// 按钮位置一律走 `OverlayToolbar.hitFrame` —— **绘制与命中用同一个来源**。
+    /// 所有坐标一律来自 `OverlayToolbar.layout()` —— **绘制与命中同一个来源**。
     /// 各画各的必然偏出去几个点，而那种偏差的表现是"按钮看着在这儿、点它没反应"，
     /// 极难联想到是布局算错了。
-    private func drawToolbar(_ globalToolbar: CGRect) {
-        let box = globalToLocal(globalToolbar)
+    private func drawToolbar(_ presentation: OverlayToolbarPresentation) {
+        let box = globalToLocal(presentation.frame)
+        let layout = OverlayToolbar.layout()
 
-        NSColor.black.withAlphaComponent(0.72).setFill()
-        Self.roundedPath(box, radius: 10).fill()
+        NSColor.black.withAlphaComponent(0.78).setFill()
+        Self.roundedPath(box, radius: OverlayToolbar.cornerRadius).fill()
 
-        let outline = Self.roundedPath(box.insetBy(dx: 0.5, dy: 0.5), radius: 10)
+        let outline = Self.roundedPath(box.insetBy(dx: 0.5, dy: 0.5), radius: OverlayToolbar.cornerRadius)
         outline.lineWidth = 1
-        NSColor.white.withAlphaComponent(0.10).setStroke()
+        NSColor.white.withAlphaComponent(0.12).setStroke()
         outline.stroke()
 
-        for button in OverlayToolbar.Button.allCases {
-            let local = globalToLocal(OverlayToolbar.hitFrame(of: button, in: globalToolbar))
-            drawToolbarIcon(button, in: local)
+        NSColor.white.withAlphaComponent(0.14).setFill()
+        for separator in layout.separators {
+            NSRect(x: box.minX + separator.minX,
+                   y: box.minY + separator.minY,
+                   width: separator.width,
+                   height: separator.height).fill()
+        }
+
+        for item in layout.items {
+            draw(toolbarItem: item.slot,
+                 in: item.frame.offsetBy(dx: box.minX, dy: box.minY),
+                 state: presentation)
         }
     }
 
-    private func drawToolbarIcon(_ button: OverlayToolbar.Button, in rect: CGRect) {
-        let (symbol, tint) = Self.appearance(of: button)
+    private func draw(toolbarItem slot: OverlayToolbar.Slot,
+                      in rect: CGRect,
+                      state: OverlayToolbarPresentation) {
+        switch slot {
+        case .tool(let tool):
+            let active = state.activeTool == tool
+            if active { highlight(rect) }
+            drawSymbol(Self.symbol(for: tool),
+                       in: rect,
+                       tint: active ? .controlAccentColor : .white)
+        case .color(let index):
+            drawColorSwatch(AnnotationPalette.colors[index],
+                            in: rect,
+                            selected: state.stroke == AnnotationPalette.colors[index])
+        case .lineWidth(let index):
+            drawWidthSwatch(AnnotationPalette.lineWidths[index],
+                            in: rect,
+                            selected: state.lineWidth == AnnotationPalette.lineWidths[index])
+        case .undo:
+            drawSymbol("arrow.uturn.backward", in: rect, tint: .white, dimmed: !state.canUndo)
+        case .redo:
+            drawSymbol("arrow.uturn.forward", in: rect, tint: .white, dimmed: !state.canRedo)
+        case .save:
+            drawSymbol("square.and.arrow.down", in: rect, tint: .white)
+        case .cancel:
+            drawSymbol("xmark", in: rect, tint: .white)
+        case .confirm:
+            drawSymbol("checkmark", in: rect, tint: Self.confirmColor)
+        }
+    }
 
+    private static let confirmColor = NSColor(red: 0.24, green: 0.82, blue: 0.42, alpha: 1)
+
+    private static func symbol(for tool: OverlayTool) -> String {
+        switch tool {
+        case .rectangle: "rectangle"
+        case .ellipse: "circle"
+        case .arrow: "arrow.up.right"
+        case .pen: "pencil.tip"
+        }
+    }
+
+    /// 选中态的底：一个比格子略小的圆角块。
+    private func highlight(_ rect: CGRect) {
+        NSColor.white.withAlphaComponent(0.18).setFill()
+        Self.roundedPath(rect.insetBy(dx: -1, dy: -1), radius: 6).fill()
+    }
+
+    private func drawColorSwatch(_ color: AnnotationColor, in rect: CGRect, selected: Bool) {
+        let side = rect.width * 0.68
+        let circle = CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2, width: side, height: side)
+        let path = NSBezierPath(ovalIn: circle)
+        NSColor(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha).setFill()
+        path.fill()
+        // 一圈描边不能省：白色的色块在深色工具条上没有边就糊成一团光
+        path.lineWidth = selected ? 2 : 1
+        (selected ? NSColor.white : NSColor.white.withAlphaComponent(0.35)).setStroke()
+        path.stroke()
+    }
+
+    /// 线宽用它本身的粗细表达 —— 写数字（2/4/8）既看不懂又占地方。
+    private func drawWidthSwatch(_ value: CGFloat, in rect: CGRect, selected: Bool) {
+        if selected { highlight(rect) }
+        let side = min(rect.width - 4, 4 + value * 1.4)
+        let circle = CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2, width: side, height: side)
+        NSColor.white.setFill()
+        NSBezierPath(ovalIn: circle).fill()
+    }
+
+    private func drawSymbol(_ symbol: String,
+                            in rect: CGRect,
+                            tint: NSColor,
+                            dimmed: Bool = false) {
         // ⚠️ 模板图直接 `draw(in:)` **不会**用"当前颜色"着色 —— 必须把颜色放进配置里。
-        // 否则三个图标全是黑的，在深色底上等于没画（而且不报错，只会让人以为图标名写错了）。
-        let configuration = NSImage.SymbolConfiguration(paletteColors: [tint])
-            .applying(NSImage.SymbolConfiguration(pointSize: 15, weight: .medium))
+        // 否则图标全是黑的，在深色底上等于没画（而且不报错，只会让人以为图标名写错了）。
+        let color = dimmed ? tint.withAlphaComponent(0.28) : tint
+        let configuration = NSImage.SymbolConfiguration(paletteColors: [color])
+            .applying(NSImage.SymbolConfiguration(pointSize: 14, weight: .medium))
         guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration) else { return }
 
@@ -447,15 +560,31 @@ final class SelectionOverlayView: NSView {
                               height: size.height))
     }
 
-    private static func appearance(of button: OverlayToolbar.Button) -> (symbol: String, tint: NSColor) {
-        switch button {
-        case .edit:
-            ("square.and.pencil", .white)
-        case .cancel:
-            ("xmark", .white)
-        case .confirm:
-            ("checkmark", NSColor(red: 0.24, green: 0.82, blue: 0.42, alpha: 1))
-        }
+    // MARK: - 就地标注（ticket 21）
+
+    /// 画就地标注。
+    ///
+    /// 坐标系：标注存的是"相对选区左上角、y 向下"的点（`Annotation` 的约定），
+    /// 而 AppKit 视图是"原点左下、y 向上"。所以这里平移 + 翻一次 y，
+    /// 之后就能**直接复用导出的那份绘制代码**（`AnnotationDrawing`）——
+    /// 覆盖层里看到的与最终导出的因此不可能对不上。
+    ///
+    /// 裁剪到选区内：标注画到选区外面会落在变暗的蒙层上，看起来像"跑出去了"。
+    private func drawAnnotations(clippingTo clip: CGRect) {
+        guard let origin = presentation.annotationOrigin,
+              !presentation.annotations.isEmpty,
+              let cgContext = NSGraphicsContext.current?.cgContext else { return }
+
+        let local = globalToLocal(origin)
+        cgContext.saveGState()
+        cgContext.clip(to: clip)
+        cgContext.translateBy(x: local.x, y: local.y)
+        cgContext.scaleBy(x: 1, y: -1)
+        AnnotationDrawing.draw(presentation.annotations,
+                               in: cgContext,
+                               colorSpace: window?.colorSpace?.cgColorSpace
+                                   ?? CGColorSpace(name: CGColorSpace.sRGB)!)
+        cgContext.restoreGState()
     }
 
     private func drawReadout(in localSelection: CGRect, lines: [(text: String, color: NSColor)]) {

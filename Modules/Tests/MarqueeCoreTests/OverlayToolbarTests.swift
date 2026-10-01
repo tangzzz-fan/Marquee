@@ -114,46 +114,109 @@ struct OverlayToolbarTests {
         #expect(bar.height == size.height)
     }
 
-    // MARK: - 尺寸约定
+    // MARK: - 排布（单一来源）
 
-    @Test("每个按钮都落在工具条内、彼此不重叠 —— 绘制与命中必须用同一套推导")
-    func buttonsFitInsideToolbar() {
+    @Test("每一格都落在工具条内、彼此不重叠 —— 绘制与命中必须来自同一份排布")
+    func slotsFitInsideToolbar() {
         let toolbar = CGRect(origin: .zero, size: OverlayToolbar.toolbarSize)
-        let frames = OverlayToolbar.Button.allCases.map { OverlayToolbar.hitFrame(of: $0, in: toolbar) }
+        let layout = OverlayToolbar.layout()
 
-        for frame in frames {
-            #expect(toolbar.contains(frame), "按钮 \(frame) 超出了工具条 \(toolbar)")
+        for item in layout.items {
+            #expect(toolbar.contains(item.frame), "\(item.slot) 超出了工具条：\(item.frame)")
         }
-        for (previous, next) in zip(frames, frames.dropFirst()) {
-            #expect(!previous.intersects(next), "按钮重叠：\(previous) 与 \(next)")
+        for (previous, next) in zip(layout.items, layout.items.dropFirst()) {
+            #expect(!previous.frame.intersects(next.frame),
+                    "格子重叠：\(previous.slot) 与 \(next.slot)")
         }
-        // 从左到右的语义顺序也要对：edit 在最左，confirm 在最右
-        #expect(frames[0].minX < frames[1].minX)
-        #expect(frames[1].minX < frames[2].minX)
     }
 
-    @Test("命中测试：点在各按钮中心能认出来，点在空隙上认不出来")
-    func hitTestPicksTheRightButton() {
+    @Test("格子从左到右按下标的顺序排，且不超过右内边距")
+    func slotsAreOrderedLeftToRight() {
+        let layout = OverlayToolbar.layout()
+        let xs = layout.items.map(\.frame.minX)
+
+        for (previous, next) in zip(xs, xs.dropFirst()) {
+            #expect(previous < next, "顺序反了：\(previous) 之后的 \(next)")
+        }
+        let last = layout.items.last!.frame
+        #expect(last.maxX <= layout.size.width - OverlayToolbar.padding + 0.001,
+                "最后一个格子探出了工具条右边（这正是当初宽度与偏移各推一次时踩的坑）")
+    }
+
+    @Test("分组之间画了分隔线，且分隔线不与任何格子重叠")
+    func separatorsSitBetweenGroups() {
+        let layout = OverlayToolbar.layout()
+
+        #expect(layout.separators.count == 4, "5 组之间应当有 4 条分隔线")
+        for separator in layout.separators {
+            #expect(layout.items.allSatisfy { !$0.frame.intersects(separator) })
+            #expect(separator.minX > 0 && separator.maxX < layout.size.width)
+        }
+    }
+
+    @Test("工具条内容与用户预期一致：4 个工具 + 色板 + 线宽 + 撤销重做 + 保存取消完成")
+    func slotInventory() {
+        #expect(OverlayToolbar.slots.count
+                == OverlayTool.allCases.count
+                + AnnotationPalette.colors.count
+                + AnnotationPalette.lineWidths.count
+                + 5)
+        #expect(OverlayToolbar.slots.first == .tool(.rectangle))
+        #expect(OverlayToolbar.slots.last == .confirm)
+    }
+
+    @Test("命中测试：点在各格中心能认出来，点在工具条内的空隙上认不出格子但仍在工具条上")
+    func hitTestPicksTheRightSlot() {
         let toolbar = OverlayToolbar.frame(for: CGRect(x: 400, y: 400, width: 300, height: 200),
                                            screenFrame: screen)
 
-        for button in OverlayToolbar.Button.allCases {
-            let frame = OverlayToolbar.hitFrame(of: button, in: toolbar)
-            #expect(OverlayToolbar.button(at: CGPoint(x: frame.midX, y: frame.midY), in: toolbar) == button)
+        for slot in OverlayToolbar.slots {
+            let frame = OverlayToolbar.hitFrame(of: slot, in: toolbar)!
+            #expect(OverlayToolbar.slot(at: CGPoint(x: frame.midX, y: frame.midY), in: toolbar) == slot)
         }
-        // 工具条内部、但落在按钮之间的空隙上
+        // 工具条内部、但落在格子之间的空隙上
         let gap = CGPoint(x: toolbar.midX, y: toolbar.minY + 3)
-        #expect(OverlayToolbar.button(at: gap, in: toolbar) == nil)
+        #expect(OverlayToolbar.slot(at: gap, in: toolbar) == nil)
+        #expect(OverlayToolbar.contains(gap, in: toolbar), "空隙仍属于工具条，不该掉进拖拽逻辑")
         // 工具条之外
-        #expect(OverlayToolbar.button(at: CGPoint(x: toolbar.maxX + 20, y: toolbar.midY), in: toolbar) == nil)
+        #expect(OverlayToolbar.slot(at: CGPoint(x: toolbar.maxX + 20, y: toolbar.midY), in: toolbar) == nil)
+        #expect(!OverlayToolbar.contains(CGPoint(x: toolbar.maxX + 20, y: toolbar.midY), in: toolbar))
     }
 
-    @Test("工具栏尺寸是给绘图层与命中测试共用的同一份常量")
-    func sizeIsShared() {
-        // 这条看着像废话，但它钉住的是"视图画的框"与"Core 算的框"用的是同一个数 ——
-        // 两边各写一份的话，命中测试会偏出去几个点，表现是"按钮点不准"。
-        #expect(OverlayToolbar.toolbarSize.width > 0)
-        #expect(OverlayToolbar.toolbarSize.height > 0)
-        #expect(OverlayToolbar.buttonSize < OverlayToolbar.toolbarSize.height)
+    @Test("色板与线宽的格子尺寸一致，且都小于工具按钮")
+    func swatchesAreCompact() {
+        #expect(OverlayToolbar.swatchSize < OverlayToolbar.buttonSize)
+        for slot in [OverlayToolbar.Slot.color(0), .lineWidth(0)] {
+            let frame = OverlayToolbar.layout().frame(of: slot)!
+            #expect(frame.width == OverlayToolbar.swatchSize)
+            #expect(frame.height == OverlayToolbar.swatchSize)
+        }
+    }
+
+    @Test("组内间距要明显小于组间间距 —— 否则分隔线挤在中间，分组看不出来")
+    func groupGapIsVisiblyLargerThanItemGap() {
+        let layout = OverlayToolbar.layout()
+        let minimum = OverlayToolbar.itemGap + OverlayToolbar.groupGap / 2
+
+        for separator in layout.separators {
+            let left = layout.items.map(\.frame.maxX).filter { $0 <= separator.minX }.max()
+            let right = layout.items.map(\.frame.minX).filter { $0 >= separator.maxX }.min()
+            #expect(left != nil && right != nil)
+            if let left, let right {
+                #expect(separator.minX - left >= minimum,
+                        "分隔线左边只留了 \(separator.minX - left) 点，跟普通格子间距分不出来")
+                #expect(right - separator.maxX >= minimum,
+                        "分隔线右边只留了 \(right - separator.maxX) 点")
+            }
+        }
+    }
+
+    @Test("工具条必须放得进 1024 点宽的屏 —— 否则贴边时最右边的「完成」会被夹到屏幕外，点不到")
+    func fitsOnTheNarrowestReasonableScreen() {
+        // 这条不是"越大越好"的美学约束，而是**可达性**约束：
+        // `frame(for:)` 的夹取保证的是"左上角在屏幕内"，宽度超出时右边的格子就真的出屏了 ——
+        // 用户看不到也点不到，而工具栏看起来只是"有点长"，不会报任何错。
+        #expect(OverlayToolbar.toolbarSize.width < 1024,
+                "工具条现在 \(OverlayToolbar.toolbarSize.width) 点宽，超出这个宽度就得把参数收进弹层")
     }
 }
