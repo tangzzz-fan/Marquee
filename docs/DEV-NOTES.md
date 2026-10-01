@@ -126,6 +126,35 @@ Marquee.app/Contents/MacOS/Marquee -marqueeDiagnostics
 **修法**：在 `project.yml` 里声明**共享** scheme（生成到 `xcshareddata/xcschemes/`），
 见 `project.yml` 顶部的 `schemes:` 段。这样每次生成结果都确定，谁 clone 下来都能直接构建。
 
+### 2.2 新增源文件后忘了重新生成工程 → Xcode 直接报"找不到某个类型"（**已根治**）
+
+**症状**（2026-10-01 实际踩到）：新增了 `App/Sources/EditorDemo.swift` 并提交，
+从 **Xcode 里直接 Run** 却编不过，报的是 `MarqueeAppDelegate.swift` 里
+`cannot find 'EditorDemo' in scope` —— 看起来像是"这个文件写错了"，其实是**工程根本没引用它**。
+文件在磁盘上、`git` 里也有，只是 `.xcodeproj` 里没有。
+
+**根因**：`sources: - path: App/Sources` 展开成的是**逐个列出的 `PBXFileReference`**，
+文件列表在 `xcodegen generate` 那一刻被固化进工程文件。
+而 `scripts/build.sh` 会跑 `xcodegen generate`，**Xcode 的 Run 不会** ——
+Xcode 只读当前的 `.xcodeproj`。于是"加文件 → 从 Xcode 跑"这条最自然的路径必然踩坑，
+而且症状会指向**错误的地方**（报在调用方，不是新文件本身）。
+
+**修法**：`App/Sources` 改成 Xcode 16+ 的**文件系统同步组**：
+
+```yaml
+    sources:
+      - path: App/Sources
+        type: syncedFolder      # PBXFileSystemSynchronizedRootGroup
+```
+
+目录本身被挂进工程，增删源文件不再需要重新生成 —— 这类错误从根上去掉。
+`project.yml` 自己（build settings / scheme / 依赖）变了仍然要 `xcodegen generate`。
+
+> 判断方法：`grep -c "某个新文件名" Marquee.xcodeproj/project.pbxproj`。
+> 普通 sources 下应当是 4（buildFile + fileRef + group child + build phase）；
+> 用了同步组则是 0 —— 那是**预期**的，不代表没挂上去，去看
+> `PBXFileSystemSynchronizedRootGroup` 段与 target 的 `fileSystemSynchronizedGroups`。
+
 ---
 
 ## 3. 模块单元测试不需要 Xcode 工程

@@ -58,7 +58,19 @@ targets:
     type: application
     platform: macOS
     sources:
+      # `syncedFolder` = Xcode 16+ 的「文件系统同步组」（PBXFileSystemSynchronizedRootGroup）。
+      #
+      # ⚠️ 别改回普通的 `- path: App/Sources`（那是一堆逐个列出的 `PBXFileReference`）。
+      #
+      # 踩过的坑（2026-10-01）：新增 `App/Sources/EditorDemo.swift` 之后忘了跑
+      # `xcodegen generate`，从 **Xcode 里直接 Run** 就报「找不到 EditorDemo」——
+      # 因为 Xcode Run 不会替你重新生成工程，它只读当前的 `.xcodeproj`。
+      # 这类问题很隐蔽：文件明明在磁盘上、`git` 里也有，只是工程没引用它。
+      #
+      # 同步组把目录本身挂进工程，增删源文件**不需要重新生成工程**，从根上去掉这类错误。
+      # 只有 `project.yml` 本身（build settings / scheme / 依赖）变了才需要重新生成。
       - path: App/Sources
+        type: syncedFolder
     dependencies:
       - package: MarqueeModules
         product: MarqueeCore
