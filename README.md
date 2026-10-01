@@ -18,7 +18,7 @@
 **25 条 ticket 全部落地**（`01`–`23`，`17` 拆成 `17a` 玻璃材质 / `17b` 本地化，外加 `24` 覆盖层工具条对齐参考）。
 **代码层面没有未开工的东西了**，剩下的是真实桌面上的人工验收。
 
-- `./scripts/test.sh` → **480 测试全绿**（Core 462 + 历史仓库 12 + 真实 Vision 装置自检 6）
+- `./scripts/test.sh` → **485 测试全绿**（Core 467 + 历史仓库 12 + 真实 Vision 装置自检 6）
 - `./scripts/build.sh` → **BUILD SUCCEEDED**
 - 大部分条目处于 **"已实现、待人工验收"** —— 自动化测试覆盖不到真实桌面上的手感
 
@@ -27,7 +27,7 @@
 | 现在到哪了、卡在哪 | **`docs/STATUS-AND-ACCEPTANCE.md`** §1–2 |
 | 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3（A–V 分组） |
 | 逐条 ticket 状态与设计理由 | `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md` |
-| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（110 条实测） |
+| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（112 条实测） |
 
 ---
 
@@ -227,7 +227,7 @@ spec → solution → test plan → impl → delivery
 
 | 文档 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **110 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
+| **`docs/PITFALLS.md`** | **112 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | 进度 / 阻塞项 / 人工验收清单（A–U 分组 + 与 SPIKE M1–M20 的对应 + 排障速查） |
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告（37 项） |

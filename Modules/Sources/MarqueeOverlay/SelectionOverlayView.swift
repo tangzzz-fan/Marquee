@@ -815,7 +815,8 @@ final class SelectionOverlayView: NSView {
                                 in: rect,
                                 selected: palette.stroke == AnnotationPalette.colors[index])
             case .lineWidth(let index):
-                drawSizeSwatch(value: palette.sizeSlotValues[index],
+                drawSizeSwatch(index: index,
+                               count: palette.sizeSlotValues.count,
                                meaning: palette.sizeSlotMeaning,
                                in: rect,
                                selected: palette.sizeSlotIndex == index)
@@ -867,30 +868,33 @@ final class SelectionOverlayView: NSView {
     /// 三组值的范围互相重叠（线宽 2–8、打码强度 4–16、字号 18–44 点），
     /// 光看大小分不清"现在调的是哪一组"，所以形状也不一样：
     /// 线宽＝圆点、打码强度＝方块、字号＝一个"字"。
-    private func drawSizeSwatch(value: CGFloat,
+    ///
+    /// ⚠️ 大小按**档位序号**算，不按数值（见 `SizeSwatchGeometry`）：
+    /// 按数值线性映射时打码那三档（4/8/16）会画成 9.6 / 15.2 / 16 ——
+    /// 后两档看不出区别。编辑器那一份走的是同一个函数。
+    private func drawSizeSwatch(index: Int,
+                                count: Int,
                                 meaning: OverlaySizeMeaning,
                                 in rect: CGRect,
                                 selected: Bool) {
         if selected { highlight(rect) }
 
-        switch meaning {
-        case .lineWidth, .redactionStrength:
-            let side = min(rect.width - 4, 4 + value * 1.4)
-            let box = CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2,
-                             width: side, height: side)
+        let side = min(rect.width, rect.height)
+            * SizeSwatchGeometry.relativeSide(index: index, of: count)
+        let box = CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2,
+                         width: side, height: side)
+        switch SizeSwatchGeometry.shape(for: meaning) {
+        case .circle:
             NSColor.white.setFill()
-            if meaning == .redactionStrength {
-                NSBezierPath(rect: box).fill()
-            } else {
-                NSBezierPath(ovalIn: box).fill()
-            }
-        case .fontSize:
-            // 画一个"字"：用真正的字号缩小到格子能装下的尺寸。
-            // 直接在 20 点的格子里画 44 点的字会糊成一团黑，所以按格高归一化，
-            // 但**保留三档之间的相对大小** —— 用户要能一眼看出"这档更大"。
-            let normalized = 9 + (value - AnnotationPalette.overlayFontSizes[0]) * 0.28
-            let font = NSFont.systemFont(ofSize: max(9, min(rect.height - 6, normalized)),
-                                         weight: .semibold)
+            NSBezierPath(ovalIn: box).fill()
+        case .square:
+            NSColor.white.setFill()
+            NSBezierPath(rect: box).fill()
+        case .letter:
+            // 字母的"看起来多大"约等于字号，所以直接用算出来的边长当字号。
+            // 这里**不再按格高二次归一化** —— 那样会把三档重新挤到一起，
+            // 正是这一版要修掉的问题。
+            let font = NSFont.systemFont(ofSize: max(8, side), weight: .semibold)
             let text = "A" as NSString
             let size = text.size(withAttributes: [.font: font])
             text.draw(at: CGPoint(x: rect.midX - size.width / 2,

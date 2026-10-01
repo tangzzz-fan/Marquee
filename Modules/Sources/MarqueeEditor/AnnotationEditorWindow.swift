@@ -209,14 +209,19 @@ private struct AnnotationEditorView: View {
             // 序号是**文字工具的一个预设**，不占独立工具位（PRD：工具栏 ≤ 9 个工具）
             if session.tool == .text {
                 toolbarSeparator
-                presetButton(L10n.t("文字"), preset: .plain)
-                presetButton(L10n.t("序号"), preset: .counter)
+                presetButton(L10n.t("文字"), systemImage: "textformat.abc", preset: .plain)
+                presetButton(L10n.t("序号"), systemImage: "list.number", preset: .counter)
                 if session.textPreset == .counter {
+                    // 这里只留**数字**：它是"从几开始"的当前值，本身就是内容；
+                    // 「起始」那两个字换成一个小图标，好让这一排和左右全图标对齐。
                     HStack(spacing: 2) {
-                        Text(L10n.t("起始 \(session.nextCounter)"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.6))
-                            .frame(width: 44, alignment: .trailing)
+                        Image(systemName: "number")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.55))
+                        Text("\(session.nextCounter)")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .frame(width: 18, alignment: .trailing)
                         Stepper("", value: counterBinding, in: 1...99)
                             .labelsHidden()
                             .controlSize(.mini)
@@ -376,23 +381,27 @@ private struct AnnotationEditorView: View {
     ///
     /// 三者互斥（文字没有线宽、打码没有字号），而工具栏已经很挤 ——
     /// 与其摆三排按钮，不如让同一排按钮改"当前真正相关的那个"。
+    /// 三档尺寸。
+    ///
+    /// **画出来而不是写数字**：原来这三格直接写「2 / 4 / 8」，夹在一排图标里很突兀，
+    /// 而且数字本身也不说明"这是在调什么"。现在按 `SizeSwatchGeometry` 画成
+    /// 圆点 / 方块 / 字母 A —— **与覆盖层共用同一份规则**（同功能同画法）。
+    /// 原来的数值仍在 `help` 里（"线宽 4"），要好精确数字的人鼠标停一下就有。
     private var sizeControls: some View {
         let target = sizeTarget
-        return ForEach(target.values, id: \.self) { value in
+        let count = target.values.count
+        return ForEach(Array(target.values.enumerated()), id: \.offset) { index, value in
             Button {
-                switch target.kind {
+                switch target.meaning {
                 case .lineWidth: session.setLineWidth(value)
                 case .fontSize: session.setFontSize(value)
-                case .strength: session.setEffectStrength(value)
+                case .redactionStrength: session.setEffectStrength(value)
                 }
             } label: {
-                Text("\(Int(value))")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 26, height: 22)
-                    .background(isActiveSize(value, target: target.kind)
-                                ? Color.white.opacity(0.18)
-                                : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                sizeSwatch(index: index,
+                           count: count,
+                           meaning: target.meaning,
+                           selected: isActiveSize(value, meaning: target.meaning))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
@@ -400,11 +409,36 @@ private struct AnnotationEditorView: View {
         }
     }
 
-    private enum SizeTargetKind { case lineWidth, fontSize, strength }
+    /// 一格尺寸的样子。
+    ///
+    /// 边长给 20：格子本身 26×22，20 点已经能容下三档明显的差距，
+    /// 再大就会挤到相邻格子上。
+    @ViewBuilder
+    private func sizeSwatch(index: Int,
+                            count: Int,
+                            meaning: OverlaySizeMeaning,
+                            selected: Bool) -> some View {
+        let side = 20 * SizeSwatchGeometry.relativeSide(index: index, of: count)
+        ZStack {
+            switch SizeSwatchGeometry.shape(for: meaning) {
+            case .circle:
+                Circle().fill(.white).frame(width: side, height: side)
+            case .square:
+                Rectangle().fill(.white).frame(width: side, height: side)
+            case .letter:
+                Text("A").font(.system(size: max(8, side), weight: .semibold))
+            }
+        }
+        .frame(width: 26, height: 22)
+        .background(selected ? Color.white.opacity(0.18) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        // 命中区就是整个格子：不写这句的话，圆点周围那圈空白点不动
+        .contentShape(Rectangle())
+    }
 
-    private var sizeTarget: (kind: SizeTargetKind, values: [CGFloat], label: String) {
+    private var sizeTarget: (meaning: OverlaySizeMeaning, values: [CGFloat], label: String) {
         if session.tool == .mosaic || session.tool == .blur || selectionContainsRedaction {
-            return (.strength, redactionStrengths, L10n.t("打码强度"))
+            return (.redactionStrength, redactionStrengths, L10n.t("打码强度"))
         }
         if session.tool == .text || selectionContainsText {
             return (.fontSize, fontSizes, L10n.t("字号"))
@@ -412,11 +446,11 @@ private struct AnnotationEditorView: View {
         return (.lineWidth, lineWidths, L10n.t("线宽"))
     }
 
-    private func isActiveSize(_ value: CGFloat, target: SizeTargetKind) -> Bool {
-        switch target {
+    private func isActiveSize(_ value: CGFloat, meaning: OverlaySizeMeaning) -> Bool {
+        switch meaning {
         case .lineWidth: session.style.lineWidth == value
         case .fontSize: session.style.fontSize == value
-        case .strength: session.style.effectStrength == value
+        case .redactionStrength: session.style.effectStrength == value
         }
     }
 
@@ -436,19 +470,27 @@ private struct AnnotationEditorView: View {
                 set: { session.setCounterStart($0) })
     }
 
-    private func presetButton(_ title: String, preset: AnnotationEditorSession.TextPreset) -> some View {
+    /// 文字的两个预设（普通文字 / 序号）。
+    ///
+    /// **图标而不是文字**：这一条工具栏上其余二十来个控件全是图标，
+    /// 中间夹着两个汉字按钮会显得很突兀（用户的原话）。名称改挂 `help` ——
+    /// 鼠标停一下就能看到，而"文字 / 序号"这两个词本身也仍然在文案目录里，
+    /// 不必为了图标化把它们删掉。
+    private func presetButton(_ title: String,
+                              systemImage: String,
+                              preset: AnnotationEditorSession.TextPreset) -> some View {
         Button {
             session.textPreset = preset
         } label: {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 26, height: 22)
                 .background(session.textPreset == preset ? Color.white.opacity(0.18) : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white)
+        .help(title)
     }
 
     private var canvas: some View {
