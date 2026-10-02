@@ -168,7 +168,7 @@ open -a Marquee.app --args -marqueeRequestPermission
 若列表里有多个 Marquee（历史 ad-hoc 构建留下的）：
 
 ```bash
-tccutil reset ScreenCapture dev.tango.Marquee
+tccutil reset ScreenCapture com.tango.Marquee
 ```
 
 然后重新走一遍授权。
@@ -183,7 +183,7 @@ tccutil reset ScreenCapture dev.tango.Marquee
 | --- | --- | --- |
 | 首次勾选后必须重启 | 系统约束，已提示 | 无法在同进程里让 SCK 立刻可用 |
 | Apple Development 证书一年一换 | 已知 | 续期后身份变，需再授权一次 |
-| 历史 ad-hoc 条目残留 | 需手工清理 | `tccutil reset ScreenCapture dev.tango.Marquee` |
+| 历史 ad-hoc 条目残留 | 需手工清理 | `tccutil reset ScreenCapture com.tango.Marquee` |
 | 运行中撤销授权再恢复 | ticket 06 | 预检每次触发都会走；撤销后应进引导、不弹主窗口。完整生命周期清单尚未单独验收 |
 | macOS 15+ 系统自己的定期提醒 | 系统行为 | 「跳过系统窗口选择器」一类月度提醒不是我们弹的，应用层压不掉 |
 | 多份 DerivedData 产物 | 开发环境 | 改名前的旧工程 / 另一份 ad-hoc 产物会让「列表里的 Marquee」对不上正在跑的那份 |

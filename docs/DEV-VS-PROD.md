@@ -1,7 +1,8 @@
 # 开发版与正式版的区分（spec）
 
-> 状态：**方向已定 —— 两个 bundle id（正式 + `.dev`）**；**待定：前缀字符串**。
-> 代码未动。2026-10-03 修订（**方向改了，见 §0.2**）。
+> 状态：✅ **已实施**（2026-10-03，分支 `feat/iap`）。
+> 正式 `com.tango.Marquee` / 开发 `com.tango.Marquee.dev`；三个配置 `Debug` / `Dev` / `Release`。
+> 实施记录见 §9。
 
 ---
 
@@ -154,42 +155,28 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 
 ---
 
-## 6. 落地清单
+## 6. 落地清单（已全部完成，见 §9）
 
-- [ ] **定前缀**（待你确认，见 §7）
-- [ ] `project.yml`：新的 `bundleIdPrefix` + `PRODUCT_BUNDLE_IDENTIFIER`；加 `Dev` 配置（type = release）；
-      `settings.configs.Dev` 复制 `Release` 的优化设置
-- [ ] scheme：`run.config` 从 `Release` 改成 `Dev`
-- [ ] Core：新增 `AppIdentity`（bundle id 的唯一来源）+ "是不是开发版"的判据
-- [ ] `CaptureHistoryStore` / `OutputSettings` 的目录改从 `AppIdentity` 取
-- [ ] 日志 subsystem 改从 `AppIdentity` 取
-- [ ] `scripts/build.sh` 的 `--identifier`
-- [ ] 菜单栏标题加 ` · 开发版`（仅 `.dev`）
-- [ ] `scripts/package.sh` 前置检查：配置必须是 `Release`、bundle id 必须是**正式 id**
-      （防"误把开发构建提交上去 → 取不到商品"）
-- [ ] 文档全量替换
-- [ ] 迁移（可选）：把旧的 `Marquee/history` 搬到新目录
+- [x] 定前缀：**`com.tango.Marquee`**（原 `dev.tango.Marquee`）
+- [x] `project.yml`：`bundleIdPrefix: com.tango`；新增 `Dev` 配置（type = release）；
+      `Debug` 与 `Dev` 都是 `.dev` 身份，**只有 `Release` 拿得到正式 id**
+- [x] scheme：`run.config` 从 `Release` 改成 `Dev`
+- [x] Core：新增 `AppIdentity`（bundle id 的**唯一来源**）+ "是不是开发版"的判据
+- [x] `CaptureHistoryStore` 的数据目录改从 `AppIdentity` 取（不再写死 `Marquee`）
+- [x] 日志 subsystem 改从 `AppIdentity` 取（固定用正式 id，两个版本同一条 grep）
+- [x] `scripts/build.sh` 的 `--identifier` 改成**从产物读**
+- [x] 菜单栏提示 / 设置窗口标题加 ` · 开发版`（仅 `.dev`）
+- [x] `scripts/package.sh` 前置检查：产物身份必须是正式 id（不是就停下）
+- [x] 文档全量替换（31 处）
 
----
-
-## 7. 待定：前缀用什么
+## 7. 前缀：已定 `com.tango.Marquee`
 
 约定是**反写你控制的域名**（`com.example.app`）。Apple 不校验域名归属，但
 "能反写一个真实域名"在将来（App 转让、SDK 备案、universal links）会省事。
 
-同时要注意：**`dev` 做前缀本身不好** —— 它既是当前的前缀、又正好是开发版后缀的自然选择，
-两者叠在一起（`dev.tango.Marquee` + `.dev`）会非常难分辨。见 §0.2 与
-`docs/DEV-VS-PROD.md` 的落地清单。
-
-候选：
-
-| 候选 | 正式 id | 开发 id | 说明 |
-| --- | --- | --- | --- |
-| A | `com.tango.Marquee` | `com.tango.Marquee.dev` | 最小改动（只把 `dev` 换成 `com`） |
-| B | `app.marquee.mac` | `app.marquee.mac.dev` | 以产品为主，不依赖个人昵称 |
-| C | 你自己的域名反写 | `<反写>.Marquee` | 最正规；告诉我域名 |
-
----
+选它的理由：**改动最小**（只把 `dev` 换成 `com`），同时把"前缀叫 dev"这个坑填掉 ——
+那三个候选（`com.tango.Marquee` / `app.marquee.mac` / 自有域名反写）里，
+它不需要引入新概念，也不依赖本人是否拥有某个域名。
 
 ## 8. 还没核实的
 
@@ -198,3 +185,52 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
   但这条**要实测**，不能当成已知条件写进方案。
 - ⚠️ 把数据目录从 `Marquee/` 换成 `<bundle id>/` 之后，
   历史仓库在**沙盒构建**（ticket 32）下的路径 —— 那里会再变成容器内，两件事要一起想。
+
+---
+
+## 9. 实施记录（2026-10-03，分支 `feat/iap`）
+
+### 改了什么
+
+| 位置 | 改动 |
+| --- | --- |
+| `project.yml` | `bundleIdPrefix` → `com.tango`；新增顶层 `configs`（Debug/Dev/Release）；target 的 `settings.configs` 给 Debug 与 Dev 装 `.dev` 身份；scheme 的 `run.config` → `Dev` |
+| `MarqueeCore/AppIdentity.swift`（新） | bundle id 的**唯一来源**；`isDevelopmentBuild`（后缀判定）、`developmentTitleSuffix`、`logSubsystem`、`supportDirectory` / `historyDirectory` |
+| `CaptureHistoryStore` | `defaultDirectory` 改从 `AppIdentity` 取 ⇒ 数据落在 `Application Support/<bundle id>/history/` |
+| 两个 Logger | subsystem 从写死改成 `AppIdentity().logSubsystem` |
+| `MenuBarController` / `PreferencesWindowController` | 加 ` · 开发版` 后缀 |
+| `scripts/build.sh` | 默认配置 → `Dev`；`codesign --identifier` **从产物 plist 读**；末尾打印"配置 + 身份 + 开发版/正式版" |
+| `scripts/package.sh` | 新增**身份核验**：导出后的包必须是正式 id，否则 `exit 1` |
+| 文档 | 31 处 `dev.tango.Marquee` → `com.tango.Marquee`；翻译表新增「开发版」→ "Development build"，catalog 187 → 188 条 |
+
+### 验证过的
+
+- `xcodegen generate` 后读 `project.pbxproj`：三个配置都在，
+  `Release` = `com.tango.Marquee`，`Dev` / `Debug` = `com.tango.Marquee.dev`；
+  scheme 的 `LaunchAction buildConfiguration = "Dev"`。
+- **`Dev` 与 `Release` 的项目级构建设置逐项一致**（53 项，含
+  `SWIFT_OPTIMIZATION_LEVEL = -O`、`SWIFT_COMPILATION_MODE = wholemodule`、
+  `DEBUG_INFORMATION_FORMAT = dwarf-with-dsym`、`ENABLE_NS_ASSERTIONS = NO`），
+  而 `Debug` 是 `-Onone` / `dwarf` / `ENABLE_TESTABILITY = YES`。
+  ⇒ Run 换到 `Dev` 之后，性能预算的数字仍然与发版构建可比。
+- 两个 shell 脚本 `bash -n` 通过；`./scripts/test.sh` 全绿（新增 6 条 `AppIdentityTests`）。
+
+### 两条踩到的
+
+1. **批量改名差点改掉一条本来就要"用旧 id"的断言。**
+   `AppIdentityTests` 里有一条拿旧 id `dev.tango.Marquee` 当反例
+   （"前缀里的 dev 不该被当成开发版"），全量替换把它换成了新 id ——
+   于是那条断言变成与上一行重复（**在测同一件事两遍**，而不是测"前缀冒充"）。
+   已手工改回。
+   > 判据：**批量替换之后要看一眼 diff 里"被改动的断言"**。
+   > 测试里出现旧的标识符，往往**不是漏改，而是它在当反例**。
+2. `scripts/build.sh` 里那句 `codesign --identifier dev.tango.Marquee` 是**最容易漏的一处** ——
+   它写死了身份，漏掉的表现是"屏幕录制授权又留不住了"，与 bundle id 改没改
+   在现象上完全联系不起来。改成从产物 plist 读，从根上消掉这个二义性。
+
+### 还没做的
+
+- 本地旧数据（`~/Library/Application Support/Marquee/history/`）**没有迁移**，
+  也没有写 in-app 迁移代码：这个 app 从未发布过，写一段"给不存在的用户"的迁移
+  是纯死代码。开发机上的那点历史重截即可。
+- 屏幕录制授权要**重新授一次**（换成 `.dev` 身份之后是新的一条），预期行为。

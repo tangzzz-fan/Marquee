@@ -59,7 +59,7 @@ final class PreferencesWindowController: NSWindowController {
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
-        window.title = L10n.t("Marquee 设置")
+        window.title = L10n.t("Marquee 设置") + AppIdentity().developmentTitleSuffix
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)

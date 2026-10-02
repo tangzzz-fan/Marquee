@@ -138,7 +138,7 @@
 
 #### 定价（已定：**¥36**）
 
-- 形态：**一次性买断**，非消耗型 IAP，商品 id `dev.tango.Marquee.pro`。
+- 形态：**一次性买断**，非消耗型 IAP，商品 id `com.tango.Marquee.pro`。
 - **价格：¥36（人民币）**。
 - 这个数字**是合法的价格点**：Apple 的规则表里，中国区（CNY）在 **¥10–200 之间价格步长为 ¥1**
   （见 Apple《App Store 定价机制升级》附件），所以 ¥36 可以在 App Store Connect 里直接选中，
@@ -170,7 +170,7 @@
 
 | 项 | 做法 |
 | --- | --- |
-| 商品 | 买断：一个**非消耗型** IAP（如 `dev.tango.Marquee.pro`）；订阅：`pro.monthly` / `pro.yearly` 一组 |
+| 商品 | 买断：一个**非消耗型** IAP（如 `com.tango.Marquee.pro`）；订阅：`pro.monthly` / `pro.yearly` 一组 |
 | 查询 | `Product.products(for:)` 拿价格与本地化标题（价格文案**必须**用 `displayPrice`，不能写死） |
 | 购买 | `product.purchase()`；处理 `.success(verification)` / `.userCancelled` / `.pending`（家长批准会 pending） |
 | 权益 | `Transaction.currentEntitlements` 逐条 `verified`，取到即 Pro |
@@ -263,7 +263,7 @@ App Review 原文（3.1.1）明确允许：
 | **自动滚动**（滚动截屏的后半，ticket 12） | ❌ **做不了**：它靠代用户发滚轮事件，而那正是被禁的那一条 | ① MAS 版**只保留手动滚动**长截图（能力还在，只是要用户自己滚 —— 与"手动版 MVP"完全同构）；② 或者不发 MAS 版，保住这个差异点 |
 | 默认保存到**桌面** | ❌ **写不进去**：文件访问只有 user-selected / Downloads / **Pictures** / Music / Movies 这几类，**桌面对应的 entitlement 根本不存在** | 默认目录改成 `~/Pictures/Marquee`（加 `assets.pictures.read-write`）；或首次让用户选一次目录，存 **security-scoped bookmark** |
 | 最近截图仓库 | ⚠️ 路径会从 `~/Library/Application Support/…` 变成容器内 | 写一次**一次性迁移**（把老目录的文件搬进容器），否则老用户"历史全没了" |
-| 偏好设置（`dev.tango.Marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上，迁移或接受重设 |
+| 偏好设置（`com.tango.Marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上，迁移或接受重设 |
 | 全局快捷键（Carbon 热键） | ✅ 不受影响 | 不用改 |
 | 截图 / 覆盖层 / 标注 / 导出 / 钉图 / OCR | ✅ 都不碰受限能力 | 不用改 |
 | 鼠标穿透的钉图窗口 | ✅ | 不用改 |
@@ -354,7 +354,7 @@ App Review 原文（3.1.1）明确允许：
 
 | 项 | 做法 |
 | --- | --- |
-| 商品 | 一个**非消耗型** IAP：`dev.tango.Marquee.pro`。**在 App Store Connect 里建**，代码这边用 `Products.storekit` 本地配置先跑通 |
+| 商品 | 一个**非消耗型** IAP：`com.tango.Marquee.pro`。**在 App Store Connect 里建**，代码这边用 `Products.storekit` 本地配置先跑通 |
 | 取商品 | `Product.products(for: [id])`；价格文案**必须**用 `displayPrice`（写死价格＝本地化事故） |
 | 购买 | `product.purchase()`；要处理 `.success(verification)` / `.userCancelled` / `.pending`（家长批准会 pending，这时**不能**当成失败） |
 | 权益 | `Transaction.currentEntitlements` 逐条 `verified` —— **只认 `verified`**，`unverified` 一律忽略 |

@@ -18,7 +18,7 @@
 **33 条 ticket，实现落地到 `30`**（`01`–`28` 是功能与打磨，`29`–`33` 是商业化）。
 `31`（StoreKit）是下一步；沙盒化（`32`/`33`）是独立的一条线。
 
-- `./scripts/test.sh` → **509 测试全绿**（Core 491 + 历史仓库 12 + 真实 Vision 装置自检 6）
+- `./scripts/test.sh` → **515 测试全绿**（Core 497 + 历史仓库 12 + 真实 Vision 装置自检 6）
 - `swift build --disable-sandbox`（Modules）→ **Build complete**
 - **`01`–`28` 里大量条目处于"已实现、待人工验收"** —— 自动化测试覆盖不到真实桌面上的手感
 - **`./scripts/package.sh` 七步一次都没跑过**（要 Developer ID 证书）——
@@ -29,7 +29,7 @@
 | 现在到哪了、卡在哪 | **`docs/STATUS-AND-ACCEPTANCE.md`** §1–2 |
 | 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3（A–W 分组） |
 | 逐条 ticket 状态与设计理由 | `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md` |
-| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（121 条实测） |
+| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（124 条实测） |
 | 收费与上架怎么定、为什么这么定 | **`docs/MAS-AND-MONETIZATION.md`** |
 
 ---
@@ -230,7 +230,7 @@ spec → solution → test plan → impl → delivery
 
 | 文档 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **121 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
+| **`docs/PITFALLS.md`** | **124 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | 进度 / 阻塞项 / 人工验收清单（A–W 分组 + 与 SPIKE M1–M20 的对应 + 排障速查） |
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告（37 项） |
@@ -300,12 +300,12 @@ Tools/L10nCatalog/run.sh write    # 真的重写 catalog
 几个不改代码就能调的口子（都是 `defaults`，下次唤起对应界面时生效）：
 
 ```bash
-defaults write dev.tango.Marquee lens.zoom -float 4            # 放大镜倍数
-defaults write dev.tango.Marquee chrome.tint  -float 0.18     # 玻璃着色调淡（越淡越透；默认 0.25）
-defaults write dev.tango.Marquee chrome.scrim -float 0.35     # 15.x 材质下的衬底（默认 0.35）
-defaults write dev.tango.Marquee chrome.forceHUD -bool YES    # 强制走 15.x 的 HUD 材质（自检降级路径）
-defaults write dev.tango.Marquee overlay.traceFrames -bool YES # 拖一次选区，日志出「帧数 / 平均 ms / 最大间隔」
-defaults delete dev.tango.Marquee chrome.forceHUD
+defaults write com.tango.Marquee lens.zoom -float 4            # 放大镜倍数
+defaults write com.tango.Marquee chrome.tint  -float 0.18     # 玻璃着色调淡（越淡越透；默认 0.25）
+defaults write com.tango.Marquee chrome.scrim -float 0.35     # 15.x 材质下的衬底（默认 0.35）
+defaults write com.tango.Marquee chrome.forceHUD -bool YES    # 强制走 15.x 的 HUD 材质（自检降级路径）
+defaults write com.tango.Marquee overlay.traceFrames -bool YES # 拖一次选区，日志出「帧数 / 平均 ms / 最大间隔」
+defaults delete com.tango.Marquee chrome.forceHUD
 ```
 
 免权限自检入口（覆盖层 / 编辑器的渲染没法在自动化测试里目视确认，用这几个开关冒烟）：

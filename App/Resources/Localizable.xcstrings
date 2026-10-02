@@ -581,6 +581,16 @@
         }
       }
     },
+    "开发版": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Development build"
+          }
+        }
+      }
+    },
     "开机时自动启动": {
       "localizations": {
         "en": {

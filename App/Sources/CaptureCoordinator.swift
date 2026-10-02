@@ -20,7 +20,7 @@ final class CaptureCoordinator {
     /// 快捷键变更后通知外部（菜单里显示的组合要跟着变）
     var onShortcutChanged: ((KeyCombo) -> Void)?
 
-    private let logger = Logger(subsystem: "dev.tango.Marquee", category: "capture")
+    private let logger = Logger(subsystem: AppIdentity().logSubsystem, category: "capture")
 
     private let permission = SystemScreenRecordingPermission()
     /// 用户偏好（ticket 15）。采集器与倒计时都**每次现读**它 ——

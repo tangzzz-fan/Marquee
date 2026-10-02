@@ -2,6 +2,7 @@
 """英文翻译。key 与源码里 L10n.t("…") 的 key 逐字一致（插值已归一成 %lld / %@）。"""
 
 EN = {
+    "开发版": "Development build",
     "  ·  ⌥ 无阴影": "  ·  ⌥ No shadow",
     "  ·  ⏎ 确认": "  ·  ⏎ to confirm",
     " · 已复制到剪贴板": " · Copied to clipboard",

@@ -2,7 +2,7 @@
 
 > 用途：一份可照着跑的**桌面验收清单**（ticket 06 的交付物），同时回答"现在到哪了、卡在哪"。
 > 日期：2026-10-01 ｜ 分支：`main`
-> 自动化现状：`./scripts/test.sh` → **509 测试全绿**（Core 491 + 历史仓库 12 + 真实 Vision 装置自检 6）
+> 自动化现状：`./scripts/test.sh` → **515 测试全绿**（Core 497 + 历史仓库 12 + 真实 Vision 装置自检 6）
 
 ---
 
@@ -34,7 +34,7 @@
 | 15 | 偏好设置四页 | 🟡 待人工验收 | 「设置…」→ 四页（通用 / 截屏 / 输出 / 快捷键），改一下立刻生效、立刻落盘。延时可 0/3/5/10 秒；含光标、窗口阴影都可调 |
 | 16 | 最近截图面板 | 🟡 待人工验收 | 菜单「最近截图」→ 弹层列出最近 12 张缩略图；点图复制、可重新进编辑器（**标注仍可编辑**）、可删（连文件） |
 | 18 | 打包签名公证 | 🟡 脚本就绪 | `./scripts/package.sh` 七步出 DMG；**需要你的 Developer ID 证书**，我没法代跑 |
-| 17a | 悬浮面板材质（Liquid Glass）与降级 | 🟡 待人工看质感 | 覆盖层工具条 / 钉图控制条 / 倒计时 HUD 换成系统材质：26+ 走 `NSGlassEffectView`，15.x 走 `NSVisualEffectView(.hudWindow)`；参数同源（`ChromeStyle`），决策点可脱机单测。**本机是 macOS 27 → 玻璃那条路实际生效，可直接肉眼验**；降级路用 `defaults write dev.tango.Marquee chrome.forceHUD -bool YES` 强制走一遍 |
+| 17a | 悬浮面板材质（Liquid Glass）与降级 | 🟡 待人工看质感 | 覆盖层工具条 / 钉图控制条 / 倒计时 HUD 换成系统材质：26+ 走 `NSGlassEffectView`，15.x 走 `NSVisualEffectView(.hudWindow)`；参数同源（`ChromeStyle`），决策点可脱机单测。**本机是 macOS 27 → 玻璃那条路实际生效，可直接肉眼验**；降级路用 `defaults write com.tango.Marquee chrome.forceHUD -bool YES` 强制走一遍 |
 | 17b | 本地化（简中 / 英文） | ✅ **已完成**，英文肉眼待人工 | 单份 catalog `App/Resources/Localizable.xcstrings`（188 key）、`L10n.t` 收 `LocalizationValue`（插值直接写进字面量）、6 条扫描测试（含扫描器自检）盯住"漏翻/孤儿/没写理由的豁免"；玻璃那条路顺带强化（着色 0.6 → 0.25）。**人工要看的是"系统语言切英文后有没有中文残留"** |
 | 28 | 工具条图标的三处错误 | ✅ **已完成**，待人工复看 | ① 表情格是个**实心圆点** —— `face.smiling` 在多色配置下第一层被整片填充，加 `.preferringMonochrome()` 修掉；② 文字格显示**两个字「格式」** —— SF Symbol 有中文本地化变体，`textformat` 被系统换成 `textformat.zh`，改用 `t.square`；③ 打开**表情**面板时「样式」格跟着高亮 —— 点亮判据从"有弹层开着"改成"**自己那个**弹层开着"，并抽进 Core 单测 |
 | 27 | 编辑器工具栏：文字按钮换图标 | ✅ **已完成**，待人工看外观 | 编辑器（长截图那条路）工具栏里三处"直接用文字"的地方：两个汉字按钮「文字」「序号」→ `textformat.abc` / `list.number`（名称改挂 tooltip）；「起始 N」→ `#` + 数字；三格数字「2/4/8」→ 图形。**顺带修掉一个真缺陷**：打码强度那三档（4/8/16）按数值线性映射会画成 9.6 / 15.2 / 16，**后两档看不出区别** —— 改成按档位序号均分，并与覆盖层**共用同一份几何**（`SizeSwatchGeometry`） |
@@ -83,6 +83,7 @@
 
 | Ticket | 状态 |
 | --- | --- |
+| **开发版与正式版的区分**（不是 ticket，是 31 的第 0 步） | ✅ **已完成**（分支 `feat/iap`）：正式 `com.tango.Marquee` / 开发 `com.tango.Marquee.dev`；三个配置 `Debug` / `Dev` / `Release`；数据、偏好、TCC 授权从此自动隔离。见 `docs/DEV-VS-PROD.md` |
 | 29 App 图标与上架元数据 | ✅ 已完成（十档图标 + `NSScreenCaptureUsageDescription` + 分类 + 出口合规） |
 | 30 权益状态机（Core） | ✅ 已完成（18 条测试 + 5 个变异） |
 | 31 StoreKit 2 接入 | ⏳ **下一票** |
@@ -126,7 +127,7 @@ Developer ID 那条路作为后路**并存**。
 ### D. 有意暂缺（有 ticket 兜着，不是遗漏）
 
 - 输出格式 / 保存目录 / 命名模板的**界面**在 ticket 15。在那之前只能改偏好：
-  `defaults write dev.tango.Marquee output.format jpeg`（另有 `output.quality` / `output.directoryPath` / `output.nameTemplate`）
+  `defaults write com.tango.Marquee output.format jpeg`（另有 `output.quality` / `output.directoryPath` / `output.nameTemplate`）
 - 裁切只有撤销命令、没有界面（ticket 09）
 - 「延时截屏」「最近截图」两个菜单项是**显式禁用**的占位（点不动，不会出现"点了没反应"）
 - 菜单栏已 6 项，到 PRD 3.1 上限 —— 再加东西必须先合并
@@ -151,7 +152,7 @@ cd /Users/tango/Developments/Marquee
 | 检查 | 命令 / 动作 | 期望 |
 | --- | --- | --- |
 | 签名稳定 | `codesign -dvvv DerivedData/Build/Products/Debug/Marquee.app \| grep -E "Authority\|flags="` | `Authority=Apple Development…`、`flags=0x0`（**不是** `adhoc`） |
-| 清掉历史授权条目 | `tccutil reset ScreenCapture dev.tango.Marquee` | 会清掉所有 Marquee 授权记录，之后需重新勾选一次（只做一次） |
+| 清掉历史授权条目 | `tccutil reset ScreenCapture com.tango.Marquee` | 会清掉所有 Marquee 授权记录，之后需重新勾选一次（只做一次） |
 | 状态一页纸 | `DerivedData/Build/Products/Debug/Marquee.app/Contents/MacOS/Marquee -marqueeDiagnostics` | 权限状态 / preflight 原始值 / 当前快捷键 / 注册结果 / 构建签名身份 |
 
 > `-marqueeRequestPermission` 可单独触发"登记进「屏幕录制」列表 + 请求授权"，不必等按快捷键。
@@ -160,7 +161,7 @@ cd /Users/tango/Developments/Marquee
 
 | # | 前置 | 步骤 | 预期 |
 | --- | --- | --- | --- |
-| A1 | 撤销屏幕录制授权（`tccutil reset ScreenCapture dev.tango.Marquee`） | 启动 Marquee，按 `⌃Q` | 看到明确说明 + 「打开系统设置」按钮；**不弹主窗口、不静默失败** |
+| A1 | 撤销屏幕录制授权（`tccutil reset ScreenCapture com.tango.Marquee`） | 启动 Marquee，按 `⌃Q` | 看到明确说明 + 「打开系统设置」按钮；**不弹主窗口、不静默失败** |
 | A2 | 同上 | 点「打开系统设置」 | 直达「隐私与安全性 → 屏幕录制」面板 |
 | A3 | 同上 | 在系统设置里找 Marquee | **列表里应有 Marquee**（若没有，点「+」手动添加，路径见 §0） |
 | A4 | 已勾选 Marquee | 不重启，直接再按 `⌃Q` | 按设计会提示"请退出并重新打开"；**记录 macOS 27 的真实行为**（是否真的必须重启） |
@@ -193,7 +194,7 @@ cd /Users/tango/Developments/Marquee
 | C4 | 拖完按 `⏎`，粘贴到预览 | 图像尺寸 = 显示器物理像素（Retina 下 2x） |
 | C5 | 不做任何拖拽，直接双击 / 按 `⏎` | 得到整屏 |
 | C6 | 任意阶段按 `Esc` | 干净退出，屏幕无残影、无多屏残留 |
-| C7 | 按 `⌃Q` → 粘贴 → 看日志 | **耗时实测记录**：`log show --last 1m --predicate 'subsystem == "dev.tango.Marquee"'`，找"截图完成：… 耗时 x ms"，目标 ≤ 150 ms |
+| C7 | 按 `⌃Q` → 粘贴 → 看日志 | **耗时实测记录**：`log show --last 1m --predicate 'subsystem == "com.tango.Marquee"'`，找"截图完成：… 耗时 x ms"，目标 ≤ 150 ms |
 | C8 | 任意一次截图 | 热键**实际触发**（注册成功 ≠ 触发成功） |
 
 ### D. 窗口识别（ticket 04）
@@ -216,7 +217,7 @@ cd /Users/tango/Developments/Marquee
 | E2 | 连续 `⌘S` | 序号递增，**不覆盖**已有文件 |
 | E3 | 把保存目录设成不可写（如 `sudo chmod 000`），再 `⌘S` | 弹出说明；**粘贴仍能得到图**（剪贴板优先） |
 | E4 | 按 `⏎`（不带 `⌘`） | 只进剪贴板，**不写磁盘** |
-| E5 | `defaults write dev.tango.Marquee output.format jpeg` 后落盘 | 得到 JPEG；`output.quality` 影响体积 |
+| E5 | `defaults write com.tango.Marquee output.format jpeg` 后落盘 | 得到 JPEG；`output.quality` 影响体积 |
 
 ### F. 编辑器（ticket 07、08、09）—— 现在只从**长截图**进入
 
@@ -304,7 +305,7 @@ cd /Users/tango/Developments/Marquee
 | I1 | C7 的日志 | 落点 → 剪贴板 ≤ 150 ms |
 | I2 | 编辑器里放 100 个标注 | 拖拽/重绘不掉帧（预算 4 ms，见 `docs/RENDER-BENCH.md`） |
 | I3 | 在编辑器里载入 1200×9000 级别的长图 | 缩放平移不掉帧（**B4 风险项**，可能是编辑器真正的瓶颈） |
-| I4 | `./scripts/test.sh` | 509 测试全绿（Core 491 + 历史仓库 12 + Vision 自检 6） |
+| I4 | `./scripts/test.sh` | 515 测试全绿（Core 497 + 历史仓库 12 + Vision 自检 6） |
 
 ### J. 放大镜与像素取色（ticket 10）
 
@@ -570,7 +571,7 @@ cd /Users/tango/Developments/Marquee
 | T1 | 拖出一个选区，看选区下方的工具条 | 是**玻璃/材质**质感（能透出底下的画面），**不是**一块扁平的黑；描边、组间分隔线、图标都清晰 |
 | T2 | 把工具条压在一张**纯白**网页上 | 白底图标与文字仍然看得清（衬底 + 着色生效） |
 | T3 | 系统切到**浅色 / 深色**各看一遍 | 两种外观下都清楚（HUD 材质本身在两种外观下都是深的） |
-| T4 | `defaults write dev.tango.Marquee chrome.forceHUD -bool YES` 后重开 app，再拖一次选区 | 降级路径同样可读：**没有白屏、没有黑块**，图标与文字都在。看完记得 `defaults delete dev.tango.Marquee chrome.forceHUD` |
+| T4 | `defaults write com.tango.Marquee chrome.forceHUD -bool YES` 后重开 app，再拖一次选区 | 降级路径同样可读：**没有白屏、没有黑块**，图标与文字都在。看完记得 `defaults delete com.tango.Marquee chrome.forceHUD` |
 | T5 | 截一张图 → 点「钉图」，看控制条 | 三个按钮（穿透 / 不透明度 / 关闭）都能看到、**都点得动**（顺序反了会是"背景盖住按钮"，事件被吃会是"看得见点不动"） |
 | T6 | 「设置 → 截屏」把延时设成 3 秒，再截一次 | 屏中央的倒计时数字压在材质上，清晰可读 |
 
@@ -695,16 +696,16 @@ DerivedData/Build/Products/Debug/Marquee.app/Contents/MacOS/Marquee -marqueeDiag
 ... -marqueeDemoEditor
 
 # 截图耗时与落盘结果
-log show --last 5m --predicate 'subsystem == "dev.tango.Marquee"' --style compact
+log show --last 5m --predicate 'subsystem == "com.tango.Marquee"' --style compact
 
 # 清掉所有 Marquee 的屏幕录制授权记录（之后需重新勾选）
-tccutil reset ScreenCapture dev.tango.Marquee
+tccutil reset ScreenCapture com.tango.Marquee
 
 # 放大镜尺寸（下一次唤起覆盖层即生效，不必重启）
-defaults write dev.tango.Marquee lens.samplePoints -float 32   # 取样区边长（点），8...200
-defaults write dev.tango.Marquee lens.zoom -float 4            # 倍数，1...12
-defaults write dev.tango.Marquee lens.gap -float 22            # 与光标的间距，0...80
-defaults delete dev.tango.Marquee lens.zoom                    # 单项回默认
+defaults write com.tango.Marquee lens.samplePoints -float 32   # 取样区边长（点），8...200
+defaults write com.tango.Marquee lens.zoom -float 4            # 倍数，1...12
+defaults write com.tango.Marquee lens.gap -float 22            # 与光标的间距，0...80
+defaults delete com.tango.Marquee lens.zoom                    # 单项回默认
 ```
 
 > `-marqueeDiagnostics` 最后一行是**实际生效的构建签名身份**。权限问题先看它：

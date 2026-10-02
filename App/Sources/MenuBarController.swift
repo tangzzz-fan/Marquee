@@ -48,7 +48,9 @@ final class MenuBarController {
         let image = NSImage(systemSymbolName: "crop", accessibilityDescription: "Marquee")
         image?.isTemplate = true
         statusItem.button?.image = image
-        statusItem.button?.toolTip = "Marquee"
+        // 开发版在提示里加个后缀。菜单栏是**图标**（LSUIElement，没有标题栏），
+        // 悬停提示是唯一不打扰人、又能随时确认"我跑的是哪一个"的地方。
+        statusItem.button?.toolTip = "Marquee" + AppIdentity().developmentTitleSuffix
         statusItem.menu = makeMenu()
         updateShortcut(KeyCombo.fullScreenCapture)
     }

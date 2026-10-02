@@ -6,7 +6,7 @@
 name: Marquee
 
 options:
-  bundleIdPrefix: dev.tango
+  bundleIdPrefix: com.tango
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
@@ -15,6 +15,22 @@ options:
   # 源语言＝简体中文：`L10n.t("矩形")` 的 key 就是那句中文，
   # 英文由 `App/Resources/Localizable.xcstrings` 提供（见 ticket 17b）。
   developmentLanguage: zh-Hans
+
+# 三个配置，各司其职（设计见 docs/DEV-VS-PROD.md）：
+#
+#   Debug    只用于跑测试（单元测试走 SwiftPM，基本用不到它）
+#   Dev      **本地运行** —— scheme 的 Run 指它。与 Release 同样的优化设置，
+#            但 bundle id 带 `.dev` 后缀 ⇒ 偏好、数据、屏幕录制授权**自动隔离**
+#   Release  发版 / 打包 / 沙盒内购验证
+#
+# ⚠️ 为什么 Run 不用 `Release`（改名前就是这么干的）：改名前 Run 走 Release，
+# 于是"本地跑的那个"与"要上架的那个"是同一个身份 —— 调试开关会留在正式版偏好里、
+# 调试删除逻辑删掉的是真实历史。现在 Run 走 `Dev`，代价只有一个：**内购的真实沙盒验证
+# 要在 Release 构建上做**（商品挂 bundle id，见 docs/DEV-VS-PROD.md §3.2）。
+configs:
+  Debug: debug
+  Dev: release
+  Release: release
 
 packages:
   MarqueeModules:
@@ -40,13 +56,13 @@ schemes:
       targets:
         Marquee: all
     run:
-      # Run 走 **Release**：截图工具的性能预算（落点→剪贴板 ≤150 ms、选区拖拽 120fps、
-      # 编辑器重绘 ≤4 ms）只有在优化构建下才有意义 —— Debug 的数字不具参考性，
-      # 而且打开面板、抓帧配准这些路径在 Debug 下会明显偏慢。
+      # Run 走 **Dev**（而不是 Release）：性能预算（落点→剪贴板 ≤150 ms、选区拖拽 120fps、
+      # 编辑器重绘 ≤4 ms）只有在优化构建下才有意义，所以它**照抄 Release 的优化设置**；
+      # 但身份是 `com.tango.Marquee.dev`，于是本地跑出来的东西**不会碰正式版的数据与偏好**。
       #
-      # 代价：调试体验下降（Release 下断点与变量查看会被优化打乱）。
-      # 需要单步排查时把这里临时改回 Debug，或直接切 scheme 的 Run 配置。
-      config: Release
+      # 代价：调试体验下降（优化构建下断点与变量查看会被打乱）。
+      # 需要单步排查时临时改成 Debug，或直接切 scheme 的 Run 配置。
+      config: Dev
     test:
       config: Debug
     profile:
@@ -101,7 +117,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Marquee
-        PRODUCT_BUNDLE_IDENTIFIER: dev.tango.Marquee
+        PRODUCT_BUNDLE_IDENTIFIER: com.tango.Marquee
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: App/Info.plist
@@ -125,3 +141,12 @@ targets:
         # 图标（ticket 29）。之前这里是**空串**，等于"这个 app 没有图标" ——
         # 在 Dock / 访达 / App Store 里都会显示成一张白纸。
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        # 开发身份。Debug 也给 `.dev`：它虽然基本只用于跑测试，
+        # 但万一有人用 Debug 起 app，也不该碰到正式版的数据。
+        # **只有 Release 拿得到生产 id** —— 于是"误把开发构建发出去"这件事
+        # 从"靠人记得"变成"配置上就不可能"（package.sh 另有一道前置检查）。
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.tango.Marquee.dev
+        Dev:
+          PRODUCT_BUNDLE_IDENTIFIER: com.tango.Marquee.dev

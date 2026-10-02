@@ -93,7 +93,9 @@ public final class SelectionOverlayController {
     /// 一次 `Esc` 退出。不靠各块屏的面板各自消化，否则多屏要点好几次。
     private var keyMonitor: Any?
 
-    private let logger = Logger(subsystem: "dev.tango.Marquee", category: "overlay")
+    // subsystem 从 `AppIdentity` 取，不写死 —— 但它是**固定的正式 id**，
+    // 于是开发版与正式版的日志用同一条 grep 都能捞到（见 `AppIdentity.logSubsystem`）。
+    private let logger = Logger(subsystem: AppIdentity().logSubsystem, category: "overlay")
     /// 前台应用变化（⌘Tab / 点了别的应用）→ 重取窗口清单
     private var activationObserver: NSObjectProtocol?
 

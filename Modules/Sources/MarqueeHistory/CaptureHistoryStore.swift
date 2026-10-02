@@ -58,7 +58,8 @@ public struct CaptureHistorySnapshot: Equatable, Sendable {
 ///
 /// ## 目录约定
 ///
-/// `~/Library/Application Support/Marquee/history/`：
+/// `<数据根>/history/`，而数据根是 `~/Library/Application Support/<bundle id>/`
+/// （见 `AppIdentity` —— 开发版是 `com.tango.Marquee.dev`，于是两个版本各有各的历史）：
 /// - `index.json` —— 条目清单（新→旧）
 /// - `<uuid>-original.png` / `<uuid>-annotations.json`
 ///
@@ -83,10 +84,12 @@ public final class CaptureHistoryStore: CaptureHistoryWriting, @unchecked Sendab
         self.directory = directory ?? Self.defaultDirectory(fileManager: fileManager)
     }
 
+    /// 默认目录 = `AppIdentity` 给的那个。
+    ///
+    /// ⚠️ 这里**不再写死 `Marquee`**：写死的话，开发版与正式版会共用同一份历史，
+    /// 而"调试删除逻辑删掉真实历史"就是那么发生的（见 `docs/DEV-VS-PROD.md`）。
     public static func defaultDirectory(fileManager: FileManager = .default) -> URL {
-        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("Marquee/history", isDirectory: true)
+        AppIdentity().historyDirectory(fileManager: fileManager)
     }
 
     public var directoryURL: URL { directory }
