@@ -238,7 +238,7 @@ spec → solution → test plan → impl → delivery
 | `docs/RELEASE.md` | 打包 / 公证 / 更新的复现步骤 |
 | `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限：现象、四层根因、当前设计、验证与残留 |
 | `docs/RENDER-BENCH.md` | 渲染技术实测：SwiftUI Canvas / Core Graphics / Metal |
-| **`docs/MAS-AND-MONETIZATION.md`** | **收费与上架方案（决策已定）**：买断 · 路线 B（MAS）· **Pro 能力边界与"被挡住时"的界面行为** · 沙盒会干掉什么（自动滚动）· ticket 29–33 的施工图 |
+| **`docs/MAS-AND-MONETIZATION.md`** | **收费与上架方案（决策已定）**：买断 **¥36** · 路线 B（MAS）· **Pro 能力边界与"被挡住时"的界面行为** · 沙盒会干掉什么（自动滚动）· ticket 29–33 的施工图 |
 
 由 API 版本引发的分支全部集中在一处，不在 UI 代码里散落：
 `if #available(macOS 26.0, *)` 只出现在 `ChromeBackground.isGlassAvailable`

@@ -12,7 +12,7 @@
 | 项 | 值 |
 | --- | --- |
 | 产品 / 最低系统 | **Marquee**（`dev.tango.Marquee`），**macOS 15.0**；26/27 专属能力走 `if #available` + 降级 |
-| **收费（2026-10-02 已定：买断）** | 非消耗型 IAP `dev.tango.Marquee.pro`；**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）。**永不计费**：三类截图、标注全部工具、剪贴板、取色、偏好设置。⚠️ **不许把没做的功能写成"锁着的"**（会造出点了没反应的入口）。判定在 Core `LicenseResolver`（纯函数）；**头号判据：`unknown` 必须放行**（否则付过费的人启动时先看到锁；历史更不许按免费裁剪）|
+| **收费（2026-10-02 已定：买断 ¥36）** | 价格点 **¥36**（CNY 在 ¥10–200 区间步长 ¥1 ⇒ 合法价格点；美区全球均衡价约 $4.99）。非消耗型 IAP `dev.tango.Marquee.pro`；**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）。**永不计费**：三类截图、标注全部工具、剪贴板、取色、偏好设置。⚠️ **不许把没做的功能写成"锁着的"**（会造出点了没反应的入口）。判定在 Core `LicenseResolver`（纯函数）；**头号判据：`unknown` 必须放行**（否则付过费的人启动时先看到锁；历史更不许按免费裁剪）|
 | 采集 / 覆盖层 | ScreenCaptureKit（不用弃用的 `CGWindowListCreateImage`）；覆盖层＝逐屏 `NSPanel`（变暗蒙层 + 镂空 + 描边），**不铺整屏截图** |
 | 画布渲染 | SwiftUI Canvas；CG 只做导出/剪贴板/降采样，滤镜走 CoreImage；**Metal 首期不引入**，留 `CanvasRendering` 协议边界 |
 | **分发（2026-10-02 已定：路线 B）** | **上 Mac App Store**（`32`/`33` 待开工）。**代价已接受：自动滚动砍掉、只留手动滚动长截图**；Developer ID 那条路作为后路**并存**。**2026-10-02 核实**：Apple 文档明文「用 `CGEventPost` 一类函数向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API，唯一出路是 Developer ID」 ⇒ **自动滚动与 MAS 互斥**（腾讯 Snip 的 App Store 版同样"滚动截屏不可用"）。另：**桌面没有对应 entitlement**（只有 user-selected / Downloads / Pictures / Music / Movies）⇒ 默认存桌面在沙盒下写不进去 |
