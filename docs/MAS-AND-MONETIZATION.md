@@ -138,7 +138,7 @@
 
 #### 定价（已定：**¥36**）
 
-- 形态：**一次性买断**，非消耗型 IAP，商品 id `dev.tango.Marquee.pro`。
+- 形态：**一次性买断**，非消耗型 IAP，商品 id `com.tango.Marquee.pro`。
 - **价格：¥36（人民币）**。
 - 这个数字**是合法的价格点**：Apple 的规则表里，中国区（CNY）在 **¥10–200 之间价格步长为 ¥1**
   （见 Apple《App Store 定价机制升级》附件），所以 ¥36 可以在 App Store Connect 里直接选中，
@@ -170,7 +170,7 @@
 
 | 项 | 做法 |
 | --- | --- |
-| 商品 | 买断：一个**非消耗型** IAP（如 `dev.tango.Marquee.pro`）；订阅：`pro.monthly` / `pro.yearly` 一组 |
+| 商品 | 买断：一个**非消耗型** IAP（如 `com.tango.Marquee.pro`）；订阅：`pro.monthly` / `pro.yearly` 一组 |
 | 查询 | `Product.products(for:)` 拿价格与本地化标题（价格文案**必须**用 `displayPrice`，不能写死） |
 | 购买 | `product.purchase()`；处理 `.success(verification)` / `.userCancelled` / `.pending`（家长批准会 pending） |
 | 权益 | `Transaction.currentEntitlements` 逐条 `verified`，取到即 Pro |
@@ -188,7 +188,7 @@ public enum Entitlement: Equatable, Sendable {
     case free
     case trial(daysLeft: Int)
     case pro(purchasedAt: Date)      // 买断 ⇒ 永不过期
-    case revoked(RevocationReason)   // 唯一的"失去"：退款 / 家人关共享 / 收据丢了
+    case revoked(RevocationReason)   // 唯一的"失去"：商店说被撤了 / 商店里找不到
 }
 ```
 
@@ -263,7 +263,7 @@ App Review 原文（3.1.1）明确允许：
 | **自动滚动**（滚动截屏的后半，ticket 12） | ❌ **做不了**：它靠代用户发滚轮事件，而那正是被禁的那一条 | ① MAS 版**只保留手动滚动**长截图（能力还在，只是要用户自己滚 —— 与"手动版 MVP"完全同构）；② 或者不发 MAS 版，保住这个差异点 |
 | 默认保存到**桌面** | ❌ **写不进去**：文件访问只有 user-selected / Downloads / **Pictures** / Music / Movies 这几类，**桌面对应的 entitlement 根本不存在** | 默认目录改成 `~/Pictures/Marquee`（加 `assets.pictures.read-write`）；或首次让用户选一次目录，存 **security-scoped bookmark** |
 | 最近截图仓库 | ⚠️ 路径会从 `~/Library/Application Support/…` 变成容器内 | 写一次**一次性迁移**（把老目录的文件搬进容器），否则老用户"历史全没了" |
-| 偏好设置（`dev.tango.Marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上，迁移或接受重设 |
+| 偏好设置（`com.tango.Marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上，迁移或接受重设 |
 | 全局快捷键（Carbon 热键） | ✅ 不受影响 | 不用改 |
 | 截图 / 覆盖层 / 标注 / 导出 / 钉图 / OCR | ✅ 都不碰受限能力 | 不用改 |
 | 鼠标穿透的钉图窗口 | ✅ | 不用改 |
@@ -342,7 +342,7 @@ App Review 原文（3.1.1）明确允许：
 | --- | --- | --- | --- | --- |
 | 29 | App 图标与上架元数据 | 无 | ✅ **已完成** | `Tools/IconGen` 按 Apple 网格出十档 PNG → `App/Assets.xcassets`；补 `NSScreenCaptureUsageDescription` / `LSApplicationCategoryType` / `ITSAppUsesNonExemptEncryption`；`CFBundleDevelopmentRegion` 纠正为 `zh-Hans`（原先是 `zh_CN`） |
 | 30 | 权益状态机（Core，可脱机单测） | 无 | ✅ **已完成** | `Entitlement` / `TrialPolicy` / `ProFeature` / `ProLimits` / `LicenseResolver`；**18 条测试 + 5 个变异**。**不含** StoreKit、不含界面 |
-| 31 | StoreKit 2 接入 | 30 | ⏳ 待开工 | 查询 / 购买 / 恢复 / `Transaction.updates`；`Products.storekit` 本地配置；能在沙盒环境真买一次 |
+| 31 | StoreKit 2 接入 | 30 | 🟡 **进行中** | 第一批已完成（可脱机测的那半：商品目录 / 交易事实 / 纯映射 / 权益缓存，22 条测试）；剩适配器与 `.storekit` | 查询 / 购买 / 恢复 / `Transaction.updates`；`Products.storekit` 本地配置；能在沙盒环境真买一次 |
 | **—** | **开发版与正式版的区分** | 无 | 🟡 **方向已定：两个 bundle id**，待定前缀（`docs/DEV-VS-PROD.md`） | 它是 31 的前置：没有它，"这次买的是沙盒的还是本地的"说不清；也顺带把"数据根目录只有一处"做掉，32 才不会漏改 |
 | 32 | 沙盒化改造 | 无 | ⏳ 待开工 | `Marquee.entitlements` + 默认目录改 Pictures + 数据迁移；`-marqueeDemoEditor` 与主流程在沙盒下全绿 |
 | 33 | MAS 打包与提审路线 | 32 | ⏳ 待开工 | `archive → exportArchive(app-store) → 上传`；至少过一次 TestFlight / 内部测试 |
@@ -354,11 +354,11 @@ App Review 原文（3.1.1）明确允许：
 
 | 项 | 做法 |
 | --- | --- |
-| 商品 | 一个**非消耗型** IAP：`dev.tango.Marquee.pro`。**在 App Store Connect 里建**，代码这边用 `Products.storekit` 本地配置先跑通 |
+| 商品 | 一个**非消耗型** IAP：`com.tango.Marquee.pro`。**在 App Store Connect 里建**，代码这边用 `Products.storekit` 本地配置先跑通 |
 | 取商品 | `Product.products(for: [id])`；价格文案**必须**用 `displayPrice`（写死价格＝本地化事故） |
 | 购买 | `product.purchase()`；要处理 `.success(verification)` / `.userCancelled` / `.pending`（家长批准会 pending，这时**不能**当成失败） |
 | 权益 | `Transaction.currentEntitlements` 逐条 `verified` —— **只认 `verified`**，`unverified` 一律忽略 |
-| 撤销 | `Transaction.revocationDate != nil` → 映射到 `RevocationReason` |
+| 撤销 | `revocationDate != nil` → `.storeRevoked`。**要从 `Transaction.all` 捞**（`currentEntitlements` 已排除已撤销的）。⚠️ StoreKit 的 `revocationReason` 只有两档，**区分不出"退款"与"被移出家人共享"**，所以 `RevocationReason` 也只有两档；且撤销**可以被撤销**，不许记成永久状态 |
 | 续期/退款/家庭共享 | 必须监听 `Transaction.updates`（这些**发生在 app 之外**，不监听就会"退款了还解锁着"） |
 | 离线 | 权益**本地缓存**，启动先读缓存再校验；**不要**"每次启动必须联网" |
 | 恢复 | `AppStore.sync()` —— 对应界面里的「恢复购买」 |

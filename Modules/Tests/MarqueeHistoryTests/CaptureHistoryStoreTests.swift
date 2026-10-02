@@ -214,4 +214,32 @@ struct CaptureHistoryStoreTests {
         #expect(reopened.entries().map(\.id) == [entry.id])
         #expect(reopened.snapshot(for: entry) != nil)
     }
+
+    // MARK: - 上限是可变的（ticket 31：免费版只留若干张）
+
+    @Test("上限可以改小 —— 但要**下一次写入**才淘汰，改的那一刻不删东西")
+    func limitIsMutable() throws {
+        let (store, _) = makeStore(limit: 3)
+        for _ in 0..<3 { _ = record(store, image: image()) }
+        #expect(store.entries().count == 3)
+
+        // 这一条是刻意的：改上限（用户买了 / 试用到期）**不该顺带丢历史**。
+        // 若在 setter 里顺手淘汰，那么"启动时按权益设一次上限"就等于每次启动
+        // 都删一批文件 —— 而那个删除动作跟用户做过的任何事都对不上。
+        store.limit = 2
+        #expect(store.entries().count == 3, "改上限本身不该删任何东西")
+
+        _ = record(store, image: image())
+        #expect(store.entries().count == 2, "下一次写入才把多出来的淘汰掉")
+    }
+
+    @Test("上限为 nil = 不淘汰（Pro）—— 不然「不设上限」只是一句空话")
+    func nilLimitKeepsEverything() throws {
+        let (store, _) = makeStore(limit: 2)
+        store.limit = nil
+
+        for _ in 0..<6 { _ = record(store, image: image()) }
+
+        #expect(store.entries().count == 6)
+    }
 }

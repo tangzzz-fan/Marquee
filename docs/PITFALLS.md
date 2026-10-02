@@ -733,3 +733,281 @@
     > 再决定哪几档需要另一套 —— 而不是先划一个看起来合理的范围再一起改。
     > （同一个道理在 ticket 16 的"最近截图上限 20 / 面板 12"上也踩过：
     > 两个数字看着不一致，其实各有各的理由。）
+
+---
+
+## S. 改名与身份（ticket 31 第 0 步）
+
+122. **批量替换会改掉那些「本来就要用旧名字」的地方 —— 测试里的旧标识符往往不是漏改。**
+    把 `dev.tango.Marquee` 全量换成 `com.tango.Marquee` 时，脚本顺手改掉了
+    `AppIdentityTests` 里的一条断言：那条**故意**拿旧 id 当反例
+    （"前缀里的 `dev` 不该被当成开发版"）。改完之后它变成了与上一行**重复**的断言 ——
+    测试还是绿的，但它测的东西已经没了。
+    > 判据：**批量替换之后，逐条看 diff 里"被改动的断言"**。
+    > 凡是"断言里出现旧名字"，先问一句：这是漏改，还是它**就是那个反例**？
+    > （同一个坑的另一面：改名脚本也应当**跳过测试文件**，人工决定每一处。）
+
+123. **写死的标识符是「只有改名时才会暴露」的那类债，而且症状离原因很远。**
+    `scripts/build.sh` 里有 `codesign --identifier dev.tango.Marquee` 一句 ——
+    它写死了 bundle id。改 bundle id 时漏掉它的表现是
+    **"屏幕录制授权又留不住了"**，与"改过 bundle id"在现象上完全联系不起来
+    （那一步当初加进来，正是为了修"授权留不住"）。
+    > 修法不是"记得改"，是**把它变成派生的**：从产物的 `Info.plist` 读
+    > `CFBundleIdentifier`，于是它永远跟着实际构建走。
+    > 判据：任何"从别处能推出来的常量"都不该被写第二遍 ——
+    > 一写死就多了一个会分叉的地方，而分叉的症状通常出现在离它很远的地方。
+
+124. **`Dev` 与 `Release` 必须是同一套优化设置 —— 否则"性能预算"的数字换了配置就不可比。**
+    为了隔离身份，Run 从 `Release` 换到了新的 `Dev` 配置。如果 `Dev` 是未优化构建，
+    那么"落点→剪贴板 ≤150 ms""选区拖拽 120 fps"这些数字在两个构建之间就没法比 ——
+    而当初 Run 走 Release，本来就是为了让这些数字有意义。
+    > 落实的办法不是"记得同步两个配置"，而是**验证它们逐项一致**：
+    > 生成工程之后把两份 `XCBuildConfiguration` 的 `buildSettings` 摊开对比
+    > （本项目实际比了 53 项）。差一项都要有理由。
+
+---
+
+## T. 权益与商店（ticket 31）
+
+125. **「撤销」是可以被撤销的 —— 任何把它记成永久状态的实现都会在这里失败。**
+    Apple 的文档写明：退款被撤回之后，交易上的撤销字段会被**移除**，访问权限要恢复。
+    所以同一笔交易在不同时刻会给出不同答案，判定必须每次都重算。
+    > 反过来说：**"曾经被撤销"不许进任何"永久拉黑"的集合**。
+    > 我在 `StorefrontMapper` 里没有留任何累积状态（每次从商店的当前事实重算），
+    > 并为此写了一条回归测试（`revocationIsReversible`）—— 因为"顺手加个 `hasBeenRevoked` 缓存"
+    > 是这类代码最常见的"优化"，而它的代价是**把一个已经恢复购买的用户永久锁在外面**。
+
+126. **「商店里没有」只有在**真的问过**之后才算证据。**
+    查询失败（断网 / 商店报错 / 还没查完）时，`records` 恰好也是**空数组** ——
+    与"这个人确实没买过"长得一模一样。照它判，就会**把付过费的人在断网时锁在外面**。
+    > 修法：`StorefrontMapper` 的文档里把"只在真的问过商店之后调用"写成硬前提，
+    > 查询失败走**另一条路**（直接用缓存里那份输入），根本不进映射。
+    > 这与 `LicenseResolver` 里"`unknown` 必须放行"是同一条原则的两处落点。
+
+127. **关于「撤销」的三条事实，靠印象写会错两条。**
+    ① **`revocationReason` 只有两档**（`.developerIssue` / `.other`）——
+    Apple 的 Server Notifications 文档明确写：家人共享的撤销原因也是 `other`。
+    ⇒ **退款与"被移出家人共享"在运行时区分不出来**，别对用户说"你退款了"。
+    ② **`Transaction.currentEntitlements` 已经排除了已撤销的购买** ——
+    只看它会**分不清"从来没有过"与"有过、后来被撤了"**，而这两种话术完全不同。
+    要捞历史得用 `Transaction.all`。
+    ③ 上面 125 那条（撤销可逆）。
+    > 我原先把 `RevocationReason` 写成三档（退款 / 家人共享 / 收据丢失），
+    > 其中两档**假装能区分**。代价是给用户一句很确定、但可能是错的解释。
+    > 现在合并成 `.storeRevoked` / `.purchaseNotFound` 两档。
+
+128. **手写的编码夹具漏一个非可选字段 → 解码失败 → 下游断言对 `nil` 求 `?.` 会**空跑通过**。**
+    测试里手写了一段 JSON 去验"认不出的撤销原因要 fail-open"，
+    但漏了结构里那个非可选的 `hasUsedTrial` ⇒ `JSONDecoder` 直接失败 ⇒ `load()` 返回 `nil` ⇒
+    下面那句 `#expect(loaded?.revocation == nil)` 对 `nil` 求 `?.` 也是 `nil`，**通过了**。
+    整条测试绿着，但它什么都没验。
+    > 两条修法，缺一不可：
+    > ① 夹具必须带齐**所有非可选字段**；
+    > ② **先用一条 `#expect(loaded != nil)` 证明"确实读出来了"**，再断言内容。
+    > 这一条对所有"解码 / 解析"类测试都成立 —— 解析失败的默认返回值往往是"最像成功"的那个。
+
+129. **同一个接缝的两个实现必须逐条同规则 —— 差异只会在真机上现形。**
+    `EntitlementCaching` 有两个实现（内存 / 落盘）。落盘那个拒绝缓存「还没查」，
+    内存那个我一开始是无条件覆盖 —— 于是"内存里对、盘上不对"。
+    > 这次是测试抓住的（专门写了一条"两个实现行为一致"）。
+    > 判据：**接缝有多个实现时，就该有一条测试专门比对它们的可观察行为**，
+    > 而不是各自测各自 —— 各自测各自永远不会发现分叉。
+
+---
+
+## U. StoreKit 与配置（ticket 31 第二批）
+
+130. **适配器里**不许**做判断 —— 提前过滤掉的东西，那条规则就再也测不到了。**
+    `StoreKitStorefront.fetchRecords()` 完全可以写 `case .unverified: continue`（把未校验的交易
+    直接丢掉），看起来更干净。但那样一来，"未校验的交易一律不算数"这条规则就**只剩真机才跑得到**
+    —— 本机没有沙盒账号，测不到，于是被改坏了也没人知道。
+    做法：**如实记下来、标 `isVerified: false`**，让 Core 里那句 `filter(\.isVerified)`
+    成为唯一的判据（它有 5 条测试盯着）。
+    > 判据：写适配器/包装层时，凡是"我可以在这里顺手过滤掉"的念头，都要问一句
+    > **「过滤之后，那条规则还有没有别的地方在管？」** 没有的话，就不许在这里过滤。
+
+131. **`Transaction.updates` 每条都要按规矩处置：verified 必须 `finish()`，unverified 不要。**
+    不 `finish()` 的话，那条交易会**一直被重发**（表现为日志里同一条反复出现、界面反复刷新）；
+    而未校验的交易 `finish()` 等于**承认已经处理**，可我们什么都没接受。
+    > 另外一条容易反过来做错：`Transaction.all` 里的**历史交易不要 `finish()`**
+    > —— 那只是读取，不是消费。Apple 只要求 finish "updates 里来的"与"刚购买的"。
+
+132. **测试替身必须能"挂住" —— 否则时序规则根本测不出来。**
+    "启动不等网络"是这个设计里最重要的时序规则。但如果假 reader 立刻返回，
+    那么**无论实现有没有 await 商店，断言都会通过** —— 等于没测。
+    真实的做法是造一个"闸门"（`AsyncStream` + continuation），让 `fetchRecords` 挂在半路，
+    先断言"此刻判定已经好了"，再放行。
+    > 判据：凡是"**先做 A、再做 B、顺序不能反**"的规则，测试里都要有一个能停住 B 的装置。
+    > 用一个即答的替身，测出来的是 A 的结果，不是两者的顺序。
+
+133. **`Equatable` 上带"瞬时字段"的类型，相等比较是个地雷。**
+    权益缓存 `load()` 会把 `now` 刷成**读的那一刻**（这是刻意的，见 `EntitlementCache`）。
+    于是测试里写 `#expect(cache.load() == before)` **永远为假** —— 两次调用差几微秒。
+    > 更危险的是反过来的写法：`#expect(cache.load() != something)` 会**永远为真**，
+    > 那种"看起来通过了"的断言查起来极其费劲。
+    > 修法：**比事实，不比整个值** —— 逐字段比（本项目写了 `sameFacts(_:_:)` 辅助函数），
+    > 或者给类型加一个"忽略瞬时字段"的比较方法。
+
+134. **配置文件与代码是两份独立的事实 —— 必须有一条测试把它们连起来。**
+    `Products.storekit` 里的商品 id 与 `StoreCatalog` 的常量，不同步的两种后果都很难反查：
+    ① 配置里有、代码里没有 → 开发期买得到但没人读结果（"点了购买没反应"）；
+    ② 代码里有、配置里没有 → **本地能过、真机取不到商品**，而排障会先去怀疑网络。
+    真机沙盒验不了这件事（它验的是"能不能买"，不是"两份配置是否一致"）。
+    > 做法：解析配置文件 ↔ 比对常量，**两个方向都查**（少了哪一个方向，那一种错就漏了）。
+    > 别忘了**解析器自检**（"确实读到了东西"）：否则一个解析不出任何东西的实现
+    > 会让"空集合 == 空集合"永远通过。
+
+135. **`@MainActor` 类型的属性不能被 `@Sendable` 闭包直接捕获。**
+    ```swift
+    EntitlementCoordinator(..., now: { self.origin })        // ✗ 编译错误
+    ```
+    被 `@MainActor` 标注的类型，它的属性访问是隔离的，而 `@Sendable` 闭包不带隔离。
+    修法是先取成局部常量再捕（`let stamp = origin`）。
+    > 这条本身只是编译错误，不值一提；值一提的是它**指向的那种设计**：
+    > 把"现在几点"做成注入的闭包（而不是在内部 `Date()`）是这个项目里
+    > 试用天数、权益判定能脱机单测的**全部原因**。
+
+136. **XcodeGen 的 `storeKitConfiguration` 只拼前缀、不做相对路径计算。**
+    源码里是 `Path(components: [options.schemePathPrefix, storeKitConfiguration])`
+    —— 而 `schemePathPrefix` 默认 `"../../"`。所以配置文件写 `App/Products.storekit`，
+    生成的 scheme 里就是 `../../App/Products.storekit`。
+    > **不要自己重新推导这个前缀**：它相对哪个目录在 Apple 文档里没有明说，
+    > 第三方说明互相矛盾（我看的两份就冲突）。正确的做法是**保留默认值**，
+    > 然后在 Xcode 里**打开 scheme 的 Run → Options 看一眼**那个下拉框是否选中了文件
+    > —— 10 秒就能确定，比读文档推导可靠。
+
+---
+
+## V. 构建环境与工程接线（2026-10-03）
+
+137. **嵌套沙箱：`swiftc -disable-sandbox` 是那个逃逸口，而官方的三个参数不是。**
+    `swift-plugin-server`（跑 `@State` 这类宏的辅助进程）**启动时会自己再套一层沙箱**。
+    当外层已经被某个受限 profile 包裹（agent 会话、某些 CI 容器）时，那次 `sandbox_apply()`
+    会被拒 —— 日志里的第一行永远是：
+
+    ```
+    sandbox-exec: sandbox_apply: Operation not permitted
+    ```
+
+    跟着才是 `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`。
+    **后一句是症状，前一句才是根因** —— 只看后一句会一路去查宏插件的路径与缓存。
+
+    Xcode 常被推荐的那三个参数（`-IDEPackageSupportDisableManifestSandbox=1`、
+    `-IDEPackageSupportDisablePluginExecutionSandbox=1`、`ENABLE_USER_SCRIPT_SANDBOXING=NO`）
+    **在本机实测无效**：它们关的是**内层**（清单求值 / 插件执行）沙箱，
+    而外层那次 apply 本身就被拒。
+
+    有效的是 `swiftc` 自己的开关（`xcrun swiftc -help-hidden | grep sandbox`）：
+
+    ```
+    -disable-sandbox        Disable using the sandbox when executing subprocesses
+    ```
+
+    它让**编译器根本不去套那层沙箱**，于是 `swift-plugin-server` 不需要 apply。
+    实测：`OTHER_SWIFT_FLAGS="-disable-sandbox"` → **BUILD SUCCEEDED**。
+    `scripts/build.sh` 里做成了显式开关 `MARQUEE_DISABLE_COMPILER_SANDBOX=1`，
+    **默认不开** —— 那层沙箱是真实隔离，不该为了少数环境全局削弱它。
+
+138. **`.storekit` 不进工程，Xcode 里那个下拉就是空的 —— 而且它显示为「红色」。**
+    XcodeGen 的 `storeKitConfiguration:` 只往 **scheme** 里写了一个**路径字符串**，
+    它**不会**把 `.storekit` 加进工程的文件引用。而 Xcode 的
+    Run → Options → StoreKit Configuration 下拉框，列的是**工程已知的 `.storekit` 文件**。
+    ⇒ 文件不进工程，下拉里就没有可选项、旁边那个引用显示为红色。
+    （实测确认：那一版 `project.pbxproj` 里 `Products.storekit` 出现 **0 次**。）
+
+    修法是在 `project.yml` 的 sources 里显式声明，并给 `buildPhase: none`
+    —— 它只需要成为一个**文件引用**，不该进任何构建阶段（不是要拷进 app 包的资源）。
+
+    > 判据：**"配置里写了个路径"与"工程里有个文件"是两件事**。
+    > 任何"Xcode 编辑器里选一个文件"的设置（StoreKit 配置、GPX、`.xcconfig`…），
+    > 都要先确认那个文件在工程里。
+
+139. **XcodeGen 的 `schemePathPrefix` 默认值是给「非 workspace」的。**
+    官方文档原文：默认 `"../../"`「suitable for non-workspace projects」，
+    而「For use in workspaces, use `"../"`」。
+    所以本项目的形态要先确认清楚：**scheme 实际在哪**。
+    实测本项目的 scheme 只有一份、在 `Marquee.xcodeproj/xcshareddata/xcschemes/` 里
+    —— 即使仓库里有 `Marquee.xcworkspace`，它 `xcshareddata/` 下**没有 schemes 目录**。
+    因此这是「非 workspace」形态，默认前缀是对的，**不要**想当然地改成 `"../"`。
+    > 顺带：它是**拼接**而不是解析（源码里是 `Path(components: [prefix, value])`
+    > 然后简化 `..`），所以 value 里自己再补 `../` 会得到叠加的结果。
+
+140. **macOS 自带的是 BSD grep —— `\s` / `\d` 不是字符类，而且它的"失败"是静默的。**
+    写 `grep -E "^\s+iPhone"` 时，本意是"行首空白 + iPhone"。在 GNU grep 下能匹配，
+    在 BSD grep 下**当作字面量 `s`** 去匹配 —— 于是**返回空结果、退出码 1，一个字都不报**。
+    这类错的可怕之处与项目里其他几条一样：**它看起来像"没有数据"，而不是"表达式写错了"**。
+    本次实测（`printf '  indented\n' | grep -E "^\s+indented"`）确认不匹配。
+
+    **正解**：用 POSIX 字符类 —— `[[:space:]]` / `[0-9]` / `[[:alpha:]]`。
+    同理还有两条 BSD 侧差异：`sed -i` 需要显式给后缀（`sed -i ''`）、
+    `grep -P` 根本不存在。
+
+    > 判据：在 macOS 上写"解析命令输出"的脚本时，
+    > ① 能用 `--json` 就别 grep 人类可读格式（`xcrun simctl list devices available --json`）；
+    > ② 非要用正则，**只用 POSIX 字符类**，别用 `\s` / `\d` / `\w` 这类 Perl 简写。
+    > 更一般的教训：**"返回空"与"表达式错"必须能区分开** ——
+    > 一条会静默失配的正则，比一条报错的正则危险得多。
+
+141. **上面 140 的归因只对了一半 —— 沙箱里根本不是 BSD，是 toybox；而且 140 给的 `sed -i ''` 建议在这里正好是反的。**
+    （2026-10-03 订正）agent 会话的 PATH 首部是 WorkBuddy 沙箱的 shim 目录，
+    `grep sed find ls head tail cat wc …` 共 22 个命令被换成了 **toybox 0.8.13**
+    （`toybox grep --version` 的输出自己就写着 "is not GNU grep 9.0"）。
+    **你自己的终端走 `/usr/bin/grep`（BSD 2.6.0），agent 会话走 toybox** ——
+    同一条命令、同一种写法，两个结果。
+
+    更要命的是回退条件：shim 只在 stderr 出现 `Unknown option` 时才 exec 真工具
+    ⇒ **语义差异永远不触发回退**，一律静默失配。所以"我在终端里跑是好的"这件事，
+    **对 agent 会话没有任何证明力**。
+
+    实测（2026-10-03）：
+
+    - `grep 'a\|b'`（BRE 交替）→ toybox ❌ 静默 rc=1；BSD ✅ 命中
+    - `grep -E` + 裸竖线 → 两边 ✅
+    - `grep -E 'a\sb'` → toybox ❌ 静默 rc=1；BSD ✅ 命中
+    - `grep -E 'a[[:space:]]b'` → 两边 ✅
+    - `sed -i 's/a/b/' f` → toybox ✅；BSD ❌（unterminated substitute）
+    - `sed -i '' 's/a/b/' f` → toybox ❌（把 `''` 当文件名）；BSD ✅
+
+    **⇒ 140 里"`sed -i` 要加 `-i ''`"这条，在 agent 会话里是错的。**
+    两边的 `-i` 语义相反 —— 所以**别再用 `sed -i`**：写临时文件再 `mv`。
+
+    修法按确定性排序：
+
+    ① **命令只写跨环境安全的形式**：永远 `grep -E`、交替用裸竖线、字符类只用 POSIX；
+    ② 需要按 BSD 语义跑**单条只读**命令时，用逃生舱
+    `CODEBUDDY_TOYBOX_BIN= grep …`（它让 shim 直接回退到 `/usr/bin/grep`）；
+    ⚠️ 它同时绕开 shim 的分发层，**写 / 删命令别用**（safe-delete 与写入前备份会失效）；
+    ③ **写脚本就照抄两个 build 技能脚本开头那段** —— 把 shim 目录从 PATH 摘掉
+    （纯 bash，不调外部命令；普通终端里是 no-op），脚本内工具语义恒定。
+
+    > 判据：**"环境不同"必须能被自己发现，不能靠"我这台机器上是好的"。**
+    > 凡"同一个命令在不同 shell 里可能解析到不同实现"的东西，
+    > 要么写成对三套实现都成立的**最小公共写法**，要么在脚本开头把环境**钉死**。
+    > 顺带：内置的 Grep 工具是 ripgrep，**第三套**语法 —— 交替直接写裸竖线
+    > （`\|` 在那边反而是字面竖线），`\s` 在那边是有效的。
+
+142. **本地化生成器按「表达式名」猜说明符类型 —— 猜错不编译失败，只静默不翻译。**
+    写升级卡片的标题时我写的是
+    `L10n.t("\(Self.cardEntryName(content.feature))是 Pro 能力")`。
+    `Tools/L10nCatalog/build_catalog.py` 判类型靠一份**字面子串**名单：
+
+    ```python
+    STRINGY = ("localizedDescription", ".path", "displayString", "reason",
+               "detail", "title", "text", "conflict", "uppercased()", "String(")
+    ```
+
+    `cardEntryName` 一个都不沾 ⇒ 它按 **`%lld`**（整数）归一，catalog 里于是生出
+    key **`%lld是 Pro 能力`**，而运行时传进去的是 `String` —— 说明符与实际类型不符。
+
+    这条错的可怕之处和本文件里其他几条一样：**编译过得去、没有警告**，
+    只在运行时表现为"这句中文没被翻译"。而人的第一反应会是"翻译没生效"，
+    不会想到"key 根本是生成错的"。
+
+    **正解：别拼。** 带变量的整句拆成独立文案 —— `"识别文字是 Pro 能力"`、
+    `"钉图是 Pro 能力"`…… 顺带解决第二个问题：插值会把**中文语序焊死**，
+    而英文里这个变量该在句首（"Text recognition is a Pro feature"），拼出来的句子翻不动。
+
+    > 判据：**凡是"工具靠猜"的环节，加新用法时都要回头看它猜得对不对。**
+    > 这次的灯是 `LocalizationScanTests` 亮的（它校验"源码用到的 key 都在 catalog 里"）——
+    > 那条测试之所以存在，正是因为生成器**只能校验、不能判断对不对**：
+    > key 生成了、catalog 里也有、测试全绿，可它就是错的。

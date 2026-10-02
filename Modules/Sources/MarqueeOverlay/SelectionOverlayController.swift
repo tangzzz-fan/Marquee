@@ -93,7 +93,9 @@ public final class SelectionOverlayController {
     /// 一次 `Esc` 退出。不靠各块屏的面板各自消化，否则多屏要点好几次。
     private var keyMonitor: Any?
 
-    private let logger = Logger(subsystem: "dev.tango.Marquee", category: "overlay")
+    // subsystem 从 `AppIdentity` 取，不写死 —— 但它是**固定的正式 id**，
+    // 于是开发版与正式版的日志用同一条 grep 都能捞到（见 `AppIdentity.logSubsystem`）。
+    private let logger = Logger(subsystem: AppIdentity().logSubsystem, category: "overlay")
     /// 前台应用变化（⌘Tab / 点了别的应用）→ 重取窗口清单
     private var activationObserver: NSObjectProtocol?
 
@@ -120,6 +122,31 @@ public final class SelectionOverlayController {
     /// 这一点很要紧：瞬时标志位一旦决定常驻 UI 的可见性，某条分支漏了收尾
     /// 就会让那个东西**再也不出现**（PITFALLS 66）。
     private var palette: OverlayPalette?
+
+    // MARK: - 宿主接缝（ticket 31：升级卡片）
+
+    /// 「现在的权益判定是什么」—— 由宿主注入（App 层读 `ProEntitlement`）。
+    ///
+    /// 覆盖层**自己不持有权益状态**。持有一份就会出现"购买之后设置页解锁了、
+    /// 这个窗口还锁着"这类问题；每次要用时问一次，答案永远和宿主一致。
+    ///
+    /// `nil` = 宿主没接（命令行工具、单测、`-marqueeDemoEditor`）⇒ **一律放行**。
+    /// 这个默认值是刻意的：**没接线时锁死功能，比不锁糟得多** ——
+    /// 那会让所有工具与测试都跑不起来，而"少收一次"没人会投诉。
+    public var proEntitlement: (@MainActor () -> EntitlementSnapshot)?
+
+    /// 卡片上某个动作被点了。宿主负责真的去买 / 去恢复 / 去开试用。
+    public var onProCardAction: (@MainActor (ProCardAction) -> Void)?
+
+    /// 升级卡片（`nil` = 没弹）。
+    ///
+    /// 与 `palette` 同理，它是**会话状态**而不是瞬时标志位：瞬时标志位一旦
+    /// 决定常驻 UI 的可见性，某条分支漏了收尾就会让那个东西**再也不出现**（PITFALLS 66）。
+    ///
+    /// 它**不碰 `session`（选区）、也不碰 `annotationSession`（标注）** ——
+    /// 这正是"关掉卡片不许丢任何东西"那条产品规则的落点：用户关掉之后，
+    /// 框好的选区、画好的标注都还在，他可以用免费能力把这次截图做完。
+    private var proCard: ProCardContent?
 
     /// 表情面板里当前选中的那一枚（下标）。
     private var selectedEmojiIndex = 0
@@ -549,7 +576,7 @@ public final class SelectionOverlayController {
             return
         }
         // 标注分**四级**退，**不会一步把整次截图丢掉**：
-        //   ⓪ 弹层开着 → 只收弹层（色板/尺寸 或 表情）
+        //   ⓪ 弹层 / 升级卡片开着 → 只收那一层
         //   ① 拖到一半 / 画到一半 → 只结束这一次拖拽
         //   ② 选了工具   → 取消工具（回到"调整选区"）
         //   ③ 其它       → 取消整次截图
@@ -557,6 +584,16 @@ public final class SelectionOverlayController {
         // 一下 `Esc` 全部作废，而这张图可能已经很难再复现。
         //
         // ⓪ 必须排在最前：面板是最浅的一层，"关掉刚打开的那东西"是所有人的第一直觉。
+        //
+        // 卡片排在弹层**之前** —— 两者不会同时出现，而卡片总是更晚弹出来的那个，
+        // "关掉最新的那层"才符合直觉。
+        // 收卡片只置 `proCard = nil`：**选区与标注一个字都不动**，
+        // 关掉之后用户能接着把这次截图做完（产品的硬规则，见 MAS-AND-MONETIZATION §1）。
+        if proCard != nil {
+            proCard = nil
+            refresh()
+            return
+        }
         if palette != nil {
             palette = nil
             refresh()
@@ -1213,7 +1250,9 @@ public final class SelectionOverlayController {
             isRecognizing: textRecognition?.isRunning ?? false,
             canUndo: annotationSession.canUndo,
             canRedo: annotationSession.canRedo,
-            palette: palettePresentation(barFrame: barFrame, screenFrame: visibleFrame)
+            palette: palettePresentation(barFrame: barFrame, screenFrame: visibleFrame),
+            proCard: proCardPresentation(barFrame: barFrame, screenFrame: visibleFrame),
+            lockedFeatures: lockedFeatures
         )
     }
 
@@ -1235,6 +1274,19 @@ public final class SelectionOverlayController {
             sizeSlotIndex: Self.nearestIndex(of: Self.selectedSizeValue(for: meaning, in: annotationSession), in: values),
             sizeSlotMeaning: meaning,
             selectedEmojiIndex: selectedEmojiIndex
+        )
+    }
+
+    /// 升级卡片要画成什么样。
+    ///
+    /// 与弹层同一个套路：位置**从工具条的矩形算**（`ProCardLayout.frame`），
+    /// 不另起一套 —— 各算各的必然出现"卡片飘在离工具条半格的地方"。
+    private func proCardPresentation(barFrame: CGRect,
+                                     screenFrame: CGRect) -> ProCardPresentation? {
+        guard let content = proCard else { return nil }
+        return ProCardPresentation(
+            frame: ProCardLayout.frame(toolbar: barFrame, screenFrame: screenFrame),
+            content: content
         )
     }
 
@@ -1967,6 +2019,63 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         perform(paletteItem: item)
     }
 
+    func overlayView(_ view: SelectionOverlayView, clickedProCardAt globalPoint: CGPoint) {
+        guard !isFinishing, let content = proCard,
+              let card = toolbarPresentationIfSettled()?.proCard else { return }
+        guard let action = ProCardLayout.action(at: globalPoint,
+                                                in: card.frame,
+                                                buttons: content) else {
+            // 点在卡片的正文或空白处：**什么都不做**。
+            // 手抖一下就变成"发起购买"，是这张卡片上最贵的错误。
+            return
+        }
+        logger.info("升级卡片：点了 \(action.rawValue, privacy: .public)")
+
+        // 先把卡片收掉再回调：三个动作都会弹别的东西（系统购买面板 / 偏好设置），
+        // 卡片留着会正好盖在它们该出现的位置上。
+        // 收卡片不碰选区与标注 —— 用户中途放弃，这次截图还能接着做完。
+        proCard = nil
+        refresh()
+        onProCardAction?(action)
+    }
+
+    /// 此刻**锁着的** Pro 能力。工具条上那几格会补一个小锁角标。
+    ///
+    /// 与 `allowProEntry` 用**同一个判据**（`snapshot.access(to:)`）——
+    /// 角标与"点了会不会弹卡片"必须同源。各算各的会出现"图标上没锁、点下去却弹出购买卡片"，
+    /// 那比不画锁更让人困惑。
+    ///
+    /// 宿主没接时是**空集**（= 都不锁），与 `allowProEntry` 的放行一致。
+    private var lockedFeatures: Set<ProFeature> {
+        guard let snapshot = proEntitlement?() else { return [] }
+        return Set(ProFeature.allCases.filter { !snapshot.access(to: $0).isAllowed })
+    }
+
+    /// 入口处的门。返回 `false` = 被挡住了、而且卡片已经弹出来。
+    ///
+    /// ## 为什么只在**入口**挡
+    ///
+    /// 进到流程中间再失败，用户会白框一次选区、白画几笔，然后才被告知要付费 ——
+    /// 那是最容易招差评的顺序（见 `docs/MAS-AND-MONETIZATION.md` §「被挡住时的界面行为」）。
+    ///
+    /// ## 它**一个会话状态都不动**
+    ///
+    /// 这个函数只置 `proCard`：不碰 `session`（选区）、不碰 `annotationSession`（标注）。
+    /// "关掉卡片不许丢任何东西"就是靠这一条成立的 ——
+    /// 以后有人往这里"顺手"加一句 `cancel()` 或清空标注，那条规则当场失效。
+    private func allowProEntry(_ slot: OverlayToolbarSlot) -> Bool {
+        guard let feature = slot.proFeature else { return true }      // 免费格：不问
+        guard let snapshot = proEntitlement?() else { return true }    // 宿主没接：放行
+        // `ProCard.content` 返回 nil **就是**"该放行" —— 不在这里另外判一次。
+        // 另判一次的话，"这一项已经放开成免费了、卡片却照弹"这类不一致迟早会出现。
+        guard let card = ProCard.content(for: snapshot, feature: feature) else { return true }
+
+        proCard = card
+        logger.info("入口被挡：\(feature.rawValue, privacy: .public)")
+        refresh()
+        return false
+    }
+
     /// 工具栏每一格的动作。
     ///
     /// 「完成」/「保存」与 `⏎`/`⌘S` 走**同一套收尾通道**（`performCommit`），
@@ -2000,10 +2109,12 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             }
 
         case .ocr:
+            guard allowProEntry(slot) else { return }
             runTextRecognition()
             return     // runTextRecognition 自己会刷新（它要先显示"正在识别…"）
 
         case .pin:
+            guard allowProEntry(slot) else { return }
             // 钉图 = 「完成」+ 多留一份在屏幕上。图**照样进剪贴板** ——
             // 每条提交路径都写剪贴板是这套设计的不变量，钉图不该是例外
             //（否则用户按了钉图会发现剪贴板没变，而他会以为截图没成）。

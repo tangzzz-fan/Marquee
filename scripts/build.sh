@@ -14,6 +14,16 @@
 #   defaults delete com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox
 #
 # 本脚本不会自动修改你的全局设置，只会在缺失时报错并提示。
+#
+# ── 构建配置 ────────────────────────────────────────────────────────────
+#
+#   Debug    只用于跑测试
+#   Dev      **默认**。与 Release 同样的优化设置，但 bundle id 是 `com.tango.Marquee.dev`
+#            ⇒ 本地跑出来的东西不会碰正式版的数据、偏好与屏幕录制授权
+#   Release  发版 / 打包 / 内购的**真实沙盒验证**
+#
+# 换配置：CONFIGURATION=Release ./scripts/build.sh
+# 设计见 docs/DEV-VS-PROD.md。
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -38,8 +48,19 @@ cd "$(dirname "$0")/.."
 #   -IDEPackageSupportDisableManifestSandbox=1
 #   -IDEPackageSupportDisablePluginExecutionSandbox=1
 #   ENABLE_USER_SCRIPT_SANDBOXING=NO
-# 它们对**外层**沙箱无效（外层的 apply 本身就被拒），因此这里不加 ——
-# 加了会让人误以为脚本能自愈。
+# 它们对**外层**沙箱无效（外层的 apply 本身就被拒）。
+#
+# ── ✅ 有效解法（2026-10-03 实测，见 docs/DEV-NOTES.md 4.1）────────────────
+#
+# `swiftc` 自己有一个 `-disable-sandbox`（"Disable using the sandbox when
+# executing subprocesses"）。传给它之后，**编译器不再去套那层沙箱**，
+# 于是 `swift-plugin-server` 不需要 apply、也就不会被杀。
+#
+#   MARQUEE_DISABLE_COMPILER_SANDBOX=1 ./scripts/build.sh
+#
+# ⚠️ **默认不开**：那一层沙箱是真实的隔离（宏插件会执行代码），
+# 正常终端没有这个问题，不该为了少数环境全局削弱它。
+# 需要它的典型场合：被外部沙箱包裹的 shell（agent 会话、某些 CI 容器）。
 
 if [ "$(defaults read com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox 2>/dev/null || echo 0)" != "1" ]; then
   echo "✗ 缺少必需的 Xcode 设置，构建无法进行。请先执行（一次性，可回退）：" >&2
@@ -68,12 +89,22 @@ xcodegen generate
 # 覆盖 CLI 路径：MARQUEE_DERIVED_DATA=/some/path ./scripts/build.sh
 DERIVED_DATA="${MARQUEE_DERIVED_DATA:-$PWD/DerivedData}"
 
+# 嵌套沙箱逃逸（见上面的说明）。值里没有空格，所以下面可以不加引号直接展开 ——
+# 加引号反而会把 `OTHER_SWIFT_FLAGS=-disable-sandbox` 当成一个整体参数名。
+EXTRA_BUILD_SETTING=""
+if [ "${MARQUEE_DISABLE_COMPILER_SANDBOX:-}" = "1" ]; then
+  EXTRA_BUILD_SETTING="OTHER_SWIFT_FLAGS=-disable-sandbox"
+  echo "⚠️  已关闭编译器的子进程沙箱（MARQUEE_DISABLE_COMPILER_SANDBOX=1）——"
+  echo "    只在被沙箱包裹的 shell 里需要；正常终端请去掉这个变量。"
+fi
+
 xcodebuild \
   -workspace Marquee.xcworkspace \
   -scheme Marquee \
-  -configuration "${CONFIGURATION:-Debug}" \
+  -configuration "${CONFIGURATION:-Dev}" \
   -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED_DATA" \
+  $EXTRA_BUILD_SETTING \
   build
 
 # ── 签名核验：稳定身份 = 「屏幕录制」授权能留住的前提 ──────────────────
@@ -87,7 +118,8 @@ xcodebuild \
 # 这样从 Xcode 里直接 Run 也是对的 —— 开发时走 Xcode Run 才是常态，
 # 把修复只放在这个脚本里等于没修（2026-09-30 踩过这个坑）。
 # 这一段只做两件事：**核验**结果，以及发现退回 ad-hoc 时给出可执行的补救。
-APP_PATH="$DERIVED_DATA/Build/Products/${CONFIGURATION:-Debug}/Marquee.app"
+CONFIGURATION="${CONFIGURATION:-Dev}"
+APP_PATH="$DERIVED_DATA/Build/Products/$CONFIGURATION/Marquee.app"
 
 if [ ! -d "$APP_PATH" ]; then
   echo "✗ 没能定位构建产物：$APP_PATH" >&2
@@ -95,7 +127,12 @@ elif codesign -dvvv "$APP_PATH" 2>&1 | grep -q "adhoc"; then
   echo "⚠️  产物是 **ad-hoc** 签名 —— macOS 会把每次构建当成新应用，屏幕录制权限会反复索要。" >&2
   echo "   检查 project.yml 的 CODE_SIGN_IDENTITY / DEVELOPMENT_TEAM 是否被改回 \"-\"。" >&2
   if [ -n "${MARQUEE_SIGN_IDENTITY:-}" ]; then
-    codesign --force --sign "$MARQUEE_SIGN_IDENTITY" --identifier dev.tango.Marquee "$APP_PATH"
+    # ⚠️ `--identifier` 从**产物**里读，不写死。
+    # 写死的话，改 bundle id 时这一处一定会被漏掉 —— 而它的表现是
+    # "屏幕录制授权又留不住了"，很难联想到是这里（改名时就差点漏）。
+    BUILT_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+                 "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "")
+    codesign --force --sign "$MARQUEE_SIGN_IDENTITY" --identifier "${BUILT_ID:-com.tango.Marquee}" "$APP_PATH"
     echo "✓ 已按 MARQUEE_SIGN_IDENTITY 强制重签：$MARQUEE_SIGN_IDENTITY" >&2
   else
     echo "   临时补救：MARQUEE_SIGN_IDENTITY=\"<证书名>\" ./scripts/build.sh" >&2
@@ -107,5 +144,12 @@ else
   # 注意：`${IDENTITY}` 的大括号不能省。中文文案里紧跟在变量后面的全角字符会被 shell
   # 当成变量名的一部分，于是 `set -u` 直接报 "unbound variable"。
   echo "✓ 签名身份稳定：${IDENTITY} (team ${TEAM})"
+  # 把身份打出来 —— 这正是本次改配置要让人一眼看到的东西：
+  # 我本地跑的这个，是开发版还是正式版？（见 docs/DEV-VS-PROD.md）
+  BUILT_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+               "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "?")
+  FLAVOR="正式版"
+  case "$BUILT_ID" in *.dev) FLAVOR="开发版" ;; esac
+  echo "  配置：${CONFIGURATION}  身份：${BUILT_ID}（${FLAVOR}）"
   echo "  产物：${APP_PATH}"
 fi

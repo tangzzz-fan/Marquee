@@ -66,7 +66,7 @@ macOS **只在应用实际调用采集 API 时**才把它登记进「屏幕录�
   可以一次性清掉这个 bundle id 的全部记录再重新授权：
 
   ```bash
-  tccutil reset ScreenCapture dev.tango.Marquee
+  tccutil reset ScreenCapture com.tango.Marquee
   ```
 
 - 不要为了让它在开发机上"不弹窗"而放宽代码里的权限检查逻辑 —— 权限路径必须保持真实。
@@ -241,7 +241,38 @@ for macro 'State()'; '.../swift-plugin-server' produced malformed response
 只是对本机的受限宿主无效。所以 `scripts/build.sh` 里**刻意不加**，
 避免让人误以为脚本能自愈。
 
-**可用替代**：App 层源码可以用 SwiftPM 产物单独做类型检查，不必依赖 xcodebuild：
+**✅ 有效解法（2026-10-03 实测）**：给 `swiftc` 传 `-disable-sandbox`。
+
+`xcrun swiftc -help-hidden` 里有这一条：
+
+```
+-disable-sandbox        Disable using the sandbox when executing subprocesses
+```
+
+它让**编译器自己不去套那层沙箱**，于是 `swift-plugin-server` 不再需要 apply、
+也就不再被杀。实测：
+
+```bash
+xcodebuild -workspace Marquee.xcworkspace -scheme Marquee -configuration Dev \
+  -destination 'platform=macOS' -derivedDataPath DerivedData \
+  OTHER_SWIFT_FLAGS="-disable-sandbox" build
+# → ** BUILD SUCCEEDED **
+```
+
+`scripts/build.sh` 里做成了一个**显式开关**（默认不开）：
+
+```bash
+MARQUEE_DISABLE_COMPILER_SANDBOX=1 ./scripts/build.sh
+```
+
+> ⚠️ 默认不开是刻意的：那一层沙箱是真实的隔离（宏插件会执行代码），
+> 正常终端没有这个问题，不该为了少数环境全局削弱它。
+>
+> 它与上面那三个官方参数**不是一回事**：那三个关的是**内层**（插件 / 清单求值）沙箱，
+> 而这一条让**外层那次 apply 根本不发生** —— 所以对嵌套沙箱是有效的。
+> 这也解释了为什么"官方三件套"在本机实测无效、而它能用。
+
+**可用替代**（不想动沙箱设置时）：App 层源码可以用 SwiftPM 产物单独做类型检查：
 
 ```bash
 cd Modules && swift build --disable-sandbox

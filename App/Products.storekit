@@ -1,0 +1,59 @@
+{
+  "identifier" : "3D9A1C40",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "36",
+      "familyShareable" : true,
+      "internalID" : "1A000001",
+      "localizations" : [
+        {
+          "description" : "滚动截屏、识别文字、钉图，以及不限数量的最近截图。一次买断，永久可用。",
+          "displayName" : "Marquee Pro",
+          "locale" : "zh_CN"
+        },
+        {
+          "description" : "Scrolling capture, text recognition, pinning, and unlimited recent captures. One-time purchase.",
+          "displayName" : "Marquee Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.tango.Marquee.pro",
+      "referenceName" : "Marquee Pro",
+      "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "0",
+      "familyShareable" : false,
+      "internalID" : "1A000002",
+      "localizations" : [
+        {
+          "description" : "免费试用全部 Pro 能力 7 天。试用结束不会自动收费。",
+          "displayName" : "Marquee 7 天试用",
+          "locale" : "zh_CN"
+        },
+        {
+          "description" : "Try every Pro feature free for 7 days. Nothing is charged when it ends.",
+          "displayName" : "Marquee 7-Day Trial",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.tango.Marquee.pro.trial",
+      "referenceName" : "Marquee 7 天试用",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_locale" : "zh_CN",
+    "_storefront" : "CHN"
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

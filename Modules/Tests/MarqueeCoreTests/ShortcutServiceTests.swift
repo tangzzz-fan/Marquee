@@ -257,7 +257,7 @@ struct ShortcutServiceTests {
 struct UserDefaultsShortcutStoreTests {
 
     private func makeDefaults() -> UserDefaults {
-        let suite = "dev.tango.Marquee.tests.\(UUID().uuidString)"
+        let suite = "com.tango.Marquee.tests.\(UUID().uuidString)"
         return UserDefaults(suiteName: suite)!
     }
 

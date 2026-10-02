@@ -91,12 +91,82 @@
         }
       }
     },
+    "7 天免费试用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start a 7-day free trial"
+          }
+        }
+      }
+    },
     "JPEG / HEIC 有损，可调质量": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "JPEG and HEIC are lossy; quality is adjustable"
+          }
+        }
+      }
+    },
+    "Marquee Pro · 免费版（最近截图保留 %lld 张）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marquee Pro · Free (keeps the last %lld captures)"
+          }
+        }
+      }
+    },
+    "Marquee Pro · 已购买，谢谢": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marquee Pro · Purchased, thank you"
+          }
+        }
+      }
+    },
+    "Marquee Pro · 正在确认…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marquee Pro · Checking…"
+          }
+        }
+      }
+    },
+    "Marquee Pro · 试用中，还剩 %lld 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marquee Pro · Trial, %lld days left"
+          }
+        }
+      }
+    },
+    "Marquee Pro · 这个账号下找不到这笔购买": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marquee Pro · No purchase found for this account"
+          }
+        }
+      }
+    },
+    "Marquee Pro · 这笔购买已被撤销": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marquee Pro · This purchase was revoked"
           }
         }
       }
@@ -161,6 +231,16 @@
         }
       }
     },
+    "一次买断，不订阅": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One-time purchase, not a subscription"
+          }
+        }
+      }
+    },
     "不延时": {
       "localizations": {
         "en": {
@@ -187,6 +267,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "You can also scroll yourself — manual mode stitches the same long image"
+          }
+        }
+      }
+    },
+    "了解 Pro": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Learn about Pro"
           }
         }
       }
@@ -247,6 +337,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Select a region first, then click Recognize"
+          }
+        }
+      }
+    },
+    "免费版只保留最近 %lld 张 · 升级到 Pro 可保留全部": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The free version keeps the last %lld captures · Upgrade to Pro to keep them all"
           }
         }
       }
@@ -317,6 +417,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Delete"
+          }
+        }
+      }
+    },
+    "升级到 Pro": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upgrade to Pro"
           }
         }
       }
@@ -501,6 +611,16 @@
         }
       }
     },
+    "已恢复购买": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Purchases restored"
+          }
+        }
+      }
+    },
     "已生效：%@": {
       "localizations": {
         "en": {
@@ -527,6 +647,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Placed"
+          }
+        }
+      }
+    },
+    "已购买": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Purchased"
           }
         }
       }
@@ -581,6 +711,16 @@
         }
       }
     },
+    "开发版": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Development build"
+          }
+        }
+      }
+    },
     "开机时自动启动": {
       "localizations": {
         "en": {
@@ -617,6 +757,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "The shortcut didn't take effect"
+          }
+        }
+      }
+    },
+    "恢复失败，请检查网络后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore failed. Check your connection and try again."
+          }
+        }
+      }
+    },
+    "恢复购买": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Purchases"
           }
         }
       }
@@ -901,6 +1061,16 @@
         }
       }
     },
+    "最近截图是 Pro 能力": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlimited history is a Pro feature"
+          }
+        }
+      }
+    },
     "未知原因": {
       "localizations": {
         "en": {
@@ -1057,6 +1227,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Scrolling Capture"
+          }
+        }
+      }
+    },
+    "滚动截屏是 Pro 能力": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrolling capture is a Pro feature"
           }
         }
       }
@@ -1441,6 +1621,26 @@
         }
       }
     },
+    "识别文字是 Pro 能力": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text recognition is a Pro feature"
+          }
+        }
+      }
+    },
+    "试用已结束，购买后继续使用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your trial has ended. Purchase Pro to keep using it."
+          }
+        }
+      }
+    },
     "请到「系统设置 → 隐私与安全性 → 屏幕录制」里勾选 Marquee，然后退出并重新打开应用。\n\n如果列表里找不到 Marquee：点「在 Finder 中显示」，把打开的 Marquee 拖进列表（或点列表下方的「+」选中它）。": {
       "localizations": {
         "en": {
@@ -1457,6 +1657,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Quality"
+          }
+        }
+      }
+    },
+    "购买被撤销：退款，或移出家人共享": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This purchase was revoked: refunded, or removed from Family Sharing"
           }
         }
       }
@@ -1547,6 +1757,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "That combination is taken by the system: %@"
+          }
+        }
+      }
+    },
+    "这个账号下找不到这笔购买": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No purchase found for this account"
+          }
+        }
+      }
+    },
+    "这个账号下没有可恢复的购买": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No purchases to restore for this account"
           }
         }
       }
@@ -1691,6 +1921,16 @@
         }
       }
     },
+    "钉图是 Pro 能力": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinning to screen is a Pro feature"
+          }
+        }
+      }
+    },
     "锁定屏幕": {
       "localizations": {
         "en": {
@@ -1807,6 +2047,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hide current app"
+          }
+        }
+      }
+    },
+    "需要 Pro": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requires Pro"
           }
         }
       }

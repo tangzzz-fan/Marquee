@@ -20,7 +20,7 @@ final class CaptureCoordinator {
     /// 快捷键变更后通知外部（菜单里显示的组合要跟着变）
     var onShortcutChanged: ((KeyCombo) -> Void)?
 
-    private let logger = Logger(subsystem: "dev.tango.Marquee", category: "capture")
+    private let logger = Logger(subsystem: AppIdentity().logSubsystem, category: "capture")
 
     private let permission = SystemScreenRecordingPermission()
     /// 用户偏好（ticket 15）。采集器与倒计时都**每次现读**它 ——
@@ -70,11 +70,13 @@ final class CaptureCoordinator {
     private let pins = PinPresenter()
     private var overlay: SelectionOverlayController?
     private var preferencesWindow: PreferencesWindowController?
+    /// 菜单入口被挡住时弹的那张卡片（ticket 31）。**必须持着** ——
+    /// 它是个 `NSPanel`，没有强引用的话会被 ARC 当场回收，用户什么也看不到。
+    private var proCardPanel: ProCardPanel?
     /// 延时截图的倒计时（ticket 15）。
     private let countdown = CountdownHUD()
     /// 最近截图（ticket 16）。采集链路往里记，菜单面板从里读。
-    private let history = CaptureHistoryStore()
-    /// 防止预检期间连按快捷键叠出两层覆盖层
+    private let history = CaptureHistoryStore()    /// 防止预检期间连按快捷键叠出两层覆盖层
     private var isPreflighting = false
     /// 本次运行内是否刚授予过权限 —— 用于把"请重启应用"的提示说准
     private var grantedThisSession = false
@@ -89,6 +91,13 @@ final class CaptureCoordinator {
         activationResult = result
         // 把**实际生效**的组合推给菜单：用户可能早就改过键，菜单不能一直显示默认值
         onShortcutChanged?(shortcut.current)
+
+        // 免费版只留 5 张（ticket 31）。与其它界面走同一条路：**订阅 snapshot**，
+        // 不自己另判一次"是不是 Pro" —— 判据一旦有两份，必然有一处忘了跟着改。
+        // `historyLimit()` 返回 nil 就是"不淘汰"。
+        ProEntitlement.shared.observe { [weak self] snapshot in
+            self?.history.limit = snapshot.historyLimit()
+        }
 
         // 启动只**记录**权限状态，不弹任何东西。
         // 理由：PRD B9 说"启动即检测"，但启动就弹系统授权框是很讨人厌的行为；
@@ -227,14 +236,63 @@ final class CaptureCoordinator {
         // 窗口截图带不带阴影的**默认值**来自偏好（ticket 15）；
         // 覆盖层里按 `⌥` 仍然是"临时反过来"（PRD F4），两者不冲突。
         controller.windowShadowDefault = preferences.capture().includeShadow
+        // 权益（ticket 31）：**宿主注入**。覆盖层自己不持有权益状态 ——
+        // 各持一份就会冒出"购买之后设置页解锁了、这个窗口还锁着"。
+        // 没注入时覆盖层一律放行（见 `proEntitlement` 的文档），
+        // 所以"忘了接"的后果是**该锁的没锁**，而不是"什么都点不动"。
+        controller.proEntitlement = { ProEntitlement.shared.snapshot }
+        controller.onProCardAction = { [weak self] action in
+            self?.handleProCardAction(action)
+        }
         overlay = controller
         controller.present(mode: mode)
         logger.info("覆盖层已呈现（mode=\(String(describing: mode), privacy: .public)）")
     }
 
+    /// 升级卡片上点了某个动作（ticket 31）。
+    ///
+    /// 三个动作都是**异步**的，而卡片在覆盖层里已经**同步**收掉了。
+    /// 于是用户看到的顺序永远是"点了 → 卡片消失 → 系统购买面板 / 设置窗口出现"。
+    private func handleProCardAction(_ action: ProCardAction) {
+        let entitlement = ProEntitlement.shared
+        switch action {
+        case .startTrial:
+            Task { _ = await entitlement.startTrial() }
+        case .restore:
+            Task { _ = await entitlement.restorePurchases() }
+        case .purchase:
+            // ⚠️「了解 Pro」**不直接发起购买**。扣款是不可逆的动作，
+            // 得让用户先看见价格与自己的当前状态 —— 所以打开**通用页**，
+            // 那块状态区（含「升级到 Pro」与「恢复购买」）就在页面底部。
+            showPreferences(page: .general)
+        }
+    }
+
     /// 菜单「滚动截屏」入口（ticket 11：手动滚动长截图）。
+    ///
+    /// 被挡住时**不进入覆盖层**（ticket 31）—— 这是三个 Pro 入口里唯一一个
+    /// "人还没进覆盖层就被挡住"的，所以它的卡片是个独立窗口（见 `ProCardPanel`）。
+    ///
+    /// 判据用的是 `ProCard.content` 而非自己拼一个：返回 nil 就是"该放行"，
+    /// 与覆盖层里那条走的是**同一个函数**。
     func performScrollCapture() {
+        let snapshot = ProEntitlement.shared.snapshot
+        if let card = ProCard.content(for: snapshot, feature: .scrollCapture) {
+            presentProCard(card)
+            logger.info("滚动截屏被挡：弹出升级卡片")
+            return
+        }
         presentOverlay(mode: .scrollCapture)
+    }
+
+    /// 在鼠标下方弹那张卡片。**同时只留一张** —— 连点两次菜单项不该叠出两张。
+    private func presentProCard(_ content: ProCardContent) {
+        proCardPanel?.dismiss()
+        let panel = ProCardPanel(content: content, near: NSEvent.mouseLocation) { [weak self] action in
+            self?.handleProCardAction(action)
+        }
+        proCardPanel = panel
+        panel.present()
     }
 
     /// 截图已经进了剪贴板。编辑器里 `Esc` 会把带标注的成品再写回去。
@@ -268,7 +326,8 @@ final class CaptureCoordinator {
         }
     }
 
-    func showPreferences() {
+    /// `page` 给了就切到那一页；不给则停在用户上次看的那一页（菜单「设置…」走这条）。
+    func showPreferences(page: SettingsPage? = nil) {
         let controller: PreferencesWindowController
         if let existing = preferencesWindow {
             controller = existing
@@ -285,7 +344,7 @@ final class CaptureCoordinator {
             preferencesWindow = created
             controller = created
         }
-        controller.present()
+        controller.present(page: page)
     }
 
     /// 排障用的一页状态。

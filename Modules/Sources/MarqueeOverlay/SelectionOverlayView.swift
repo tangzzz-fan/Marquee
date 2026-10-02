@@ -161,6 +161,25 @@ struct OverlayToolbarPresentation: Equatable {
     /// 色板与尺寸**不再各占一格**：12 格把整条撑到 799 点，而参考的那条只有一排图标。
     /// 收进面板之后整条降到 ~545 点，也让工具格重新成为视觉重心。
     var palette: OverlayPalettePresentation?
+    /// 升级卡片（`nil` = 没弹）。被挡住时**原地**弹在工具条旁边。
+    var proCard: ProCardPresentation?
+    /// 此刻**锁着的** Pro 能力。那几格的图标上会补一个小锁角标。
+    ///
+    /// 只说"哪些能力被挡"，不说"哪一格" —— 格与能力的对应在
+    /// `OverlayToolbarSlot.proFeature` 里，视图按它查。两份映射必然分叉。
+    var lockedFeatures: Set<ProFeature> = []
+}
+
+/// 升级卡片要画什么。
+///
+/// 位置**从工具条的矩形算**（`ProCardLayout.frame`），与弹层同一个套路 ——
+/// 卡片与工具条各算各的，必然出现"卡片飘在离工具条半格的地方"，
+/// 而那种偏差看起来像是设计如此。
+struct ProCardPresentation: Equatable {
+    /// 卡片矩形，**Cocoa 全局坐标**
+    var frame: CGRect
+    /// 有哪两个按钮、分别是什么动作（标题与正文由视图按 `reason` 取）
+    var content: ProCardContent
 }
 
 /// 工具条上展开的弹层要画什么。
@@ -230,6 +249,10 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     /// 点在了展开的弹层上（色板/尺寸 或 表情）。坐标同样是 **Cocoa 全局点**，
     /// 语义判断（点到哪一格、是选色还是选尺寸）留给控制层。
     func overlayView(_ view: SelectionOverlayView, clickedPaletteAt globalPoint: CGPoint)
+    /// 点在了升级卡片上（ticket 31）。坐标同样是 **Cocoa 全局点**，
+    /// 语义判断（点到哪个按钮、点到空白该怎么办）留给控制层 ——
+    /// 视图只回答"这一下点在卡片里"。
+    func overlayView(_ view: SelectionOverlayView, clickedProCardAt globalPoint: CGPoint)
 
     // 文字输入框（ticket 22）。三条都来自那个真的 `NSTextField`：
     /// 框里的内容变了（每次击键）
@@ -288,6 +311,9 @@ final class SelectionOverlayView: NSView {
     /// 弹层的材质底与前景。与工具条同一套做法。
     private var paletteChrome: NSView?
     private var paletteForeground: ChromeForegroundView?
+    /// 升级卡片的材质底与前景。同上。
+    private var proCardChrome: NSView?
+    private var proCardForeground: ChromeForegroundView?
 
     /// 上一次同步过去的工具条 / 弹层内容（含位置）。
     ///
@@ -297,6 +323,7 @@ final class SelectionOverlayView: NSView {
     /// **鼠标每动一下都要把整条工具条重画一遍**（15 个图标）。那是可感的卡顿。
     private var syncedToolbar: OverlayToolbarPresentation?
     private var syncedPalette: OverlayPalettePresentation?
+    private var syncedProCard: ProCardPresentation?
 
     /// 把工具条与弹层的子视图摆到当前位置。
     ///
@@ -307,10 +334,13 @@ final class SelectionOverlayView: NSView {
             // 收起时把这些标记清掉，下次出现才会重新同步一遍
             syncedToolbar = nil
             syncedPalette = nil
+            syncedProCard = nil
             toolbarChrome?.isHidden = true
             toolbarForeground?.isHidden = true
             paletteChrome?.isHidden = true
             paletteForeground?.isHidden = true
+            proCardChrome?.isHidden = true
+            proCardForeground?.isHidden = true
             return
         }
 
@@ -336,6 +366,8 @@ final class SelectionOverlayView: NSView {
             toolbarForeground?.needsDisplay = true
             syncedToolbar = toolbar
         }
+
+        syncProCardChrome(toolbar.proCard)
 
         guard let palette = toolbar.palette else {
             if syncedPalette != nil {
@@ -370,9 +402,46 @@ final class SelectionOverlayView: NSView {
         syncedPalette = palette
     }
 
+    /// 摆放升级卡片的子视图。
+    ///
+    /// 与弹层同一套做法（材质底 + 前景两个**兄弟**视图），但它**单独抽成一个方法**：
+    /// 弹层那段末尾有一句"没变就 `return`"的早退，卡片若挨着写在它后面会被一起跳过 ——
+    /// 而"卡片有时候不出现"这种 bug 极难复现，正是 PITFALLS 里那类静默错。
+    private func syncProCardChrome(_ card: ProCardPresentation?) {
+        guard let card else {
+            if syncedProCard != nil {
+                syncedProCard = nil
+                proCardChrome?.isHidden = true
+                proCardForeground?.isHidden = true
+            }
+            return
+        }
+        guard syncedProCard != card else { return }
+
+        if proCardChrome == nil {
+            let chrome = ChromeBackground.makeBackgroundView(cornerRadius: OverlayToolbar.cornerRadius)
+            chrome.isHidden = true
+            addSubview(chrome)
+            proCardChrome = chrome
+
+            let foreground = ChromeForegroundView()
+            foreground.isHidden = true
+            foreground.render = { [weak self] rect in self?.drawProCardForeground(in: rect) }
+            addSubview(foreground)
+            proCardForeground = foreground
+        }
+
+        let box = globalToLocal(card.frame)
+        proCardChrome?.frame = box
+        proCardChrome?.isHidden = false
+        proCardForeground?.frame = box
+        proCardForeground?.isHidden = false
+        proCardForeground?.needsDisplay = true
+        syncedProCard = card
+    }
+
     /// 放大镜占的脏区（局部坐标）。色值框贴在盒子上下、文字还可能很宽，保守地多扩一圈。
-    private func dirtyRect(for magnifier: MagnifierPresentation) -> CGRect {
-        globalToLocal(magnifier.boxRect)
+    private func dirtyRect(for magnifier: MagnifierPresentation) -> CGRect {        globalToLocal(magnifier.boxRect)
             .insetBy(dx: -130, dy: -100)
     }
 
@@ -386,7 +455,17 @@ final class SelectionOverlayView: NSView {
         window?.makeFirstResponder(self)
 
         let point = cocoaPoint(of: event)
-        // 弹层最优先：它压在工具条外侧，判定要排在工具条前面 ——
+        // 升级卡片最优先：它是最晚弹出来的那一层。
+        //
+        // 而且它的矩形**整块吃掉点击**（不像工具条还要再判格子）—— 卡片里只有两个按钮，
+        // 点在正文或空白处该做什么由控制层决定（现在是什么都不做，见
+        // `overlayView(_:clickedProCardAt:)`）。这一条与"手抖一下不能变成买了"直接相关：
+        // 判定放在视图里的话，以后加一个"点空白关掉卡片"就得同时改两处。
+        if let card = presentation.toolbar?.proCard?.frame, card.contains(point) {
+            delegate?.overlayView(self, clickedProCardAt: point)
+            return
+        }
+        // 弹层次之：它压在工具条外侧，判定要排在工具条前面 ——
         // 反过来先判工具条的话，两者重叠的那几个点上会点到工具条。
         if let palette = presentation.toolbar?.palette?.frame, palette.contains(point) {
             delegate?.overlayView(self, clickedPaletteAt: point)
@@ -733,9 +812,12 @@ final class SelectionOverlayView: NSView {
         }
 
         for item in layout.items {
-            draw(toolbarItem: item.slot,
-                 in: item.frame.offsetBy(dx: box.minX, dy: box.minY),
-                 state: state)
+            let itemRect = item.frame.offsetBy(dx: box.minX, dy: box.minY)
+            draw(toolbarItem: item.slot, in: itemRect, state: state)
+            // 小锁角标画在**图标之后** —— 它是压在上面那一层。
+            if let feature = item.slot.proFeature, state.lockedFeatures.contains(feature) {
+                drawLockBadge(in: itemRect)
+            }
         }
     }
 
@@ -839,6 +921,20 @@ final class SelectionOverlayView: NSView {
         }
     }
 
+    // MARK: - 升级卡片（ticket 31）
+
+    /// 画升级卡片的前景：描边、标题、正文、两个按钮。
+    ///
+    /// 几何**全部来自 `ProCardLayout.content(in:)`** —— 视图自己不算任何一个坐标，
+    /// 否则"画出来的"与"点得到的"会各走各的（工具条在 ticket 22 踩过同一个坑：
+    /// 两条规则各自都对，凑在一起才错）。
+    private func drawProCardForeground(in box: NSRect) {
+        guard let card = presentation.toolbar?.proCard else { return }
+        // 画法在 `ProCardRenderer` —— 菜单入口那张独立面板用的是同一份。
+        // 两处各写一遍的话，改一个错别字就会让同一张卡片长得不一样。
+        ProCardRenderer.draw(card.content, in: box)
+    }
+
     /// 表情用字符串直接画（系统自带 emoji 字体），不找图片资源。
     private func drawEmoji(_ emoji: String, in rect: CGRect, selected: Bool) {
         if selected {
@@ -860,6 +956,19 @@ final class SelectionOverlayView: NSView {
     private func highlight(_ rect: CGRect) {
         NSColor.white.withAlphaComponent(0.18).setFill()
         Self.roundedPath(rect.insetBy(dx: -1, dy: -1), radius: 6).fill()
+    }
+
+    /// 格子上那个**小锁角标**（ticket 31）。
+    ///
+    /// 它必须**常显**，不能等用户点了才出现：免费版里那两格点下去只弹卡片、不干活，
+    /// 而外面若看不出区别，用户只会以为是自己点错了、或者 app 坏了。
+    ///
+    /// 画在右下角、刻意**压掉图标一角** —— 居中画会把图标本身糊住，
+    /// 而那两个图标（识别文字 / 钉图）是用户认出这一格的唯一线索。
+    private func drawLockBadge(in rect: CGRect) {
+        let side = rect.width * 0.44
+        let badge = CGRect(x: rect.maxX - side, y: rect.minY, width: side, height: side)
+        drawSymbol("lock.fill", in: badge, tint: .white)
     }
 
     private func drawColorSwatch(_ color: AnnotationColor, in rect: CGRect, selected: Bool) {

@@ -21,6 +21,12 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
             onShowPreferences: { [weak coordinator] in coordinator?.showPreferences() },
             makeRecentPanel: { [weak coordinator] in
                 coordinator?.makeRecentPanelController() ?? NSViewController()
+            },
+            // 菜单展开时现算「滚动截屏」要不要带小锁（ticket 31）。
+            // 与覆盖层里那两格走的是**同一个判据** —— `ProCard.content` 返回非 nil
+            // 就是被挡，不另写一遍 `access(to:)`。
+            isScrollCaptureLocked: {
+                ProCard.content(for: ProEntitlement.shared.snapshot, feature: .scrollCapture) != nil
             }
         )
         coordinator.onShortcutChanged = { [weak menuBar] combo in menuBar?.updateShortcut(combo) }
@@ -32,6 +38,11 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         // 菜单栏图标与菜单已经就位，用户仍能通过菜单截图。
         // `start()` 会把实际生效的组合回推给菜单。
         coordinator.start()
+
+        // Pro 权益（ticket 31）：先按缓存**立刻**出判定，再在后台向商店核实。
+        // 放在这里而不是等界面创建时：`verifyWithStore` 要一个网络往返，
+        // 而"用户打开购买界面的那一刻"正是最不该开一次新请求的时候。
+        ProEntitlement.shared.start()
 
         // 权限登记入口：`Marquee -marqueeRequestPermission`
         //
@@ -112,6 +123,27 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.arguments.contains("-marqueeDiagnostics") {
             print(coordinator.diagnosticsReport())
             NSApplication.shared.terminate(nil)
+        }
+
+        // 内购探针：`Marquee -marqueeEntitlement [purchase|trial|restore]`
+        //
+        // 存在的理由：**购买界面还没做，而"能在真实沙盒里买一次"是这一票的验收**。
+        // 有了它，整条链路（取商品 → 购买 → 校验 → 判定 → 缓存）现在就能在
+        // 任一构建上跑一遍 —— 包括正式 id 的 Release 构建（那才是能连真实沙盒的那个）。
+        //
+        // 建议这样用：
+        //   open -a Marquee.app --args -marqueeEntitlement            # 只查看
+        //   open -a Marquee.app --args -marqueeEntitlement purchase   # 真买一次
+        // 报告同时落到 `~/Library/Logs/Marquee/entitlement-probe.txt`
+        //（用 `open` 启动时 stdout 不回终端）。
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-marqueeEntitlement") {
+            let next = arguments.count > index + 1 ? arguments[index + 1] : ""
+            let action = next.hasPrefix("-") ? "" : next
+            print("内购探针启动（动作：\(action.isEmpty ? "只查看" : action)），约 3 秒后出报告…")
+            NSApplication.shared.activate()
+            Task { await ProEntitlement.runProbe(action: action) }
+            return
         }
     }
 

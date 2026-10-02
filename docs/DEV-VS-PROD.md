@@ -1,7 +1,8 @@
 # 开发版与正式版的区分（spec）
 
-> 状态：**方向已定 —— 两个 bundle id（正式 + `.dev`）**；**待定：前缀字符串**。
-> 代码未动。2026-10-03 修订（**方向改了，见 §0.2**）。
+> 状态：✅ **已实施**（2026-10-03，分支 `feat/iap`）。
+> 正式 `com.tango.Marquee` / 开发 `com.tango.Marquee.dev`；三个配置 `Debug` / `Dev` / `Release`。
+> 实施记录见 §9。
 
 ---
 
@@ -119,6 +120,54 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 | **`Dev`** | **本地运行（scheme 的 Run）** | **`<正式 id>.dev`** | 自动（按 id） | **照抄 `Release`** |
 | `Release` | 发版 / 打包 / **沙盒验证** | 正式 id | 自动（按 id） | 优化 |
 
+### 4.1 `Dev` 与 `Debug` 的区别（逐项对比过）
+
+**先说最容易搞错的一点：两者在「身份」上毫无区别。** 都是 `com.tango.Marquee.dev`，
+于是数据目录、偏好域、TCC 授权都是同一份 —— **从 Debug 切到 Dev 不会多出一个身份**。
+
+真正的差别只在编译器设置。生成工程后把两份 `XCBuildConfiguration` 摊开对比：
+**48 项相同、11 项不同**，且那 11 项全是这类东西：
+
+| 项 | `Debug` | `Dev`（＝同 `Release`） | 实际影响 |
+| --- | --- | --- | --- |
+| `SWIFT_OPTIMIZATION_LEVEL` | `-Onone` | `-O` | **Debug 慢得多** |
+| `SWIFT_COMPILATION_MODE` | （未设置 → 增量） | `wholemodule` | 全模块优化 |
+| `GCC_OPTIMIZATION_LEVEL` | `0` | （未设置 → 默认优化） | C/C++ 侧同上 |
+| `DEBUG_INFORMATION_FORMAT` | `dwarf` | `dwarf-with-dsym` | Dev/Release 有 dSYM |
+| `ENABLE_TESTABILITY` | `YES` | （未设置 → `NO`） | Debug 才能 `@testable import` |
+| `ONLY_ACTIVE_ARCH` | `YES` | （未设置 → `NO`） | Debug 只编当前架构，更快 |
+| `SWIFT_ACTIVE_COMPILATION_CONDITIONS` | `DEBUG` | （未设置） | 见下面那条警告 |
+| `MTL_ENABLE_DEBUG_INFO` | `INCLUDE_SOURCE` | `NO` | Metal 调试信息 |
+| `ENABLE_NS_ASSERTIONS` | （未设置 → `YES`） | `NO` | 关的是 ObjC 的 `NSAssert` |
+| `GCC_DYNAMIC_NO_PIC` / `GCC_PREPROCESSOR_DEFINITIONS` | `NO` / `DEBUG=1` | （未设置） | —— |
+
+**谁在用哪个配置**（读 scheme 得来）：
+
+| Action | 配置 |
+| --- | --- |
+| Run（`⌘R`） | **`Dev`** |
+| Test（`⌘U`） | `Debug` —— ⚠️ 但工程里**没有 test target**（单元测试走 SwiftPM），所以这个 action 是空转 |
+| Analyze | `Debug` |
+| Profile | `Release` |
+| Archive | `Release` |
+
+⇒ **本项目里 `Debug` 的真实用途只有一个：要"能用的断点"时，把 Run 临时切过去。**
+（`Dev` 是优化构建，断点与变量查看会被优化打乱 —— 这正是项目一开始把 Run 放在 Release 上的原因。）
+
+### 4.2 与 `Debug` 有关的两条硬规则
+
+1. **测性能只能用 `Dev` 或 `Release`。** `-Onone` 下"落点→剪贴板 ≤150 ms""选区拖拽 120 fps"
+   这些数字没有参考价值 —— 而 `Dev` 存在的**全部理由**就是让"本地跑的那个"与发版同优化。
+   在 Debug 下觉得卡，**不代表产品卡**。
+2. **断言只在 `Debug`（以及 `swift test`）下真的会触发。** Swift 的 `assert` 由**优化级别**决定：
+   `-O` 会把它移除，所以 `Dev` / `Release` 里它不跑。`ENABLE_NS_ASSERTIONS` 管的是
+   Objective-C 的 `NSAssert`（本项目没用）。⇒ 想靠断言发现的问题，得在 Debug 下跑一遍。
+
+> ⚠️ 顺带一条：`Debug` 会定义 `SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG`，
+> 但本项目**全仓 0 处 `#if DEBUG`** —— 也就是说这个编译条件目前一点用都没有。
+> **不要**用它来区分开发/正式行为；要区分就用 `AppIdentity.isDevelopmentBuild`
+> （见 §4 的"关键简化"）—— 那是能脱机单测的。
+
 ### 关键简化：「是不是开发版」由 bundle id 推导，不用编译期开关
 
 - **数据目录**：`~/Library/Application Support/<bundle id>/history/`
@@ -154,42 +203,28 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 
 ---
 
-## 6. 落地清单
+## 6. 落地清单（已全部完成，见 §9）
 
-- [ ] **定前缀**（待你确认，见 §7）
-- [ ] `project.yml`：新的 `bundleIdPrefix` + `PRODUCT_BUNDLE_IDENTIFIER`；加 `Dev` 配置（type = release）；
-      `settings.configs.Dev` 复制 `Release` 的优化设置
-- [ ] scheme：`run.config` 从 `Release` 改成 `Dev`
-- [ ] Core：新增 `AppIdentity`（bundle id 的唯一来源）+ "是不是开发版"的判据
-- [ ] `CaptureHistoryStore` / `OutputSettings` 的目录改从 `AppIdentity` 取
-- [ ] 日志 subsystem 改从 `AppIdentity` 取
-- [ ] `scripts/build.sh` 的 `--identifier`
-- [ ] 菜单栏标题加 ` · 开发版`（仅 `.dev`）
-- [ ] `scripts/package.sh` 前置检查：配置必须是 `Release`、bundle id 必须是**正式 id**
-      （防"误把开发构建提交上去 → 取不到商品"）
-- [ ] 文档全量替换
-- [ ] 迁移（可选）：把旧的 `Marquee/history` 搬到新目录
+- [x] 定前缀：**`com.tango.Marquee`**（原 `dev.tango.Marquee`）
+- [x] `project.yml`：`bundleIdPrefix: com.tango`；新增 `Dev` 配置（type = release）；
+      `Debug` 与 `Dev` 都是 `.dev` 身份，**只有 `Release` 拿得到正式 id**
+- [x] scheme：`run.config` 从 `Release` 改成 `Dev`
+- [x] Core：新增 `AppIdentity`（bundle id 的**唯一来源**）+ "是不是开发版"的判据
+- [x] `CaptureHistoryStore` 的数据目录改从 `AppIdentity` 取（不再写死 `Marquee`）
+- [x] 日志 subsystem 改从 `AppIdentity` 取（固定用正式 id，两个版本同一条 grep）
+- [x] `scripts/build.sh` 的 `--identifier` 改成**从产物读**
+- [x] 菜单栏提示 / 设置窗口标题加 ` · 开发版`（仅 `.dev`）
+- [x] `scripts/package.sh` 前置检查：产物身份必须是正式 id（不是就停下）
+- [x] 文档全量替换（31 处）
 
----
-
-## 7. 待定：前缀用什么
+## 7. 前缀：已定 `com.tango.Marquee`
 
 约定是**反写你控制的域名**（`com.example.app`）。Apple 不校验域名归属，但
 "能反写一个真实域名"在将来（App 转让、SDK 备案、universal links）会省事。
 
-同时要注意：**`dev` 做前缀本身不好** —— 它既是当前的前缀、又正好是开发版后缀的自然选择，
-两者叠在一起（`dev.tango.Marquee` + `.dev`）会非常难分辨。见 §0.2 与
-`docs/DEV-VS-PROD.md` 的落地清单。
-
-候选：
-
-| 候选 | 正式 id | 开发 id | 说明 |
-| --- | --- | --- | --- |
-| A | `com.tango.Marquee` | `com.tango.Marquee.dev` | 最小改动（只把 `dev` 换成 `com`） |
-| B | `app.marquee.mac` | `app.marquee.mac.dev` | 以产品为主，不依赖个人昵称 |
-| C | 你自己的域名反写 | `<反写>.Marquee` | 最正规；告诉我域名 |
-
----
+选它的理由：**改动最小**（只把 `dev` 换成 `com`），同时把"前缀叫 dev"这个坑填掉 ——
+那三个候选（`com.tango.Marquee` / `app.marquee.mac` / 自有域名反写）里，
+它不需要引入新概念，也不依赖本人是否拥有某个域名。
 
 ## 8. 还没核实的
 
@@ -198,3 +233,52 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
   但这条**要实测**，不能当成已知条件写进方案。
 - ⚠️ 把数据目录从 `Marquee/` 换成 `<bundle id>/` 之后，
   历史仓库在**沙盒构建**（ticket 32）下的路径 —— 那里会再变成容器内，两件事要一起想。
+
+---
+
+## 9. 实施记录（2026-10-03，分支 `feat/iap`）
+
+### 改了什么
+
+| 位置 | 改动 |
+| --- | --- |
+| `project.yml` | `bundleIdPrefix` → `com.tango`；新增顶层 `configs`（Debug/Dev/Release）；target 的 `settings.configs` 给 Debug 与 Dev 装 `.dev` 身份；scheme 的 `run.config` → `Dev` |
+| `MarqueeCore/AppIdentity.swift`（新） | bundle id 的**唯一来源**；`isDevelopmentBuild`（后缀判定）、`developmentTitleSuffix`、`logSubsystem`、`supportDirectory` / `historyDirectory` |
+| `CaptureHistoryStore` | `defaultDirectory` 改从 `AppIdentity` 取 ⇒ 数据落在 `Application Support/<bundle id>/history/` |
+| 两个 Logger | subsystem 从写死改成 `AppIdentity().logSubsystem` |
+| `MenuBarController` / `PreferencesWindowController` | 加 ` · 开发版` 后缀 |
+| `scripts/build.sh` | 默认配置 → `Dev`；`codesign --identifier` **从产物 plist 读**；末尾打印"配置 + 身份 + 开发版/正式版" |
+| `scripts/package.sh` | 新增**身份核验**：导出后的包必须是正式 id，否则 `exit 1` |
+| 文档 | 31 处 `dev.tango.Marquee` → `com.tango.Marquee`；翻译表新增「开发版」→ "Development build"，catalog 187 → 188 条 |
+
+### 验证过的
+
+- `xcodegen generate` 后读 `project.pbxproj`：三个配置都在，
+  `Release` = `com.tango.Marquee`，`Dev` / `Debug` = `com.tango.Marquee.dev`；
+  scheme 的 `LaunchAction buildConfiguration = "Dev"`。
+- **`Dev` 与 `Release` 的项目级构建设置逐项一致**（53 项，含
+  `SWIFT_OPTIMIZATION_LEVEL = -O`、`SWIFT_COMPILATION_MODE = wholemodule`、
+  `DEBUG_INFORMATION_FORMAT = dwarf-with-dsym`、`ENABLE_NS_ASSERTIONS = NO`），
+  而 `Debug` 是 `-Onone` / `dwarf` / `ENABLE_TESTABILITY = YES`。
+  ⇒ Run 换到 `Dev` 之后，性能预算的数字仍然与发版构建可比。
+- 两个 shell 脚本 `bash -n` 通过；`./scripts/test.sh` 全绿（新增 6 条 `AppIdentityTests`）。
+
+### 两条踩到的
+
+1. **批量改名差点改掉一条本来就要"用旧 id"的断言。**
+   `AppIdentityTests` 里有一条拿旧 id `dev.tango.Marquee` 当反例
+   （"前缀里的 dev 不该被当成开发版"），全量替换把它换成了新 id ——
+   于是那条断言变成与上一行重复（**在测同一件事两遍**，而不是测"前缀冒充"）。
+   已手工改回。
+   > 判据：**批量替换之后要看一眼 diff 里"被改动的断言"**。
+   > 测试里出现旧的标识符，往往**不是漏改，而是它在当反例**。
+2. `scripts/build.sh` 里那句 `codesign --identifier dev.tango.Marquee` 是**最容易漏的一处** ——
+   它写死了身份，漏掉的表现是"屏幕录制授权又留不住了"，与 bundle id 改没改
+   在现象上完全联系不起来。改成从产物 plist 读，从根上消掉这个二义性。
+
+### 还没做的
+
+- 本地旧数据（`~/Library/Application Support/Marquee/history/`）**没有迁移**，
+  也没有写 in-app 迁移代码：这个 app 从未发布过，写一段"给不存在的用户"的迁移
+  是纯死代码。开发机上的那点历史重截即可。
+- 屏幕录制授权要**重新授一次**（换成 `.dev` 身份之后是新的一条），预期行为。

@@ -33,6 +33,10 @@ final class PreferencesWindowController: NSWindowController {
     private let soundSwitch = NSButton()
     private let launchSwitch = NSButton()
     private let launchNote = NSTextField(labelWithString: "")
+    // 通用页底部的 Pro 状态区（ticket 31）
+    private let proStatusLabel = NSTextField(labelWithString: "")
+    private let proActionButton = NSButton()
+    private let proRestoreButton = NSButton()
     // 截屏
     private let cursorSwitch = NSButton()
     private let shadowSwitch = NSButton()
@@ -59,7 +63,7 @@ final class PreferencesWindowController: NSWindowController {
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
-        window.title = L10n.t("Marquee 设置")
+        window.title = L10n.t("Marquee 设置") + AppIdentity().developmentTitleSuffix
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -67,6 +71,19 @@ final class PreferencesWindowController: NSWindowController {
         buildShell()
         recorder.onRecord = { [weak self] combo in self?.apply(combo) }
         loadAll()
+        // 权益一变就刷新状态区（ticket 31）。注册时会**立刻回调一次当前值**，
+        // 所以不必在 `loadAll` 里再手写一遍初始渲染 —— 那两处迟早会不一致。
+        ProEntitlement.shared.observe { [weak self] snapshot in
+            self?.applyProSnapshot(snapshot)
+        }
+    }
+
+    /// 打开设置并切到某一页。「了解 Pro」那条路要用 —— 状态区在通用页。
+    ///
+    /// 内部走 `present(page:)` 而不是自己摆一遍窗口：那个方法里有 `.accessory` 应用
+    /// 必须的 `orderFrontRegardless()`（PITFALLS 54），自己写一遍必漏。
+    func show(page: SettingsPage) {
+        present(page: page)
     }
 
     @available(*, unavailable)
@@ -76,9 +93,11 @@ final class PreferencesWindowController: NSWindowController {
 
     // MARK: - 展示
 
-    func present() {
+    /// 呈现窗口。`page` 给了就切到那一页 —— 从「了解 Pro」进来时要直接落到通用页
+    /// （状态区在那儿），而不是用户上次停在的那一页。
+    func present(page: SettingsPage? = nil) {
         loadAll()
-        select(currentPage)
+        select(page ?? currentPage)
         NSApp.activate()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
@@ -166,7 +185,112 @@ final class PreferencesWindowController: NSWindowController {
                 subtitle: L10n.t("Marquee 常驻菜单栏，开机自启后随时按快捷键就能截"),
                 control: launchSwitch),
             launchNote,
+            separator(),
+            makeProStatusRow(),
         ])
+    }
+
+    /// 通用页底部的 Pro 状态区（ticket 31）。
+    ///
+    /// **刻意不新增第 5 页** —— PRD 3.1 定了"首选项 ≤ 4 页"，多一页的收益远小于
+    /// 破坏一条已写进产品文档的约束（`SettingsPage` 那个枚举与守着它的测试都在拦着，
+    /// 那份摩擦是刻意的）。状态区接在通用页最底下，信息密度也刚好。
+    private func makeProStatusRow() -> NSView {
+        proStatusLabel.font = .systemFont(ofSize: 12)
+        proStatusLabel.textColor = .secondaryLabelColor
+        proStatusLabel.lineBreakMode = .byTruncatingTail
+
+        proActionButton.bezelStyle = .rounded
+        proActionButton.target = self
+        proActionButton.action = #selector(proActionTapped)
+
+        proRestoreButton.bezelStyle = .rounded
+        proRestoreButton.title = L10n.t("恢复购买")
+        proRestoreButton.target = self
+        proRestoreButton.action = #selector(proRestoreTapped)
+
+        let buttons = NSStackView(views: [proRestoreButton, proActionButton])
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
+
+        let stack = NSStackView(views: [proStatusLabel, NSView(), buttons])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.widthAnchor.constraint(equalToConstant: 460).isActive = true
+        return stack
+    }
+
+    private func separator() -> NSView {
+        let box = NSBox()
+        box.boxType = .separator
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.widthAnchor.constraint(equalToConstant: 460).isActive = true
+        return box
+    }
+
+    // MARK: - Pro 状态区（ticket 31）
+
+    /// 把一份判定贴到界面上。
+    ///
+    /// **全部从 `snapshot` 推**，界面不许自己拼判据 —— 否则"状态说已购买、
+    /// 按钮却写着升级"这类自相矛盾迟早出现（卡片那边也是同一条规矩）。
+    private func applyProSnapshot(_ snapshot: EntitlementSnapshot) {
+        proStatusLabel.stringValue = Self.proStatusText(snapshot)
+
+        switch snapshot.entitlement {
+        case .pro:
+            proActionButton.title = L10n.t("已购买")
+            proActionButton.isEnabled = false
+        case .trial, .unknown, .free, .revoked:
+            proActionButton.title = L10n.t("升级到 Pro")
+            proActionButton.isEnabled = true
+        }
+        // 「恢复购买」**永远可点**：App Review 要求可恢复，
+        // 而且"我明明买过"的人第一件事就是找这个按钮。
+    }
+
+    private static func proStatusText(_ snapshot: EntitlementSnapshot) -> String {
+        switch snapshot.entitlement {
+        case .unknown:
+            L10n.t("Marquee Pro · 正在确认…")
+        case .free:
+            L10n.t("Marquee Pro · 免费版（最近截图保留 \(ProLimits.default.freeHistoryLimit) 张）")
+        case .trial(let daysLeft):
+            L10n.t("Marquee Pro · 试用中，还剩 \(daysLeft) 天")
+        case .pro:
+            L10n.t("Marquee Pro · 已购买，谢谢")
+        case .revoked(let reason):
+            switch reason {
+            case .storeRevoked: L10n.t("Marquee Pro · 这笔购买已被撤销")
+            case .purchaseNotFound: L10n.t("Marquee Pro · 这个账号下找不到这笔购买")
+            }
+        }
+    }
+
+    @objc private func proActionTapped() {
+        // 不等结果：买成之后判定会变，状态区靠 `observe` 那条路自己更新。
+        Task { _ = await ProEntitlement.shared.purchasePro() }
+    }
+
+    @objc private func proRestoreTapped() {
+        Task { [weak self] in
+            let outcome = await ProEntitlement.shared.restorePurchases()
+            self?.showRestoreOutcome(outcome)
+        }
+    }
+
+    /// 恢复购买**必须如实回报** —— 这是用户主动点的动作，
+    /// 悄悄失败等于骗他"恢复过了，确实没有记录"。
+    ///
+    /// 这里只是临时把它写进标签；下一次判定变化会覆盖回真实状态。
+    private func showRestoreOutcome(_ outcome: EntitlementCoordinator.RestoreOutcome) {
+        proStatusLabel.stringValue = switch outcome {
+        case .restored: L10n.t("已恢复购买")
+        case .nothingToRestore: L10n.t("这个账号下没有可恢复的购买")
+        case .failed: L10n.t("恢复失败，请检查网络后重试")
+        }
     }
 
     private func makeCapturePage() -> NSView {

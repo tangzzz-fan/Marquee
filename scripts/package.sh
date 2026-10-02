@@ -43,6 +43,10 @@ APP_NAME="Marquee"
 TEAM_ID="${DEVELOPMENT_TEAM:-UKXWZ3FS84}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-marquee-notary}"
 BUILD_DIR="$PWD/.build-package"
+# 正式版的 bundle id。**它必须出现在最终产物里** —— 内购商品挂在 bundle id 下，
+# 拿开发版归档打出来的包在 App Store 上**取不到商品**（Apple TN3186），
+# 而那个现象很难反推回"我打包时用错了身份"。
+EXPECTED_BUNDLE_ID="com.tango.Marquee"
 ARCHIVE="$BUILD_DIR/$APP_NAME.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 
@@ -108,6 +112,17 @@ xcodebuild -exportArchive \
 
 APP="$EXPORT_DIR/$APP_NAME.app"
 [ -d "$APP" ] || { echo "✗ 导出目录里没有 $APP_NAME.app" >&2; exit 1; }
+
+# ── 身份核验：这个包是**正式版**吗 ──────────────────────────────────────
+# 这一步防的是"拿开发构建去发版"：它的包在商店里取不到内购商品，
+# 而排查时会先怀疑商品配置、再怀疑代码，最后才想到是打包身份。
+PACKED_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")
+if [ "$PACKED_ID" != "$EXPECTED_BUNDLE_ID" ]; then
+  echo "✗ 打出来的包身份是「$PACKED_ID」，不是正式 id「$EXPECTED_BUNDLE_ID」。" >&2
+  echo "  开发版（…​.dev）的包在 App Store 上取不到内购商品。检查 scheme 的 archive 配置。" >&2
+  exit 1
+fi
+echo "  身份核验通过：$PACKED_ID"
 
 echo "── 4/7 核验签名（公证的前置条件）────────────────────────────"
 # `--deep` 已弃用；`--strict` 才是"按发布标准检查"。

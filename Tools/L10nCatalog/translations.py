@@ -2,6 +2,7 @@
 """英文翻译。key 与源码里 L10n.t("…") 的 key 逐字一致（插值已归一成 %lld / %@）。"""
 
 EN = {
+    "开发版": "Development build",
     "  ·  ⌥ 无阴影": "  ·  ⌥ No shadow",
     "  ·  ⏎ 确认": "  ·  ⏎ to confirm",
     " · 已复制到剪贴板": " · Copied to clipboard",
@@ -235,4 +236,43 @@ EN = {
         ", stitching stopped; press ⏎ to finish and keep what's already stitched",
     "，已拼好的部分保留可用，按 ⏎ 结束":
         ", what's stitched so far stays usable; press ⏎ to finish",
+
+    # ── 升级卡片（ticket 31）──────────────────────────────────────────────
+    # ⚠️ 四个入口的标题**刻意写成整句**，不做 "\(入口名)是 Pro 能力" 那种拼接：
+    #    拼接既把中文语序焊死，也会让生成器按表达式名猜错说明符类型
+    #    （详见 SelectionOverlayView.cardTitle 的注释）。
+    "滚动截屏是 Pro 能力": "Scrolling capture is a Pro feature",
+    "识别文字是 Pro 能力": "Text recognition is a Pro feature",
+    "钉图是 Pro 能力": "Pinning to screen is a Pro feature",
+    "最近截图是 Pro 能力": "Unlimited history is a Pro feature",
+    "一次买断，不订阅": "One-time purchase, not a subscription",
+    "试用已结束，购买后继续使用": "Your trial has ended. Purchase Pro to keep using it.",
+    "购买被撤销：退款，或移出家人共享":
+        "This purchase was revoked: refunded, or removed from Family Sharing",
+    "这个账号下找不到这笔购买": "No purchase found for this account",
+    "7 天免费试用": "Start a 7-day free trial",
+    "了解 Pro": "Learn about Pro",
+    "恢复购买": "Restore Purchases",
+    "需要 Pro": "Requires Pro",
+
+    # ── 偏好「通用」页底部的 Pro 状态区（ticket 31）──────────────────────
+    # ⚠️ 状态行**从判定整句推**，不在这里拼「状态 + 余量」——
+    #    与卡片标题同一条理由（见 ProCardRenderer.title 的注释）。
+    "Marquee Pro · 正在确认…": "Marquee Pro · Checking…",
+    "Marquee Pro · 免费版（最近截图保留 %lld 张）":
+        "Marquee Pro · Free (keeps the last %lld captures)",
+    "Marquee Pro · 试用中，还剩 %lld 天": "Marquee Pro · Trial, %lld days left",
+    "Marquee Pro · 已购买，谢谢": "Marquee Pro · Purchased, thank you",
+    "Marquee Pro · 这笔购买已被撤销": "Marquee Pro · This purchase was revoked",
+    "Marquee Pro · 这个账号下找不到这笔购买":
+        "Marquee Pro · No purchase found for this account",
+    "升级到 Pro": "Upgrade to Pro",
+    "已购买": "Purchased",
+    "已恢复购买": "Purchases restored",
+    "这个账号下没有可恢复的购买": "No purchases to restore for this account",
+    "恢复失败，请检查网络后重试": "Restore failed. Check your connection and try again.",
+
+    # ── 最近截图面板的配额说明（ticket 31）──────────────────────────────
+    "免费版只保留最近 %lld 张 · 升级到 Pro 可保留全部":
+        "The free version keeps the last %lld captures · Upgrade to Pro to keep them all",
 }

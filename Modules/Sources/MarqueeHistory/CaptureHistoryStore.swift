@@ -58,7 +58,8 @@ public struct CaptureHistorySnapshot: Equatable, Sendable {
 ///
 /// ## 目录约定
 ///
-/// `~/Library/Application Support/Marquee/history/`：
+/// `<数据根>/history/`，而数据根是 `~/Library/Application Support/<bundle id>/`
+/// （见 `AppIdentity` —— 开发版是 `com.tango.Marquee.dev`，于是两个版本各有各的历史）：
 /// - `index.json` —— 条目清单（新→旧）
 /// - `<uuid>-original.png` / `<uuid>-annotations.json`
 ///
@@ -69,8 +70,23 @@ public final class CaptureHistoryStore: CaptureHistoryWriting, @unchecked Sendab
     /// 上限。超过就淘汰最旧的 —— 不让磁盘无限增长。
     public static let defaultLimit = 20
 
+    /// 当前上限。`nil` = **不淘汰**（Pro）。
+    ///
+    /// ⚠️ 它是**可变的**（ticket 31）：免费版只留若干张，买断之后放开。
+    /// 原先写死成 `let`，于是"免费版只留 5 张"这件事在存储层根本表达不了 ——
+    /// 界面可以假装看不见，磁盘上的文件照样留着。
+    ///
+    /// 读写都走锁：它会被采集路径（后台线程）与权益变化（主线程）同时碰。
+    public var limit: Int? {
+        get { lock.withLock { _limit } }
+        set { lock.withLock { _limit = newValue.map { max(1, $0) } } }
+    }
+
+    /// 真正的那一份。**内部一律读写它** —— 内部方法大多已经在锁里，
+    /// 再走一次带锁的 `limit` 会死锁（`NSLock` 不可重入）。
+    private var _limit: Int?
+
     private let directory: URL
-    private let limit: Int
     private let fileManager: FileManager
     /// 索引与文件的读写都在这一把锁里。历史可能被采集路径（后台）与面板（主线程）同时碰。
     private let lock = NSLock()
@@ -79,14 +95,16 @@ public final class CaptureHistoryStore: CaptureHistoryWriting, @unchecked Sendab
                 limit: Int = CaptureHistoryStore.defaultLimit,
                 fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        self.limit = max(1, limit)
+        self._limit = max(1, limit)
         self.directory = directory ?? Self.defaultDirectory(fileManager: fileManager)
     }
 
+    /// 默认目录 = `AppIdentity` 给的那个。
+    ///
+    /// ⚠️ 这里**不再写死 `Marquee`**：写死的话，开发版与正式版会共用同一份历史，
+    /// 而"调试删除逻辑删掉真实历史"就是那么发生的（见 `docs/DEV-VS-PROD.md`）。
     public static func defaultDirectory(fileManager: FileManager = .default) -> URL {
-        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("Marquee/history", isDirectory: true)
+        AppIdentity().historyDirectory(fileManager: fileManager)
     }
 
     public var directoryURL: URL { directory }
@@ -190,7 +208,10 @@ public final class CaptureHistoryStore: CaptureHistoryWriting, @unchecked Sendab
     /// 顺序**只由数组顺序决定**（`record` 总是插在最前面），不重新按时间排序 ——
     /// 万一系统时钟被改过，按时间排会把"刚截的"排到最旧去、然后被删掉。
     private func evict(_ list: inout [CaptureHistoryEntry]) {
-        while list.count > limit {
+        // `nil` = 不淘汰（Pro）。读 `_limit` 而不是 `limit` —— 这个方法已经在锁里了，
+        // 再走一次带锁的 getter 会死锁（`NSLock` 不可重入）。
+        guard let cap = _limit else { return }
+        while list.count > cap {
             let dropped = list.removeLast()
             removeFiles(of: dropped)
         }

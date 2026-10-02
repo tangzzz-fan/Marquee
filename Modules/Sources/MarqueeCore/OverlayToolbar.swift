@@ -198,6 +198,23 @@ public enum OverlayToolbarSlot: Hashable, Sendable {
         }
     }
 
+    /// 这一格是某个 Pro 能力的**入口**吗。`nil` = 免费格。
+    ///
+    /// 这是「工具栏 / 菜单上的入口 → `ProFeature`」的**唯一一份**映射。
+    /// 界面不许自己去拼：将来把某一项放开成免费，改的应该是这一处，
+    /// 而不是散在几个视图里的 `if`。
+    ///
+    /// 刻意写成穷尽 `switch` 而不是 `default: nil`：加了新格子却不表态，
+    /// 编译就过不去 —— 而 `default` 会让新格子**悄悄变成免费**，
+    /// 那正是"少收一次"里最难发现的一种。
+    public var proFeature: ProFeature? {
+        switch self {
+        case .ocr: .textRecognition
+        case .pin: .pin
+        case .tool, .style, .undo, .redo, .save, .cancel, .confirm: nil
+        }
+    }
+
     /// 可点击的边长。
     var side: CGFloat { OverlayToolbar.buttonSize }
 }
