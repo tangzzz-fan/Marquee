@@ -62,13 +62,33 @@ public enum TrialPolicy {
 
 // MARK: - 阻断原因
 
-/// 买断制下权益"没了"的原因。
+/// 权益"没了"的原因。
+///
+/// ## ⚠️ 这里只有**两档**，而它原本有三档（2026-10-03 修正）
+///
+/// 上一版写的是 `refunded` / `familySharingRevoked` / `purchaseNotFound`。
+/// 查过 StoreKit 的文档之后发现**前两个根本区分不出来**：
+///
+/// - StoreKit 2 的 `Transaction.revocationReason` 只有 **`.developerIssue` / `.other`** 两档；
+/// - Apple 的 App Store Server Notifications 文档说得更直白：
+///   「For Family Sharing transactions, the revocation reason value is **0** if the customer
+///   leaves the family group or the owner stops sharing.」
+///   —— 也就是说**退款**与**被移出家人共享**落在同一档里。
+///
+/// 假装能分开的代价很具体：给用户看一句**很确定、但可能是错的**解释
+/// （对一个只是被家人移出共享的人说"你退款了"）。
+/// 所以合并成 `.storeRevoked`，文案也照实说"退款，或从家人共享中移出"。
 public enum RevocationReason: String, CaseIterable, Sendable {
-    /// 退款。
-    case refunded
-    /// 家庭共享被移出（原购买者关掉了共享）。
-    case familySharingRevoked
-    /// 收据里找不到这笔交易（换机、收据丢失、跨区）。
+    /// 商店说这笔交易**被撤销了** —— 退款，或从家人共享里被移出。
+    ///
+    /// ⚠️ 撤销**可以被撤销**：Apple 文档写明退款撤回后交易上的撤销字段会被移除、
+    /// 访问权限要恢复。所以这一档**绝不能当成永久状态** ——
+    /// 每次核实都重算，字段没了就该恢复 Pro（见 `StorefrontMapper`）。
+    case storeRevoked
+    /// 商店那儿**什么都没有**，但我们**自己缓存过**"已经是 Pro"。
+    ///
+    /// 与 `.storeRevoked` 的区别是「商店明确说它被撤了」vs「商店压根没提这笔交易」——
+    /// 后者的典型原因是换了 Apple ID、换了店面、或收据丢了。
     case purchaseNotFound
 }
 

@@ -188,7 +188,7 @@ public enum Entitlement: Equatable, Sendable {
     case free
     case trial(daysLeft: Int)
     case pro(purchasedAt: Date)      // 买断 ⇒ 永不过期
-    case revoked(RevocationReason)   // 唯一的"失去"：退款 / 家人关共享 / 收据丢了
+    case revoked(RevocationReason)   // 唯一的"失去"：商店说被撤了 / 商店里找不到
 }
 ```
 
@@ -342,7 +342,7 @@ App Review 原文（3.1.1）明确允许：
 | --- | --- | --- | --- | --- |
 | 29 | App 图标与上架元数据 | 无 | ✅ **已完成** | `Tools/IconGen` 按 Apple 网格出十档 PNG → `App/Assets.xcassets`；补 `NSScreenCaptureUsageDescription` / `LSApplicationCategoryType` / `ITSAppUsesNonExemptEncryption`；`CFBundleDevelopmentRegion` 纠正为 `zh-Hans`（原先是 `zh_CN`） |
 | 30 | 权益状态机（Core，可脱机单测） | 无 | ✅ **已完成** | `Entitlement` / `TrialPolicy` / `ProFeature` / `ProLimits` / `LicenseResolver`；**18 条测试 + 5 个变异**。**不含** StoreKit、不含界面 |
-| 31 | StoreKit 2 接入 | 30 | ⏳ 待开工 | 查询 / 购买 / 恢复 / `Transaction.updates`；`Products.storekit` 本地配置；能在沙盒环境真买一次 |
+| 31 | StoreKit 2 接入 | 30 | 🟡 **进行中** | 第一批已完成（可脱机测的那半：商品目录 / 交易事实 / 纯映射 / 权益缓存，22 条测试）；剩适配器与 `.storekit` | 查询 / 购买 / 恢复 / `Transaction.updates`；`Products.storekit` 本地配置；能在沙盒环境真买一次 |
 | **—** | **开发版与正式版的区分** | 无 | 🟡 **方向已定：两个 bundle id**，待定前缀（`docs/DEV-VS-PROD.md`） | 它是 31 的前置：没有它，"这次买的是沙盒的还是本地的"说不清；也顺带把"数据根目录只有一处"做掉，32 才不会漏改 |
 | 32 | 沙盒化改造 | 无 | ⏳ 待开工 | `Marquee.entitlements` + 默认目录改 Pictures + 数据迁移；`-marqueeDemoEditor` 与主流程在沙盒下全绿 |
 | 33 | MAS 打包与提审路线 | 32 | ⏳ 待开工 | `archive → exportArchive(app-store) → 上传`；至少过一次 TestFlight / 内部测试 |
@@ -358,7 +358,7 @@ App Review 原文（3.1.1）明确允许：
 | 取商品 | `Product.products(for: [id])`；价格文案**必须**用 `displayPrice`（写死价格＝本地化事故） |
 | 购买 | `product.purchase()`；要处理 `.success(verification)` / `.userCancelled` / `.pending`（家长批准会 pending，这时**不能**当成失败） |
 | 权益 | `Transaction.currentEntitlements` 逐条 `verified` —— **只认 `verified`**，`unverified` 一律忽略 |
-| 撤销 | `Transaction.revocationDate != nil` → 映射到 `RevocationReason` |
+| 撤销 | `revocationDate != nil` → `.storeRevoked`。**要从 `Transaction.all` 捞**（`currentEntitlements` 已排除已撤销的）。⚠️ StoreKit 的 `revocationReason` 只有两档，**区分不出"退款"与"被移出家人共享"**，所以 `RevocationReason` 也只有两档；且撤销**可以被撤销**，不许记成永久状态 |
 | 续期/退款/家庭共享 | 必须监听 `Transaction.updates`（这些**发生在 app 之外**，不监听就会"退款了还解锁着"） |
 | 离线 | 权益**本地缓存**，启动先读缓存再校验；**不要**"每次启动必须联网" |
 | 恢复 | `AppStore.sync()` —— 对应界面里的「恢复购买」 |

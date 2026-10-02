@@ -85,7 +85,7 @@ public struct EntitlementSnapshot: Equatable, Sendable {
 | 还没查 | `unknown` + 放行 + 无阻断原因 |
 | 查过但空 | `free` + `.neverPurchased` |
 | 买断 | 一年后、十年后都还是 `pro`（**永不过期**）；拿不到购买时间用"现在"兜底 |
-| 撤销 | 优先于"有购买"；三种原因的 `rawValue` 不撞、`blockedReason` 可区分 |
+| 撤销 | 优先于"有购买"；`rawValue` 不撞、`blockedReason` 可区分。⚠️ **2026-10-03 修正**：`RevocationReason` 从三档改成两档（`.storeRevoked` / `.purchaseNotFound`）—— StoreKit 的 `revocationReason` 只有 `.developerIssue` / `.other`，退款与"被移出家人共享"落在同一档，原来那三档里有两档是假装能分。详见 ticket 31 |
 | 试用 | 第 1 天报 7 天；第 6 天报 1 天；**剩 0.2 天也报 1 天**（不是 0）；满 7 天整才结束 |
 | 时钟 | 系统时间被往回拨时，天数夹到 7 —— 不许出现"还有 9 天" |
 | 一天的定义 | 固定 86400 秒。用自然日会让 23:59 开始试用的人两分钟后少一天 |

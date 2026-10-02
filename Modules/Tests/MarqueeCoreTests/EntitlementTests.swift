@@ -76,23 +76,27 @@ struct EntitlementTests {
     func revocationBeatsPurchase() {
         let inputs = EntitlementInputs(hasPurchase: true,
                                        purchasedAt: origin,
-                                       revocation: .refunded,
+                                       revocation: .storeRevoked,
                                        now: days(30))
         let snapshot = LicenseResolver.resolve(inputs)
 
-        #expect(snapshot.entitlement == .revoked(.refunded))
-        #expect(snapshot.blockedReason == .revoked(.refunded))
+        #expect(snapshot.entitlement == .revoked(.storeRevoked))
+        #expect(snapshot.blockedReason == .revoked(.storeRevoked))
         #expect(!snapshot.allowsProFeatures)
     }
 
-    @Test("撤销的三种原因要能分开 —— 它们给用户的提示不一样")
+    @Test("撤销只有两档，且它们的 rawValue 不撞")
     func revocationReasonsStayDistinct() {
-        let reasons: [RevocationReason] = [.refunded, .familySharingRevoked, .purchaseNotFound]
+        // ⚠️ 原先有三档（refunded / familySharingRevoked / purchaseNotFound）。
+        // 2026-10-03 查证 StoreKit 之后合并成两档：`revocationReason` 只有
+        // `.developerIssue` / `.other`，**退款与"被移出家人共享"落在同一档里**，
+        // 假装能分开就等于给用户一句很确定但可能错的话。见 `RevocationReason` 的注释。
+        let reasons: [RevocationReason] = [.storeRevoked, .purchaseNotFound]
         let got = reasons.map { reason in
             LicenseResolver.resolve(EntitlementInputs(revocation: reason, now: origin)).blockedReason
         }
         #expect(got == reasons.map(BlockedReason.revoked),
-                "退款 / 家人关掉共享 / 收据丢了，用户的第一反应完全不同，不能糊成一句")
+                "「商店说被撤了」与「商店里没有」是两件事，给的话术不一样")
         #expect(Set(reasons.map(\.rawValue)).count == reasons.count, "rawValue 撞了")
     }
 
@@ -162,7 +166,7 @@ struct EntitlementTests {
         #expect(!LicenseResolver.canStartTrial(used), "试用只能一次")
         #expect(!LicenseResolver.canStartTrial(purchased(origin)), "已经买了不需要试用")
         #expect(!LicenseResolver.canStartTrial(
-            EntitlementInputs(revocation: .refunded, now: origin)), "退款后不该白拿一次试用")
+            EntitlementInputs(revocation: .storeRevoked, now: origin)), "退款后不该白拿一次试用")
     }
 
     @Test("试用结束了也不能再开始一次")
@@ -216,8 +220,8 @@ struct EntitlementTests {
 
     @Test("被挡住的原因与「总开关」一致")
     func blockedReasonMatchesGate() {
-        let revoked = LicenseResolver.resolve(EntitlementInputs(revocation: .familySharingRevoked, now: origin))
-        #expect(revoked.access(to: .pin).blockedReason == .revoked(.familySharingRevoked))
+        let revoked = LicenseResolver.resolve(EntitlementInputs(revocation: .storeRevoked, now: origin))
+        #expect(revoked.access(to: .pin).blockedReason == .revoked(.storeRevoked))
         #expect(!revoked.allowsProFeatures)
     }
 }

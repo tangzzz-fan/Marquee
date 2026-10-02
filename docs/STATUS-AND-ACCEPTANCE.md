@@ -2,7 +2,7 @@
 
 > 用途：一份可照着跑的**桌面验收清单**（ticket 06 的交付物），同时回答"现在到哪了、卡在哪"。
 > 日期：2026-10-01 ｜ 分支：`main`
-> 自动化现状：`./scripts/test.sh` → **515 测试全绿**（Core 497 + 历史仓库 12 + 真实 Vision 装置自检 6）
+> 自动化现状：`./scripts/test.sh` → **537 测试全绿**（Core 519 + 历史仓库 12 + 真实 Vision 装置自检 6）
 
 ---
 
@@ -86,7 +86,7 @@
 | **开发版与正式版的区分**（不是 ticket，是 31 的第 0 步） | ✅ **已完成**（分支 `feat/iap`）：正式 `com.tango.Marquee` / 开发 `com.tango.Marquee.dev`；三个配置 `Debug` / `Dev` / `Release`；数据、偏好、TCC 授权从此自动隔离。见 `docs/DEV-VS-PROD.md` |
 | 29 App 图标与上架元数据 | ✅ 已完成（十档图标 + `NSScreenCaptureUsageDescription` + 分类 + 出口合规） |
 | 30 权益状态机（Core） | ✅ 已完成（18 条测试 + 5 个变异） |
-| 31 StoreKit 2 接入 | ⏳ **下一票** |
+| 31 StoreKit 2 接入 | 🟡 **进行中**：第一批（可脱机测的那半）已完成 —— 商品目录 / 交易事实 / 纯映射 / 权益缓存，22 条测试 + 6 个变异。剩 StoreKit 适配器与 `.storekit` 本地配置 |
 | 32 沙盒化改造 | ⏳ 独立一条线（`entitlements` + 默认目录改 `~/Pictures/Marquee` + 数据迁移） |
 | 33 MAS 打包与提审 | ⏳ 依赖 32 |
 
@@ -305,7 +305,7 @@ cd /Users/tango/Developments/Marquee
 | I1 | C7 的日志 | 落点 → 剪贴板 ≤ 150 ms |
 | I2 | 编辑器里放 100 个标注 | 拖拽/重绘不掉帧（预算 4 ms，见 `docs/RENDER-BENCH.md`） |
 | I3 | 在编辑器里载入 1200×9000 级别的长图 | 缩放平移不掉帧（**B4 风险项**，可能是编辑器真正的瓶颈） |
-| I4 | `./scripts/test.sh` | 515 测试全绿（Core 497 + 历史仓库 12 + Vision 自检 6） |
+| I4 | `./scripts/test.sh` | 537 测试全绿（Core 519 + 历史仓库 12 + Vision 自检 6） |
 
 ### J. 放大镜与像素取色（ticket 10）
 

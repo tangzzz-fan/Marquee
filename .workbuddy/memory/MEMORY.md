@@ -4,7 +4,7 @@
 > 远端 `git@github.com:tangzzz-fan/Marquee.git`；开发机 **macOS 27**（⇒ 玻璃那条路实际生效）。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（124 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
+> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（129 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
 > 本文件只记**决策**与**索引**；理由与实现细节在 `docs/` 与 ticket 里。
 
 ## 已固化决策（勿随意推翻）
@@ -14,7 +14,7 @@
 | 产品 / 最低系统 | **Marquee**（`com.tango.Marquee`，2026-10-03 由 `dev.tango.Marquee` 改名），**macOS 15.0**；26/27 专属能力走 `if #available` + 降级 |
 | **身份与配置（31 的第 0 步）** | **两个 bundle id**：正式 `com.tango.Marquee` / 开发 `com.tango.Marquee.dev`。三个配置各司其职：`Debug`（只跑测试）/ **`Dev`（scheme 的 Run，默认；与 Release 同一套优化设置）** / `Release`（发版 + **内购的真实沙盒验证**）。**「是不是开发版」由 bundle id 后缀推导**（`MarqueeCore/AppIdentity`，唯一来源）⇒ 偏好自动隔离、数据落 `Application Support/<bundle id>/history/`、TCC 各自一条。`build.sh` 默认 `Dev`、`--identifier` 从产物读；`package.sh` 核验产物必须是正式 id。**改名的时间窗**：一旦往 ASC 上传过构建就不能再改（Apple 原文），我们没上传过 ⇒ 免费 |
 | 分支 | IAP 相关工作在 **`feat/iap`**（2026-10-03 起） |
-| **收费（2026-10-02 已定：买断 ¥36）** | 价格点 **¥36**（CNY 在 ¥10–200 区间步长 ¥1 ⇒ 合法价格点；美区全球均衡价约 $4.99）。非消耗型 IAP `dev.tango.Marquee.pro`；**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）。**永不计费**：三类截图、标注全部工具、剪贴板、取色、偏好设置。⚠️ **不许把没做的功能写成"锁着的"**（会造出点了没反应的入口）。判定在 Core `LicenseResolver`（纯函数）；**头号判据：`unknown` 必须放行**（否则付过费的人启动时先看到锁；历史更不许按免费裁剪）|
+| **收费（2026-10-02 已定：买断 ¥36）** | 价格点 **¥36**（CNY 在 ¥10–200 区间步长 ¥1 ⇒ 合法价格点；美区全球均衡价约 $4.99）。非消耗型 IAP `dev.tango.Marquee.pro`；**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）。**永不计费**：三类截图、标注全部工具、剪贴板、取色、偏好设置。⚠️ **不许把没做的功能写成"锁着的"**（会造出点了没反应的入口）。判定在 Core `LicenseResolver`（纯函数）；**头号判据：`unknown` 必须放行**（否则付过费的人启动时先看到锁；历史更不许按免费裁剪）。**31 第一批已完成**：`Storefront.swift`（商品目录 / 交易事实 / 纯映射）+ `EntitlementCache.swift`（缓存**输入**而非结果）。⚠️ 三条硬规则：**未校验的交易一律不算数** · **撤销可以被撤销**（不许记成永久状态）· **「商店里没有」只有在真的问过之后才算证据**（查询失败时 `records` 也是空的 ⇒ 断网会把付费用户锁在外面）|
 | 采集 / 覆盖层 | ScreenCaptureKit（不用弃用的 `CGWindowListCreateImage`）；覆盖层＝逐屏 `NSPanel`（变暗蒙层 + 镂空 + 描边），**不铺整屏截图** |
 | 画布渲染 | SwiftUI Canvas；CG 只做导出/剪贴板/降采样，滤镜走 CoreImage；**Metal 首期不引入**，留 `CanvasRendering` 协议边界 |
 | **分发（2026-10-02 已定：路线 B）** | **上 Mac App Store**（`32`/`33` 待开工）。**代价已接受：自动滚动砍掉、只留手动滚动长截图**；Developer ID 那条路作为后路**并存**。**2026-10-02 核实**：Apple 文档明文「用 `CGEventPost` 一类函数向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API，唯一出路是 Developer ID」 ⇒ **自动滚动与 MAS 互斥**（腾讯 Snip 的 App Store 版同样"滚动截屏不可用"）。另：**桌面没有对应 entitlement**（只有 user-selected / Downloads / Pictures / Music / Movies）⇒ 默认存桌面在沙盒下写不进去 |
@@ -100,7 +100,7 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **124 条实现陷阱**（写代码前必扫） |
+| **`docs/PITFALLS.md`** | **129 条实现陷阱**（写代码前必扫） |
 | **`docs/MAS-AND-MONETIZATION.md`** | **收费与上架方案（决策已定）**：买断 · 路线 B · **Pro 边界与「被挡住时」的界面行为** · ticket 29–33 施工图 |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–U 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |
 | `docs/PRD.md` / `docs/SPIKE-PLAN.md` | 产品与方案设计 / 坑点清单 + 提前验证报告（37 项） |
