@@ -235,7 +235,7 @@ spec → solution → test plan → impl → delivery
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告（37 项） |
 | `docs/DEV-NOTES.md` | 开发循环中的已知摩擦（签名、沙箱、工程生成、宏插件被杀） |
-| **`docs/DEV-VS-PROD.md`** | **开发版与正式版怎么区分**（现状 · 三类真实风险 · **IAP 商品挂 bundle id 这条硬约束** · 三条路线 · 推荐方案与落地清单）｜**spec，未实现** |
+| **`docs/DEV-VS-PROD.md`** | **开发版与正式版怎么区分**（现状 · 三类真实风险 · **改 bundle id 的时间窗** · IAP 挂 id 的硬约束 · **已定：两个 id** · 改名波及面与落地清单）｜**spec，未实现** |
 | `docs/RELEASE.md` | 打包 / 公证 / 更新的复现步骤 |
 | `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限：现象、四层根因、当前设计、验证与残留 |
 | `docs/RENDER-BENCH.md` | 渲染技术实测：SwiftUI Canvas / Core Graphics / Metal |
