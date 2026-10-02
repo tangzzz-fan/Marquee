@@ -236,4 +236,22 @@ EN = {
         ", stitching stopped; press ⏎ to finish and keep what's already stitched",
     "，已拼好的部分保留可用，按 ⏎ 结束":
         ", what's stitched so far stays usable; press ⏎ to finish",
+
+    # ── 升级卡片（ticket 31）──────────────────────────────────────────────
+    # ⚠️ 四个入口的标题**刻意写成整句**，不做 "\(入口名)是 Pro 能力" 那种拼接：
+    #    拼接既把中文语序焊死，也会让生成器按表达式名猜错说明符类型
+    #    （详见 SelectionOverlayView.cardTitle 的注释）。
+    "滚动截屏是 Pro 能力": "Scrolling capture is a Pro feature",
+    "识别文字是 Pro 能力": "Text recognition is a Pro feature",
+    "钉图是 Pro 能力": "Pinning to screen is a Pro feature",
+    "最近截图是 Pro 能力": "Unlimited history is a Pro feature",
+    "一次买断，不订阅": "One-time purchase, not a subscription",
+    "试用已结束，购买后继续使用": "Your trial has ended. Purchase Pro to keep using it.",
+    "购买被撤销：退款，或移出家人共享":
+        "This purchase was revoked: refunded, or removed from Family Sharing",
+    "这个账号下找不到这笔购买": "No purchase found for this account",
+    "7 天免费试用": "Start a 7-day free trial",
+    "了解 Pro": "Learn about Pro",
+    "恢复购买": "Restore Purchases",
+    "需要 Pro": "Requires Pro",
 }

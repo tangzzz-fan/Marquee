@@ -21,6 +21,12 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
             onShowPreferences: { [weak coordinator] in coordinator?.showPreferences() },
             makeRecentPanel: { [weak coordinator] in
                 coordinator?.makeRecentPanelController() ?? NSViewController()
+            },
+            // 菜单展开时现算「滚动截屏」要不要带小锁（ticket 31）。
+            // 与覆盖层里那两格走的是**同一个判据** —— `ProCard.content` 返回非 nil
+            // 就是被挡，不另写一遍 `access(to:)`。
+            isScrollCaptureLocked: {
+                ProCard.content(for: ProEntitlement.shared.snapshot, feature: .scrollCapture) != nil
             }
         )
         coordinator.onShortcutChanged = { [weak menuBar] combo in menuBar?.updateShortcut(combo) }
