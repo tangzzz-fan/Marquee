@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>zh_CN</string>
+	<string>zh-Hans</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -22,11 +22,24 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<!-- 屏幕录制用途描述（ticket 29）。
+	     第三方 ScreenCaptureKit 文档一致地说：触发屏幕录制 TCC 提示时**没有这个键
+	     的 app 会被系统直接终止**。我们的 app 目前跑得起来，所以那一说法在本机
+	     （macOS 27）上未必还成立 —— 但它是上架的硬要求，而且成本两行，没理由不补。
+	     文案写给用户看：说清"为什么需要"和"我们拿它做什么"。 -->
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Marquee 需要「屏幕录制」权限才能截图。截图只在你的 Mac 上处理，不会上传到任何地方。</string>
+	<!-- App Store 分类。上架时 App Store Connect 里也要选同一个，两处不一致会被拒。 -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<!-- 没有用非豁免的加密算法。声明成 false 可以免掉每次上传都要回答的出口合规问题。 -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- 菜单栏常驻应用：无 Dock 图标、无主窗口 -->
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Marquee</string>
+	<string>© 2026 Marquee</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

@@ -79,6 +79,12 @@ targets:
       # 显式列出来 + `buildPhase: resources`，归类是生成工程时就定死的，不靠猜。
       - path: App/Resources
         buildPhase: resources
+      # 图标资源（ticket 29）。**与 `App/Resources` 分开放、也显式声明**：
+      # `.xcassets` 是要过 `actool` 编译的，不能和一堆普通资源混在一个目录里等归类。
+      # 同样不走 syncedFolder —— 本机跑不了 xcodebuild，它在不在 Resources 阶段
+      # 必须钉在生成工程那一刻（与 `.xcstrings` 同一条理由）。
+      - path: App/Assets.xcassets
+        buildPhase: resources
     dependencies:
       - package: MarqueeModules
         product: MarqueeCore
@@ -116,4 +122,6 @@ targets:
         DEVELOPMENT_TEAM: UKXWZ3FS84
         ENABLE_HARDENED_RUNTIME: NO
         COMBINE_HIDPI_IMAGES: YES
-        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        # 图标（ticket 29）。之前这里是**空串**，等于"这个 app 没有图标" ——
+        # 在 Dock / 访达 / App Store 里都会显示成一张白纸。
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

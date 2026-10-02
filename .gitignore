@@ -17,6 +17,8 @@ Tools/Spikes/spikes
 Tools/RenderBench/bench
 Tools/RenderBench/bench2
 Tools/SymbolProbe/out-*.png
+Tools/IconGen/preview/
+Tools/IconGen/.build-icon
 
 # macOS
 .DS_Store

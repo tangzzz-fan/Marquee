@@ -4,7 +4,7 @@
 > 远端 `git@github.com:tangzzz-fan/Marquee.git`；开发机 **macOS 27**（⇒ 玻璃那条路实际生效）。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（116 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
+> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（119 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
 > 本文件只记**决策**与**索引**；理由与实现细节在 `docs/` 与 ticket 里。
 
 ## 已固化决策（勿随意推翻）
@@ -12,9 +12,10 @@
 | 项 | 值 |
 | --- | --- |
 | 产品 / 最低系统 | **Marquee**（`dev.tango.Marquee`），**macOS 15.0**；26/27 专属能力走 `if #available` + 降级 |
+| **收费（2026-10-02 已定：买断）** | 非消耗型 IAP `dev.tango.Marquee.pro`；**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）。**永不计费**：三类截图、标注全部工具、剪贴板、取色、偏好设置。⚠️ **不许把没做的功能写成"锁着的"**（会造出点了没反应的入口）。判定在 Core `LicenseResolver`（纯函数）；**头号判据：`unknown` 必须放行**（否则付过费的人启动时先看到锁；历史更不许按免费裁剪）|
 | 采集 / 覆盖层 | ScreenCaptureKit（不用弃用的 `CGWindowListCreateImage`）；覆盖层＝逐屏 `NSPanel`（变暗蒙层 + 镂空 + 描边），**不铺整屏截图** |
 | 画布渲染 | SwiftUI Canvas；CG 只做导出/剪贴板/降采样，滤镜走 CoreImage；**Metal 首期不引入**，留 `CanvasRendering` 协议边界 |
-| 分发 | Developer ID 公证，**非 MAS**（沙盒会约束滚动截屏）。**2026-10-02 核实**：Apple 文档明文「用 `CGEventPost` 一类函数向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API，唯一出路是 Developer ID」 ⇒ **自动滚动与 MAS 互斥**（腾讯 Snip 的 App Store 版同样"滚动截屏不可用"）。另：**桌面没有对应 entitlement**（只有 user-selected / Downloads / Pictures / Music / Movies）⇒ 默认存桌面在沙盒下写不进去 |
+| **分发（2026-10-02 已定：路线 B）** | **上 Mac App Store**（`32`/`33` 待开工）。**代价已接受：自动滚动砍掉、只留手动滚动长截图**；Developer ID 那条路作为后路**并存**。**2026-10-02 核实**：Apple 文档明文「用 `CGEventPost` 一类函数向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API，唯一出路是 Developer ID」 ⇒ **自动滚动与 MAS 互斥**（腾讯 Snip 的 App Store 版同样"滚动截屏不可用"）。另：**桌面没有对应 entitlement**（只有 user-selected / Downloads / Pictures / Music / Movies）⇒ 默认存桌面在沙盒下写不进去 |
 | 工程 | XcodeGen（`project.yml`）+ SPM 6 模块 + 宿主 `App`；**Run 走 Release**（性能预算只在优化构建下有意义） |
 | 模块依赖 | 只有 `MarqueeCore` 无依赖，其余只依赖 Core。**Core 持「接缝 + 编排」**，实现模块只给 OS 实现（编排才能脱机单测） |
 | 签名 | **由 `project.yml` 负责**（Apple Development + `DEVELOPMENT_TEAM: UKXWZ3FS84`），不是构建脚本重签 |
@@ -97,14 +98,16 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **116 条实现陷阱**（写代码前必扫） |
-| **`docs/MAS-AND-MONETIZATION.md`** | **上架 MAS 与收费方案**（完成度量化 · 买断 vs 订阅 · 沙盒干掉什么 · 工程改造清单 · 两条路线）｜**当前是 spec，实现未开工** |
+| **`docs/PITFALLS.md`** | **119 条实现陷阱**（写代码前必扫） |
+| **`docs/MAS-AND-MONETIZATION.md`** | **收费与上架方案（决策已定）**：买断 · 路线 B · **Pro 边界与「被挡住时」的界面行为** · ticket 29–33 施工图 |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–U 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |
 | `docs/PRD.md` / `docs/SPIKE-PLAN.md` | 产品与方案设计 / 坑点清单 + 提前验证报告（37 项） |
 | `docs/DEV-NOTES.md` / `docs/RELEASE.md` | 开发循环的已知摩擦 / 打包公证更新的复现步骤 |
 | `docs/SCREEN-RECORDING-PERMISSION.md` / `docs/RENDER-BENCH.md` | 权限完整复盘 / 渲染技术实测 |
 | `Modules/Sources/MarqueeTestSupport/` | **测试专用**：合成长页 + 位图读取 / MAE |
-| `.scratch/issues/2026-09-30-marquee-mvp/` | **28 条 ticket + INDEX**；**全部落地**（`17` 拆成 `17a` 玻璃 / `17b` 本地化；`24`–`28` 工具条/回归/光标/编辑器图标/图标本地化），只剩人工验收 |
+| `.scratch/issues/2026-09-30-marquee-mvp/` | **33 条 ticket + INDEX**；实现落地到 **`30`**（`01`–`28` 功能与打磨；`29` 图标与元数据 / `30` 权益状态机已完成，`31` StoreKit 是下一票，`32`/`33` 沙盒化） |
+| `Tools/IconGen/` | **App 图标生成器**：按 Apple 网格（1024 画布 / 824 居中 / 圆角 185）**逐尺寸原生渲染**十档；`install dark|light|indigo` |
+| `Tools/L10nCatalog/` | **文案目录生成器**：`Localizable.xcstrings` 唯一能生成它的工具（`LocalizationScanTests` 只能校验）；`run.sh [write]` |
 | `Tools/Spikes/`、`Tools/RenderBench/` | 独立验证工具，与产品代码分离 |
 
 ## 工作流约定

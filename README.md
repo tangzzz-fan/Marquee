@@ -15,19 +15,22 @@
 
 ## 当前状态
 
-**25 条 ticket 全部落地**（`01`–`23`，`17` 拆成 `17a` 玻璃材质 / `17b` 本地化，外加 `24` 覆盖层工具条对齐参考）。
-**代码层面没有未开工的东西了**，剩下的是真实桌面上的人工验收。
+**33 条 ticket，实现落地到 `30`**（`01`–`28` 是功能与打磨，`29`–`33` 是商业化）。
+`31`（StoreKit）是下一步；沙盒化（`32`/`33`）是独立的一条线。
 
-- `./scripts/test.sh` → **491 测试全绿**（Core 473 + 历史仓库 12 + 真实 Vision 装置自检 6）
-- `./scripts/build.sh` → **BUILD SUCCEEDED**
-- 大部分条目处于 **"已实现、待人工验收"** —— 自动化测试覆盖不到真实桌面上的手感
+- `./scripts/test.sh` → **509 测试全绿**（Core 491 + 历史仓库 12 + 真实 Vision 装置自检 6）
+- `swift build --disable-sandbox`（Modules）→ **Build complete**
+- **`01`–`28` 里大量条目处于"已实现、待人工验收"** —— 自动化测试覆盖不到真实桌面上的手感
+- **`./scripts/package.sh` 七步一次都没跑过**（要 Developer ID 证书）——
+  这是"能发给别人装"的**唯一单点风险**
 
 | 想做的事 | 看这里 |
 | --- | --- |
 | 现在到哪了、卡在哪 | **`docs/STATUS-AND-ACCEPTANCE.md`** §1–2 |
-| 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3（A–V 分组） |
+| 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3（A–W 分组） |
 | 逐条 ticket 状态与设计理由 | `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md` |
-| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（116 条实测） |
+| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（119 条实测） |
+| 收费与上架怎么定、为什么这么定 | **`docs/MAS-AND-MONETIZATION.md`** |
 
 ---
 
@@ -227,15 +230,15 @@ spec → solution → test plan → impl → delivery
 
 | 文档 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **116 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
-| **`docs/STATUS-AND-ACCEPTANCE.md`** | 进度 / 阻塞项 / 人工验收清单（A–U 分组 + 与 SPIKE M1–M20 的对应 + 排障速查） |
+| **`docs/PITFALLS.md`** | **119 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
+| **`docs/STATUS-AND-ACCEPTANCE.md`** | 进度 / 阻塞项 / 人工验收清单（A–W 分组 + 与 SPIKE M1–M20 的对应 + 排障速查） |
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告（37 项） |
 | `docs/DEV-NOTES.md` | 开发循环中的已知摩擦（签名、沙箱、工程生成、宏插件被杀） |
 | `docs/RELEASE.md` | 打包 / 公证 / 更新的复现步骤 |
 | `docs/SCREEN-RECORDING-PERMISSION.md` | 屏幕录制权限：现象、四层根因、当前设计、验证与残留 |
 | `docs/RENDER-BENCH.md` | 渲染技术实测：SwiftUI Canvas / Core Graphics / Metal |
-| **`docs/MAS-AND-MONETIZATION.md`** | **上架 Mac App Store 与收费方案**（完成度量化 · 买断 vs 订阅 · 沙盒会干掉什么 · 工程改造清单 · 两条路线取舍） |
+| **`docs/MAS-AND-MONETIZATION.md`** | **收费与上架方案（决策已定）**：买断 · 路线 B（MAS）· **Pro 能力边界与"被挡住时"的界面行为** · 沙盒会干掉什么（自动滚动）· ticket 29–33 的施工图 |
 
 由 API 版本引发的分支全部集中在一处，不在 UI 代码里散落：
 `if #available(macOS 26.0, *)` 只出现在 `ChromeBackground.isGlassAvailable`
@@ -267,6 +270,27 @@ Tools/SymbolProbe/run.sh      # 出 out-en.png / out-zh.png 两张对照图
 （`face.smiling` 会画成一个实心圆点，加 `.preferringMonochrome()` 才对）。
 本地化按"应用声明的本地化"判定，裸二进制永远按英文渲染 —— 所以探针要放进
 一个声明了 zh-Hans 的 bundle 里才测得到（`run.sh` 会自动拼一个）。
+
+`Tools/IconGen/` 是 **App 图标生成器** —— 图标不是"丢一张图进仓库"，而是按 Apple 的
+图标网格（1024 画布里 824×824 居中、圆角 185）**按每个尺寸原生重画**：
+
+```bash
+Tools/IconGen/run.sh                  # 出三个方案的预览（不改产品资源）
+Tools/IconGen/run.sh install dark     # 装成 AppIcon（十档 PNG 写进 App/Assets.xcassets）
+```
+
+`Tools/L10nCatalog/` 是 **文案目录生成器** —— `Localizable.xcstrings` 唯一能**生成**它的工具
+（`LocalizationScanTests` 只能校验）：
+
+```bash
+Tools/L10nCatalog/run.sh          # 只报告：源码有哪些 key、翻译表有没有缺/多（不写文件）
+Tools/L10nCatalog/run.sh write    # 真的重写 catalog
+```
+
+> ⚠️ 新增/改动界面文案的流程是：① 代码里写 `L10n.t("…")` → ② 在 `translations.py` 补英文
+> → ③ `run.sh write` → ④ 跑测试（扫描测试会拦住漏包、缺 key、孤儿 key）。
+> **不要用 Xcode 的「Extract Strings」** —— 字面量在 SPM 模块里、catalog 挂在 App target 下，
+> 它的抽取是按 target 做的，会把 187 条全标成 stale。见 `docs/PITFALLS.md` 116。
 
 ---
 
