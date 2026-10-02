@@ -83,9 +83,6 @@ public final class EntitlementCoordinator {
     /// 购买成功后要往里追加，这样"刚买的那笔"能立刻参与判定，不用再问一次商店。
     private var lastRecords: [PurchaseRecord] = []
 
-    /// 最近一次参与判定的输入。给"还能不能开始试用"这类查询用。
-    private var lastInputs: EntitlementInputs?
-
     /// 我们**已知**"曾经有过有效购买"。核实时作为 `cachedHadPurchase` 传下去，
     /// 用来区分"商店明确说被撤销了"与"商店压根没提这笔"。
     private var knownHadPurchase = false
@@ -102,7 +99,9 @@ public final class EntitlementCoordinator {
         self.purchaser = purchaser
         self.now = now
         // 初始就是"还没查"。**不回调** —— 调用方刚构造完，本来就该自己读一次 `snapshot`。
-        self.snapshot = EntitlementSnapshot(entitlement: .unknown, blockedReason: nil)
+        // 用 `resolve` 生成而不是手搓一份：unknown 那份快照里的每一项
+        // （包括"能不能试用"这一位该是乐观的**真**）只有一个出处。
+        self.snapshot = LicenseResolver.resolve(.pending(now: now()))
     }
 
     // MARK: - 启动
@@ -124,11 +123,10 @@ public final class EntitlementCoordinator {
             // 这里若判成免费，付过费的人（第一次跑新版本、或刚清过缓存）
             // 会在启动瞬间看到一个锁 —— 而它看起来只是"启动闪了一下"。
             logger.info("权益：没有缓存，保持 unknown（放行）")
-            publish(EntitlementSnapshot(entitlement: .unknown, blockedReason: nil))
+            publish(LicenseResolver.resolve(.pending(now: now())))
             return
         }
 
-        lastInputs = cached
         knownHadPurchase = cached.hasPurchase
         let resolved = LicenseResolver.resolve(cached)
         logger.info("权益：按缓存判定 → \(String(describing: resolved.entitlement), privacy: .public)")
@@ -231,13 +229,14 @@ public final class EntitlementCoordinator {
 
     /// 还能不能开始试用。
     ///
-    /// 还没查到时**返回真**（乐观）：非消耗型商品不能在同一个账号下买两次，
-    /// Apple 那边本来就会拦住重复试用；而判成假会让"刚装上的新用户"
+    /// 直接读判定里的那一位 —— 不再自己持一份输入重算。
+    /// **两个来源必然分叉**：卡片按 `snapshot` 渲染、按钮按另一个判据决定能不能点，
+    /// 只要有一次刷新只更新了其中一个，就会出现"按钮亮着、点下去没反应"。
+    ///
+    /// 还没查到时是**真**（乐观，这一位由 `resolve` 决定）：非消耗型商品不能在同一个
+    /// 账号下买两次，Apple 那边本来就拦得住重复试用；而判成假会让刚装上的新用户
     /// 看到一个点不了的试用入口。
-    public var canStartTrial: Bool {
-        guard let lastInputs else { return true }
-        return LicenseResolver.canStartTrial(lastInputs)
-    }
+    public var canStartTrial: Bool { snapshot.canStartTrial }
 
     /// 现在是不是买断用户。
     public var isPro: Bool { snapshot.entitlement.isPurchased }
@@ -268,7 +267,6 @@ public final class EntitlementCoordinator {
     /// 只从"真的拿到了商店事实"的两条路进来（核实成功 / 购买成功）——
     /// 于是缓存里永远不会出现"还没查"或"查失败"的推测。
     private func apply(_ inputs: EntitlementInputs) {
-        lastInputs = inputs
         knownHadPurchase = knownHadPurchase || inputs.hasPurchase
         cache.save(inputs)
         publish(LicenseResolver.resolve(inputs))

@@ -204,15 +204,35 @@ public struct EntitlementInputs: Equatable, Sendable {
 
 // MARK: - 快照
 
-/// 判定结果：状态 + 若被挡住则给出原因。
+/// 判定结果：状态 + 若被挡住则给出原因 + 还能不能开始试用。
 ///
-/// 把两者放一个类型里，是为了**只有一个来源**：界面要么整份拿去渲染，
+/// 把三者放一个类型里，是为了**只有一个来源**：界面要么整份拿去渲染，
 /// 要么整份丢掉重取。分成两个函数算的话，"状态说能用、原因说被挡"
 /// 这种自相矛盾迟早会出现，而它表现为"按钮亮了、点下去弹出购买页"。
 public struct EntitlementSnapshot: Equatable, Sendable {
 
     public let entitlement: Entitlement
     public let blockedReason: BlockedReason?
+
+    /// 现在还能不能**开始**试用。
+    ///
+    /// 它是**判定的一部分**，所以和上面两个字段一起算出来 —— 卡片上
+    /// "7 天免费试用"与"直接购买"这两条路才不会各算各的（各算各的迟早打架：
+    /// 按钮说能试用，点下去什么也没发生）。
+    ///
+    /// ⚠️ **不能由 `blockedReason` 反推。** `.neverPurchased` 那一档里混着一种边角输入：
+    /// `hasUsedTrial = true` 但 `trialStartedAt = nil`（收据里缺开始时间戳，
+    /// `resolve` 的条件就落不下去）。它是"从未购买"却**不能**再试用 ——
+    /// 照着原因去推按钮，就会给用户一个点了没反应的"7 天免费试用"。
+    public let canStartTrial: Bool
+
+    public init(entitlement: Entitlement,
+                blockedReason: BlockedReason?,
+                canStartTrial: Bool) {
+        self.entitlement = entitlement
+        self.blockedReason = blockedReason
+        self.canStartTrial = canStartTrial
+    }
 
     public var access: ProAccess {
         blockedReason.map(ProAccess.blocked) ?? .allowed
@@ -274,29 +294,45 @@ public enum LicenseResolver {
     /// 3. 试用进行中 → `.trial(daysLeft:)`。
     /// 4. 其它 → `.free`。
     public static func resolve(_ inputs: EntitlementInputs) -> EntitlementSnapshot {
+        // 「能不能开始试用」与「现在处于哪一档」是同一次判定的两个面，
+        // 在这里一次算清 —— 界面拿到的是完整结果，不用自己再补一次判断。
+        let trialAvailable = canStartTrial(inputs)
+
         guard inputs.isResolved else {
-            return EntitlementSnapshot(entitlement: .unknown, blockedReason: nil)
+            return EntitlementSnapshot(entitlement: .unknown,
+                                       blockedReason: nil,
+                                       canStartTrial: trialAvailable)
         }
 
         if let reason = inputs.revocation {
-            return EntitlementSnapshot(entitlement: .revoked(reason), blockedReason: .revoked(reason))
+            return EntitlementSnapshot(entitlement: .revoked(reason),
+                                       blockedReason: .revoked(reason),
+                                       canStartTrial: trialAvailable)
         }
 
         if inputs.hasPurchase {
             let state = Entitlement.pro(purchasedAt: inputs.purchasedAt ?? inputs.now)
-            return EntitlementSnapshot(entitlement: state, blockedReason: nil)
+            return EntitlementSnapshot(entitlement: state,
+                                       blockedReason: nil,
+                                       canStartTrial: trialAvailable)
         }
 
         if inputs.hasUsedTrial, let start = inputs.trialStartedAt {
             let remaining = TrialPolicy.duration - inputs.now.timeIntervalSince(start)
             if remaining > 0 {
                 let state = Entitlement.trial(daysLeft: daysLeft(from: remaining))
-                return EntitlementSnapshot(entitlement: state, blockedReason: nil)
+                return EntitlementSnapshot(entitlement: state,
+                                           blockedReason: nil,
+                                           canStartTrial: trialAvailable)
             }
-            return EntitlementSnapshot(entitlement: .free, blockedReason: .trialEnded)
+            return EntitlementSnapshot(entitlement: .free,
+                                       blockedReason: .trialEnded,
+                                       canStartTrial: trialAvailable)
         }
 
-        return EntitlementSnapshot(entitlement: .free, blockedReason: .neverPurchased)
+        return EntitlementSnapshot(entitlement: .free,
+                                   blockedReason: .neverPurchased,
+                                   canStartTrial: trialAvailable)
     }
 
     /// 剩余天数。
