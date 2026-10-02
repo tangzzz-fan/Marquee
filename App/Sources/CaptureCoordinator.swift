@@ -73,6 +73,8 @@ final class CaptureCoordinator {
     /// 菜单入口被挡住时弹的那张卡片（ticket 31）。**必须持着** ——
     /// 它是个 `NSPanel`，没有强引用的话会被 ARC 当场回收，用户什么也看不到。
     private var proCardPanel: ProCardPanel?
+    /// 首次启动的引导（ticket 34）。同上，必须持着 —— `NSWindow` 没有强引用会被回收。
+    private var onboardingWindow: OnboardingWindowController?
     /// 延时截图的倒计时（ticket 15）。
     private let countdown = CountdownHUD()
     /// 最近截图（ticket 16）。采集链路往里记，菜单面板从里读。
@@ -324,6 +326,34 @@ final class CaptureCoordinator {
             logger.error("编辑器保存失败：\(failure.message, privacy: .public)")
             PermissionPrompt.presentFailure(CaptureFailure(message: failure.message))
         }
+    }
+
+    /// 首次启动的引导（ticket 34）。
+    ///
+    /// **幂等**：走过一次（或用户直接把窗口叉掉）就再也不弹。
+    /// 判据在 Core（`OnboardingGate`）—— 它要挡住"自检运行被一个要人点的窗口挂住"
+    /// 那件事，而那种故障看起来是"命令没反应"，跟引导八竿子打不着。
+    func presentOnboardingIfNeeded() {
+        let state = OnboardingState()
+        guard OnboardingGate.shouldPresent(hasCompleted: state.hasCompleted) else { return }
+
+        let controller = OnboardingWindowController(
+            shortcut: shortcut,
+            currentPermission: { [weak self] in
+                self?.permission.currentPermission() ?? .notDetermined
+            },
+            onShortcutChanged: { [weak self] combo in
+                // 与偏好页改键走**同一个出口**：菜单上显示的组合只有这一条路会更新。
+                self?.onShortcutChanged?(combo)
+            }
+        )
+        controller.onFinish = { [weak self] in
+            // 收尾只有一处（`windowWillClose`）—— 走完和叉掉走的是同一段。
+            state.hasCompleted = true
+            self?.onboardingWindow = nil
+        }
+        onboardingWindow = controller
+        controller.present()
     }
 
     /// `page` 给了就切到那一页；不给则停在用户上次看的那一页（菜单「设置…」走这条）。

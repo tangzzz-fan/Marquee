@@ -171,6 +171,16 @@
         }
       }
     },
+    "Marquee 就在菜单栏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marquee lives in the menu bar"
+          }
+        }
+      }
+    },
     "Marquee 常驻菜单栏，开机自启后随时按快捷键就能截": {
       "localizations": {
         "en": {
@@ -221,6 +231,16 @@
         }
       }
     },
+    "macOS 不允许任何应用在没有这个权限的情况下截屏 —— 包括 Marquee。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS won't let any app capture the screen without it — Marquee included."
+          }
+        }
+      }
+    },
     "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图": {
       "localizations": {
         "en": {
@@ -231,12 +251,32 @@
         }
       }
     },
+    "一屏装不下的，接着往下滚": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When a page doesn't fit, keep scrolling"
+          }
+        }
+      }
+    },
     "一次买断，不订阅": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "One-time purchase, not a subscription"
+          }
+        }
+      }
+    },
+    "上一步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back"
           }
         }
       }
@@ -331,6 +371,16 @@
         }
       }
     },
+    "先挑一个顺手的键": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a shortcut you like"
+          }
+        }
+      }
+    },
     "先框出一块区域，再点识别": {
       "localizations": {
         "en": {
@@ -407,6 +457,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Close"
+          }
+        }
+      }
+    },
+    "刚截的那张永远找得回来": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The one you just took is always there"
           }
         }
       }
@@ -561,6 +621,16 @@
         }
       }
     },
+    "它不占 Dock、不弹窗口。按一下快捷键，屏幕就冻住，等你框出要截的那块。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Dock icon, no windows. Press the shortcut and the screen freezes, so you can drag out the part you want."
+          }
+        }
+      }
+    },
     "完成（复制到剪贴板并关闭）": {
       "localizations": {
         "en": {
@@ -577,6 +647,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not implemented yet: %@"
+          }
+        }
+      }
+    },
+    "就地标注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annotate in place"
           }
         }
       }
@@ -627,6 +707,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Active: %@"
+          }
+        }
+      }
+    },
+    "已生效：%@ · 以后按它就能截": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Active: %@ · press it any time to capture"
           }
         }
       }
@@ -721,12 +811,42 @@
         }
       }
     },
+    "开始使用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get started"
+          }
+        }
+      }
+    },
     "开机时自动启动": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Launch at login"
+          }
+        }
+      }
+    },
+    "当前状态：已授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status: granted"
+          }
+        }
+      }
+    },
+    "当前状态：还没授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status: not granted yet"
           }
         }
       }
@@ -787,6 +907,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Restore default (⌃Q)"
+          }
+        }
+      }
+    },
+    "截图": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capture"
           }
         }
       }
@@ -881,12 +1011,42 @@
         }
       }
     },
+    "把一张图钉在屏幕上，对着改东西": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pin an image on screen to compare against"
+          }
+        }
+      }
+    },
+    "把图里的字直接复制出来": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy the text inside the image"
+          }
+        }
+      }
+    },
     "抓帧失败：%@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Frame capture failed: %@"
+          }
+        }
+      }
+    },
+    "拖出一块区域，或者单击一个窗口": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag out an area, or click a window"
           }
         }
       }
@@ -957,6 +1117,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hold ⌥ to pick a color"
+          }
+        }
+      }
+    },
+    "授权之后可能需要重启 Marquee。权限只影响截屏，不影响别的功能。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You may need to restart Marquee after granting it. This permission only affects screen capture."
           }
         }
       }
@@ -1141,6 +1311,16 @@
         }
       }
     },
+    "欢迎使用 Marquee": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welcome to Marquee"
+          }
+        }
+      }
+    },
     "正在滚动…（第 %lld 屏）": {
       "localizations": {
         "en": {
@@ -1226,7 +1406,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scrolling Capture"
+            "value": "Scrolling capture"
           }
         }
       }
@@ -1267,6 +1447,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Click the box above, then press a new combination; Esc cancels. Conflicts with the system or other apps are reported explicitly."
+          }
+        }
+      }
+    },
+    "点下面的框，直接按下你想用的组合键。随时可以在菜单栏的「设置…」里改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click the box below and press the combination you want. You can change it any time from the menu bar: Settings…."
           }
         }
       }
@@ -1337,6 +1527,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rectangle"
+          }
+        }
+      }
+    },
+    "矩形、箭头、画笔、马赛克、文字，画完直接进剪贴板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rectangles, arrows, pen, mosaic, text — straight to the clipboard when you're done"
           }
         }
       }
@@ -1437,6 +1637,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Line width"
+          }
+        }
+      }
+    },
+    "继续": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continue"
           }
         }
       }
@@ -1616,7 +1826,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recognize Text"
+            "value": "Text recognition"
           }
         }
       }
@@ -1697,6 +1907,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Output"
+          }
+        }
+      }
+    },
+    "还差「屏幕录制」权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One more thing: Screen Recording"
           }
         }
       }
@@ -1921,6 +2141,16 @@
         }
       }
     },
+    "钉图": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pin to screen"
+          }
+        }
+      }
+    },
     "钉图是 Pro 能力": {
       "localizations": {
         "en": {
@@ -2077,6 +2307,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Off by default — the pointer would cover the content"
+          }
+        }
+      }
+    },
+    "默认是 ⌃Q。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The default is ⌃Q."
           }
         }
       }

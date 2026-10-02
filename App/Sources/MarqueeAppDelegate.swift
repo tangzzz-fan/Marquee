@@ -44,6 +44,11 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         // 而"用户打开购买界面的那一刻"正是最不该开一次新请求的时候。
         ProEntitlement.shared.start()
 
+        // 首次启动的引导（ticket 34）。**放在最后** —— 走到这里菜单栏图标与
+        // 全局快捷键都已经就位，所以引导还开着的时候用户就能按快捷键截一张，
+        // 而不是听人讲完才知道该按什么。
+        coordinator.presentOnboardingIfNeeded()
+
         // 权限登记入口：`Marquee -marqueeRequestPermission`
         //
         // 存在的理由：macOS 只在应用**真的发起采集**时才把它登记进「屏幕录制」列表，
