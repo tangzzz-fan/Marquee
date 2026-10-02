@@ -985,3 +985,29 @@
     > 要么写成对三套实现都成立的**最小公共写法**，要么在脚本开头把环境**钉死**。
     > 顺带：内置的 Grep 工具是 ripgrep，**第三套**语法 —— 交替直接写裸竖线
     > （`\|` 在那边反而是字面竖线），`\s` 在那边是有效的。
+
+142. **本地化生成器按「表达式名」猜说明符类型 —— 猜错不编译失败，只静默不翻译。**
+    写升级卡片的标题时我写的是
+    `L10n.t("\(Self.cardEntryName(content.feature))是 Pro 能力")`。
+    `Tools/L10nCatalog/build_catalog.py` 判类型靠一份**字面子串**名单：
+
+    ```python
+    STRINGY = ("localizedDescription", ".path", "displayString", "reason",
+               "detail", "title", "text", "conflict", "uppercased()", "String(")
+    ```
+
+    `cardEntryName` 一个都不沾 ⇒ 它按 **`%lld`**（整数）归一，catalog 里于是生出
+    key **`%lld是 Pro 能力`**，而运行时传进去的是 `String` —— 说明符与实际类型不符。
+
+    这条错的可怕之处和本文件里其他几条一样：**编译过得去、没有警告**，
+    只在运行时表现为"这句中文没被翻译"。而人的第一反应会是"翻译没生效"，
+    不会想到"key 根本是生成错的"。
+
+    **正解：别拼。** 带变量的整句拆成独立文案 —— `"识别文字是 Pro 能力"`、
+    `"钉图是 Pro 能力"`…… 顺带解决第二个问题：插值会把**中文语序焊死**，
+    而英文里这个变量该在句首（"Text recognition is a Pro feature"），拼出来的句子翻不动。
+
+    > 判据：**凡是"工具靠猜"的环节，加新用法时都要回头看它猜得对不对。**
+    > 这次的灯是 `LocalizationScanTests` 亮的（它校验"源码用到的 key 都在 catalog 里"）——
+    > 那条测试之所以存在，正是因为生成器**只能校验、不能判断对不对**：
+    > key 生成了、catalog 里也有、测试全绿，可它就是错的。
