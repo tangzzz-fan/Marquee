@@ -95,8 +95,8 @@ report() {
     [ -z "$ok" ] && ok=$(grep -oE 'Build complete!|Test run with .* passed' "$LOG" | tail -1)
     echo "✓ ${ok:-成功}"
   else
-    echo "✗ 失败（exit $code）—— 只列前几条："
-    grep -nE "error:|fatal error:|Unable to find a destination|sandbox_apply|Code ?Sign(ing)? error" "$LOG" | head -20
+    echo "✗ 失败（exit ${code}）—— 只列前几条："
+    grep -nE "error:|fatal error:|Unable to find a destination|sandbox_apply|Code ?Sign(ing)? error|✘|Expectation failed|Test run with .*failed|BUILD FAILED" "$LOG" | head -20
   fi
   local warns
   warns=$(grep -c "warning:" "$LOG" 2>/dev/null || true)

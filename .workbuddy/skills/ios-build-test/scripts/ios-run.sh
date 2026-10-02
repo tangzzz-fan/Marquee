@@ -126,8 +126,8 @@ report() {
       grep -oE "Test Suite '[^']*' (passed|failed)( at .*)?|Executed [0-9]+ test" "$LOG" | tail -3
     fi
   else
-    echo "✗ 失败（exit $code）—— 只列前几条："
-    grep -nE "error:|fatal error:|Unable to find a destination|sandbox_apply|Code ?Sign(ing)? error" "$LOG" | head -20
+    echo "✗ 失败（exit ${code}）—— 只列前几条："
+    grep -nE "error:|fatal error:|Unable to find a destination|sandbox_apply|Code ?Sign(ing)? error|✘|Expectation failed|Test run with .*failed|BUILD FAILED" "$LOG" | head -20
   fi
   [ -n "$RESULT_BUNDLE" ] && echo "  测试报告：$RESULT_BUNDLE"
   echo "  完整日志：$LOG"
