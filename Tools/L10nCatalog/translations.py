@@ -254,4 +254,25 @@ EN = {
     "了解 Pro": "Learn about Pro",
     "恢复购买": "Restore Purchases",
     "需要 Pro": "Requires Pro",
+
+    # ── 偏好「通用」页底部的 Pro 状态区（ticket 31）──────────────────────
+    # ⚠️ 状态行**从判定整句推**，不在这里拼「状态 + 余量」——
+    #    与卡片标题同一条理由（见 ProCardRenderer.title 的注释）。
+    "Marquee Pro · 正在确认…": "Marquee Pro · Checking…",
+    "Marquee Pro · 免费版（最近截图保留 %lld 张）":
+        "Marquee Pro · Free (keeps the last %lld captures)",
+    "Marquee Pro · 试用中，还剩 %lld 天": "Marquee Pro · Trial, %lld days left",
+    "Marquee Pro · 已购买，谢谢": "Marquee Pro · Purchased, thank you",
+    "Marquee Pro · 这笔购买已被撤销": "Marquee Pro · This purchase was revoked",
+    "Marquee Pro · 这个账号下找不到这笔购买":
+        "Marquee Pro · No purchase found for this account",
+    "升级到 Pro": "Upgrade to Pro",
+    "已购买": "Purchased",
+    "已恢复购买": "Purchases restored",
+    "这个账号下没有可恢复的购买": "No purchases to restore for this account",
+    "恢复失败，请检查网络后重试": "Restore failed. Check your connection and try again.",
+
+    # ── 最近截图面板的配额说明（ticket 31）──────────────────────────────
+    "免费版只保留最近 %lld 张 · 升级到 Pro 可保留全部":
+        "The free version keeps the last %lld captures · Upgrade to Pro to keep them all",
 }

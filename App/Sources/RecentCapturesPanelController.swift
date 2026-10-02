@@ -94,6 +94,26 @@ final class RecentCapturesPanelController: NSViewController {
         for entry in entries {
             list.addArrangedSubview(row(for: entry))
         }
+        // 免费版把配额说清楚（ticket 31）。
+        //
+        // ⚠️ **只在这里放一行小字，不弹卡片。** 截图是高频动作 ——
+        // 每截一张都弹一次"要不要升级"等于自杀（见 `docs/MAS-AND-MONETIZATION.md`
+        // §「被挡住时的界面行为」第 3 条：只有三个**入口**会弹卡片，配额类不弹）。
+        if let limit = store.limit {
+            list.addArrangedSubview(footerLabel(limit: limit))
+        }
+    }
+
+    /// 免费版的历史配额说明。
+    private func footerLabel(limit: Int) -> NSView {
+        let label = NSTextField(labelWithString:
+            L10n.t("免费版只保留最近 \(limit) 张 · 升级到 Pro 可保留全部"))
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .tertiaryLabelColor
+        label.maximumNumberOfLines = 2
+        label.lineBreakMode = .byWordWrapping
+        label.preferredMaxLayoutWidth = 320
+        return label
     }
 
     // MARK: - 行

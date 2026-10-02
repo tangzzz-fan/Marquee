@@ -76,8 +76,7 @@ final class CaptureCoordinator {
     /// 延时截图的倒计时（ticket 15）。
     private let countdown = CountdownHUD()
     /// 最近截图（ticket 16）。采集链路往里记，菜单面板从里读。
-    private let history = CaptureHistoryStore()
-    /// 防止预检期间连按快捷键叠出两层覆盖层
+    private let history = CaptureHistoryStore()    /// 防止预检期间连按快捷键叠出两层覆盖层
     private var isPreflighting = false
     /// 本次运行内是否刚授予过权限 —— 用于把"请重启应用"的提示说准
     private var grantedThisSession = false
@@ -92,6 +91,13 @@ final class CaptureCoordinator {
         activationResult = result
         // 把**实际生效**的组合推给菜单：用户可能早就改过键，菜单不能一直显示默认值
         onShortcutChanged?(shortcut.current)
+
+        // 免费版只留 5 张（ticket 31）。与其它界面走同一条路：**订阅 snapshot**，
+        // 不自己另判一次"是不是 Pro" —— 判据一旦有两份，必然有一处忘了跟着改。
+        // `historyLimit()` 返回 nil 就是"不淘汰"。
+        ProEntitlement.shared.observe { [weak self] snapshot in
+            self?.history.limit = snapshot.historyLimit()
+        }
 
         // 启动只**记录**权限状态，不弹任何东西。
         // 理由：PRD B9 说"启动即检测"，但启动就弹系统授权框是很讨人厌的行为；
@@ -256,9 +262,9 @@ final class CaptureCoordinator {
             Task { _ = await entitlement.restorePurchases() }
         case .purchase:
             // ⚠️「了解 Pro」**不直接发起购买**。扣款是不可逆的动作，
-            // 得让用户先看见价格与自己的当前状态 —— 设置里那块状态区
-            //（含「购买」与「恢复购买」）存在的意义就是这个。
-            showPreferences()
+            // 得让用户先看见价格与自己的当前状态 —— 所以打开**通用页**，
+            // 那块状态区（含「升级到 Pro」与「恢复购买」）就在页面底部。
+            showPreferences(page: .general)
         }
     }
 
@@ -320,7 +326,8 @@ final class CaptureCoordinator {
         }
     }
 
-    func showPreferences() {
+    /// `page` 给了就切到那一页；不给则停在用户上次看的那一页（菜单「设置…」走这条）。
+    func showPreferences(page: SettingsPage? = nil) {
         let controller: PreferencesWindowController
         if let existing = preferencesWindow {
             controller = existing
@@ -337,7 +344,7 @@ final class CaptureCoordinator {
             preferencesWindow = created
             controller = created
         }
-        controller.present()
+        controller.present(page: page)
     }
 
     /// 排障用的一页状态。

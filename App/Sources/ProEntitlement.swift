@@ -37,6 +37,20 @@ final class ProEntitlement {
     /// 当前判定。界面只读这一个东西。
     var snapshot: EntitlementSnapshot { coordinator.snapshot }
 
+    /// 判定变化时要通知的界面。
+    ///
+    /// 用列表而不是单个闭包：要跟着变的界面**不止一处**（设置里的状态区、
+    /// 以后可能还有别的），而"谁最后设置谁生效"这种约定，在两个地方都要更新时
+    /// 必然漏掉一个 —— 而且漏掉的那处不会报错，只会一直显示旧值。
+    private var observers: [(EntitlementSnapshot) -> Void] = []
+
+    /// 订阅判定变化。**注册时立刻回调一次当前值** ——
+    /// 否则界面得自己记得"先读一次、再订阅"，而漏掉前半句的表现是空着不显示。
+    func observe(_ observer: @escaping (EntitlementSnapshot) -> Void) {
+        observers.append(observer)
+        observer(snapshot)
+    }
+
     /// 与商店核对的状态（排障用：分得清"商店说没有"与"压根没连上"）。
     var verification: EntitlementCoordinator.Verification { coordinator.verification }
 
@@ -46,7 +60,9 @@ final class ProEntitlement {
         isStarted = true
 
         coordinator.onChange = { [weak self] snapshot in
-            self?.logger.info("权益变化 → \(String(describing: snapshot.entitlement), privacy: .public)")
+            guard let self else { return }
+            self.logger.info("权益变化 → \(String(describing: snapshot.entitlement), privacy: .public)")
+            for observer in self.observers { observer(snapshot) }
         }
 
         // ⚠️ 启动顺序就是这两行：**先按缓存立刻出判定，再去核实**。
