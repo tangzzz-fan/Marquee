@@ -70,6 +70,17 @@ schemes:
       # 代价：调试体验下降（优化构建下断点与变量查看会被打乱）。
       # 需要单步排查时临时改成 Debug，或直接切 scheme 的 Run 配置。
       config: Dev
+      # 本地商店配置（ticket 31）：Run 时**不连真实 App Store**，用这份文件里的商品。
+      #
+      # 它有两条不可替代的用途：
+      #   ① 开发期把购买 / 取消 / 待批准 / 退款 / 恢复整条链路走通 —— 不用建商品、
+      #      不用沙盒账号、不用网络；
+      #   ② 它能**模拟退款与"移出家人共享"**，而那两种在真实沙盒里几乎造不出来，
+      #      偏偏是撤销那套逻辑最需要验的部分。
+      #
+      # ⚠️ 只有 Run 用它。**真实沙盒交易必须在正式 id 的 Release 构建上验**
+      # （商品挂在 bundle id 下，Apple TN3186）—— 见 docs/DEV-VS-PROD.md §3.2。
+      storeKitConfiguration: App/Products.storekit
     test:
       config: Debug
     profile:
@@ -121,6 +132,10 @@ targets:
         product: MarqueeSettings
       - package: MarqueeModules
         product: MarqueeHistory
+      # ticket 31：StoreKit 的适配器。只有它 import StoreKit ——
+      # 判定与编排都在 Core（可脱机测），这一层只做类型翻译。
+      - package: MarqueeModules
+        product: MarqueeStore
     settings:
       base:
         PRODUCT_NAME: Marquee

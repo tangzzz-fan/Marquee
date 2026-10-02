@@ -22,6 +22,7 @@ let package = Package(
         .library(name: "MarqueeEditor", targets: ["MarqueeEditor"]),
         .library(name: "MarqueeSettings", targets: ["MarqueeSettings"]),
         .library(name: "MarqueeHistory", targets: ["MarqueeHistory"]),
+        .library(name: "MarqueeStore", targets: ["MarqueeStore"]),
     ],
     targets: [
         .target(name: "MarqueeCore"),
@@ -30,6 +31,9 @@ let package = Package(
         .target(name: "MarqueeEditor", dependencies: ["MarqueeCore"]),
         .target(name: "MarqueeSettings", dependencies: ["MarqueeCore"]),
         .target(name: "MarqueeHistory", dependencies: ["MarqueeCore"]),
+        // ticket 31：StoreKit 的适配器。**只有它 import StoreKit** ——
+        // 判定与编排都在 Core（不依赖商店，可脱机测），这一层只做类型翻译。
+        .target(name: "MarqueeStore", dependencies: ["MarqueeCore"]),
 
         // 测试专用：合成长页 + 位图读取 + MAE 比对
         .target(name: "MarqueeTestSupport"),
@@ -43,5 +47,11 @@ let package = Package(
         // 而那是 `MarqueeHistory` 的事 —— 放在 Core 的测试里够不着。
         .testTarget(name: "MarqueeHistoryTests",
                     dependencies: ["MarqueeHistory", "MarqueeCore"]),
+        // ticket 31：真实交易只有真机沙盒能验，所以这个目标里放的是
+        // **能在脱机环境验的那部分** —— 最重要的是"`Products.storekit`
+        // 里的商品 id 与 `StoreCatalog` 常量一致"（两者不同步是开发期最常见的坑：
+        // 本地配置里买得到、真机上取不到商品，反过来也一样）。
+        .testTarget(name: "MarqueeStoreTests",
+                    dependencies: ["MarqueeStore", "MarqueeCore"]),
     ]
 )

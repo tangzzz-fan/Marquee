@@ -2,7 +2,7 @@
 
 > 用途：一份可照着跑的**桌面验收清单**（ticket 06 的交付物），同时回答"现在到哪了、卡在哪"。
 > 日期：2026-10-01 ｜ 分支：`main`
-> 自动化现状：`./scripts/test.sh` → **537 测试全绿**（Core 519 + 历史仓库 12 + 真实 Vision 装置自检 6）
+> 自动化现状：`./scripts/test.sh` → **564 测试全绿**（Core 539 + 商店配置 7 + 历史仓库 12 + 真实 Vision 装置自检 6）
 
 ---
 
@@ -45,7 +45,7 @@
 
 **关键路径**：`01 → 02 → 03 → 07 → 11 → 12` —— 代码**全部走通**。
 **并行可开**：`31`（StoreKit，依赖已满足）与 `32`（沙盒化，独立一条线）。
-`01`–`30` 的实现全部落地；`01`–`28` 里大量条目仍是**已实现、待人工验收**（§3 A–Y 组）。
+`01`–`30` 与 `31` 的两批代码全部落地；`01`–`28` 里大量条目仍是**已实现、待人工验收**（§3 A–Z 组）。
 
 > ⚠️ **从 ticket 21 起，普通截图不再打开编辑器窗口** —— 标注在覆盖层里就地完成（§L）。
 > 编辑器保留但只服务**长截图**（长图放不进一屏，在覆盖层里没法标注它），
@@ -86,7 +86,7 @@
 | **开发版与正式版的区分**（不是 ticket，是 31 的第 0 步） | ✅ **已完成**（分支 `feat/iap`）：正式 `com.tango.Marquee` / 开发 `com.tango.Marquee.dev`；三个配置 `Debug` / `Dev` / `Release`；数据、偏好、TCC 授权从此自动隔离。见 `docs/DEV-VS-PROD.md` |
 | 29 App 图标与上架元数据 | ✅ 已完成（十档图标 + `NSScreenCaptureUsageDescription` + 分类 + 出口合规） |
 | 30 权益状态机（Core） | ✅ 已完成（18 条测试 + 5 个变异） |
-| 31 StoreKit 2 接入 | 🟡 **进行中**：第一批（可脱机测的那半）已完成 —— 商品目录 / 交易事实 / 纯映射 / 权益缓存，22 条测试 + 6 个变异。剩 StoreKit 适配器与 `.storekit` 本地配置 |
+| 31 StoreKit 2 接入 | 🟡 **两批都已完成**，待真机沙盒验证 | 第一批：商品目录 / 交易事实 / 纯映射 / 权益缓存（22 条）。第二批：Core 接缝 + **启动编排** + `MarqueeStore` 适配器 + `Products.storekit` + `-marqueeEntitlement` 自检入口（27 条）。**剩界面**（锁标记 / 升级卡片 / 偏好状态区） |
 | 32 沙盒化改造 | ⏳ 独立一条线（`entitlements` + 默认目录改 `~/Pictures/Marquee` + 数据迁移） |
 | 33 MAS 打包与提审 | ⏳ 依赖 32 |
 
@@ -305,7 +305,7 @@ cd /Users/tango/Developments/Marquee
 | I1 | C7 的日志 | 落点 → 剪贴板 ≤ 150 ms |
 | I2 | 编辑器里放 100 个标注 | 拖拽/重绘不掉帧（预算 4 ms，见 `docs/RENDER-BENCH.md`） |
 | I3 | 在编辑器里载入 1200×9000 级别的长图 | 缩放平移不掉帧（**B4 风险项**，可能是编辑器真正的瓶颈） |
-| I4 | `./scripts/test.sh` | 537 测试全绿（Core 519 + 历史仓库 12 + Vision 自检 6） |
+| I4 | `./scripts/test.sh` | 564 测试全绿（Core 539 + 商店配置 7 + 历史仓库 12 + Vision 自检 6） |
 
 ### J. 放大镜与像素取色（ticket 10）
 
@@ -649,6 +649,35 @@ cd /Users/tango/Developments/Marquee
 | Y3 | 看「文字」格 | 是**方框里的 T**，不再是「格式」两个字 |
 | Y4 | 点「样式」格 | 这时「样式」亮、「表情」不亮 |
 | Y5 | 进编辑器看工具栏 | 文字工具同样是"方框 T"；选中文字工具后，两个预设是"左对齐的三条线"与"编号列表"，**都不是汉字** |
+
+### Z. 内购（ticket 31）
+
+> 前置：现有代码**没有任何购买界面**（界面是下一批）。所以这一组用自检入口验，
+> 它把整条链路（取商品 → 购买 → 校验 → 判定 → 缓存）跑一遍并打印报告。
+>
+> ```bash
+> open -a Marquee.app --args -marqueeEntitlement            # 只查看
+> open -a Marquee.app --args -marqueeEntitlement purchase   # 真买一次（本地模拟）
+> open -a Marquee.app --args -marqueeEntitlement trial      # 走 0 价试用商品
+> open -a Marquee.app --args -marqueeEntitlement restore    # 恢复购买
+> ```
+>
+> 报告同时写到 `~/Library/Logs/Marquee/entitlement-probe.txt`（用 `open` 启动时 stdout 不回终端）。
+
+| # | 步骤 | 预期 |
+| --- | --- | --- |
+| Z1 | **Xcode → Edit Scheme → Run → Options → StoreKit Configuration** | 下拉里选中 `Products.storekit`。**若为空**，说明生成的相对路径不对 —— 把 `project.yml` 里那行改成 `../../../App/Products.storekit` 再 `xcodegen generate`（这一条我推导不出确定答案，只能眼看） |
+| Z2 | 跑 `-marqueeEntitlement`（不买） | 报告里「身份」是 `com.tango.Marquee.dev（开发版）`、「商店核对：成功」、「商品价格」是一个带货币符号的字符串（不是 `¥36` 写死的那个） |
+| Z3 | 跑 `-marqueeEntitlement purchase`，在弹窗里确认 | 「权益判定」变成 `pro`、「能放行 Pro：是」；**没有真实扣款** |
+| Z4 | 再跑一次 `-marqueeEntitlement`（新进程） | 仍然是 `pro` —— 这一次是**读缓存**得来的（启动不等网络那条规则的落点） |
+| Z5 | 用 Xcode 的 StoreKit Transaction Manager 发一次 **refund** | 下次启动判定变成 `revoked`；再撤销那次退款 → 又回到 `pro`（**撤销可以被撤销**） |
+| Z6 | Transaction Manager 里删掉交易 + 清缓存（`defaults delete` 那个 key） | 判定回到 `unknown` / `free`，而**不是**「被撤销」 |
+| Z7 | 断网后跑 `-marqueeEntitlement`（先保证缓存里是 pro） | 「商店核对：失败」，但「权益判定」**仍然是 pro**、仍然放行 —— 断网不能锁死付费用户 |
+| Z8 | 跑 `-marqueeEntitlement trial` | 判定变成 `trial（还剩 7 天）`；再跑一次 trial 不会被重复发放 |
+
+> ⚠️ **真实沙盒**（不是本地模拟）要在**正式 id 的 Release 构建**上用沙盒测试账号跑：
+> `CONFIGURATION=Release ./scripts/build.sh` → 用沙盒账号登录 → `-marqueeEntitlement purchase`。
+> 那一步之前需要先在 App Store Connect 建好 `com.tango.Marquee.pro`（¥36 非消耗型）。
 
 ## 4. 与 SPIKE-PLAN 待人工项（M1–M20）的对应
 

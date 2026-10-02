@@ -126,3 +126,74 @@ public final class StoreKitEntitlementSource: EntitlementSource { … }
 - `Products.storekit` 本地配置（开发期测购买、取消、待批准、退款、家庭共享移除）
 - 启动顺序：读缓存 → 立刻判定 → 后台核实（**不等网络**）
 - ⚠️ `Transaction.updates` **必须在启动时就开始监听**，否则 app 关闭期间发生的退款会漏掉
+
+---
+
+## 第二批已完成（2026-10-03，分支 `feat/iap`）
+
+接上 StoreKit，并把"启动顺序"这条时序规则钉住。这一批之后，**整条链路已经能在本地跑通**
+（`-marqueeEntitlement purchase` —— 购买界面还没做，所以先给了自检入口）。
+
+### 交付
+
+| 文件 | 内容 |
+| --- | --- |
+| `MarqueeCore/StorefrontSeams.swift` | `StorefrontReading` / `ProductPurchasing` 两条接缝 + `PurchaseOutcome`（五档）+ `UnavailableStorefront`（兜底） |
+| `MarqueeCore/EntitlementCoordinator.swift` | 启动编排：读缓存 → 立刻判定 → 后台核实；购买成功后本地合并、不再问商店 |
+| `MarqueeStore/StoreKitStorefront.swift`（新模块） | StoreKit 2 适配器：`Transaction.all` / `Transaction.updates` / `purchase` / `AppStore.sync` |
+| `App/Products.storekit` | 本地商店配置：¥36 非消耗型 + 0 价试用商品 |
+| `App/Sources/ProEntitlement.swift` | App 里的装配点 + `-marqueeEntitlement` 自检入口 |
+| 测试 | `EntitlementCoordinatorTests` 20 条 · `StoreCatalogConfigTests` 7 条，**共 27 条 / 16 个变异全红** |
+
+### 三条规则（每条都有测试）
+
+1. **启动不等网络。** `primeFromCache()` 同步出判定，核实放后台。
+   测试用一个**能挂住的假 reader** 造出"商店还没回话"那一刻 —— 否则这条断言是空跑的。
+2. **核实失败不改动判定。** 断网 ≠ 购买没了。变异验证：把失败改成"降级成免费" → **8 条变红**。
+3. **只有真问过商店才写缓存。** 把"还没查"或"查询失败"写进去，下次开机读回来就成了
+   "查过了、什么都没有"—— 一个伪装成事实的猜测。
+
+另外两条设计决定：
+- **购买成功后不再问商店**：`PurchaseOutcome.purchased` 直接带上那条交易，
+  用它在本地重算。`Transaction.all` 有几百毫秒往返，而"刚点完购买界面没变"最容易
+  被当成"没买上"（然后用户再点一次）。
+- **`.pending` 什么都不做**：家人共享的"购买前询问"、银行验证都落这一档 ——
+  当成失败会骗用户、当成成功会立刻解锁而家长可能马上拒绝。等 `Transaction.updates`。
+
+### 适配器里的纪律：不许做判断
+
+`fetchRecords()` 里未校验的交易**也如实记下来**（带 `isVerified: false`），不在这里丢掉。
+在这里 `continue` 就等于把"未校验一律不算数"这条规则挪进一个只有真机才跑得到的地方。
+
+### 自检入口
+
+```bash
+open -a Marquee.app --args -marqueeEntitlement            # 只查看
+open -a Marquee.app --args -marqueeEntitlement purchase   # 真买一次（本地配置）
+open -a Marquee.app --args -marqueeEntitlement trial      # 走 0 价试用商品
+open -a Marquee.app --args -marqueeEntitlement restore    # 恢复购买
+```
+
+报告同时落在 `~/Library/Logs/Marquee/entitlement-probe.txt`。它打印：身份（开发版/正式版）、
+权益判定、能否放行、**商店核对结果**（成功/失败/还没试）、能否开始试用、商品价格文案。
+
+### 待人工确认（两件，我做不了）
+
+1. **Xcode 里 scheme 的 StoreKit 配置是否选中了文件**：Run → Options → StoreKit Configuration
+   下拉里应当选中 `Products.storekit`。XcodeGen 生成的相对路径是它自己的默认前缀
+   （`../../App/Products.storekit`），而**它相对哪个目录在 Apple 文档里没明说、第三方说明互相矛盾**
+   —— 我不猜，请打开看一眼（10 秒）。若下拉为空，改成 `../../../App/Products.storekit` 再生成。
+2. **真机 / 沙盒**：`.storekit` 走的是本地模拟（不连 App Store）。
+   真实沙盒交易要在**正式 id 的 Release 构建**上用沙盒测试账号验（`-marqueeEntitlement purchase`）。
+
+### 下一批（31 的收尾）：界面
+
+界面的行为规范已经在 `docs/MAS-AND-MONETIZATION.md` §1.2 写好，只剩落地：
+- 三个 Pro 入口（菜单「滚动截屏」、工具栏「识别文字」「钉图」）加**小锁标记**；
+- 点下去**不进流程**，原地弹**非模态**小卡片（说明 + 试用 + 了解 Pro），`Esc`/点别处可关，
+  **关掉不许丢任何东西**（走和 `Esc` 收弹层同一条通道，不碰 `SelectionSession`）；
+- 偏好「通用」页底部一块状态区（当前状态 + 购买/升级 + **恢复购买**），**不新增第 5 页**；
+- 最近截图超 5 张时**不弹卡片**，只在面板底部一行小字 + FIFO 淘汰。
+
+这一批要新增一个 `MarqueePro` 界面模块或放进 `MarqueeOverlay`，接线时需同步
+`docs/STATUS-AND-ACCEPTANCE.md` §3 Z 组（那里已经列了要人工看的项目）。

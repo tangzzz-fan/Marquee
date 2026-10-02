@@ -18,7 +18,7 @@
 **33 条 ticket，实现落地到 `30`**（`01`–`28` 是功能与打磨，`29`–`33` 是商业化）。
 `31`（StoreKit）是下一步；沙盒化（`32`/`33`）是独立的一条线。
 
-- `./scripts/test.sh` → **537 测试全绿**（Core 519 + 历史仓库 12 + 真实 Vision 装置自检 6）
+- `./scripts/test.sh` → **564 测试全绿**（Core 539 + 商店配置 7 + 历史仓库 12 + 真实 Vision 装置自检 6）
 - `swift build --disable-sandbox`（Modules）→ **Build complete**
 - **`01`–`28` 里大量条目处于"已实现、待人工验收"** —— 自动化测试覆盖不到真实桌面上的手感
 - **`./scripts/package.sh` 七步一次都没跑过**（要 Developer ID 证书）——
@@ -29,7 +29,7 @@
 | 现在到哪了、卡在哪 | **`docs/STATUS-AND-ACCEPTANCE.md`** §1–2 |
 | 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3（A–W 分组） |
 | 逐条 ticket 状态与设计理由 | `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md` |
-| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（129 条实测） |
+| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（136 条实测） |
 | 收费与上架怎么定、为什么这么定 | **`docs/MAS-AND-MONETIZATION.md`** |
 
 ---
@@ -160,7 +160,7 @@ CONFIGURATION=Release ./scripts/build.sh
 | 路径 | 内容 |
 | --- | --- |
 | `App/` | 宿主 target：菜单栏生命周期、权限门、模块装配 |
-| `Modules/` | SPM 本地包：6 个功能模块 + 3 个测试 target |
+| `Modules/` | SPM 本地包：7 个功能模块 + 4 个测试 target |
 | `docs/` | 产品方案、实测报告、验收清单、陷阱清单 |
 | `.scratch/issues/` | ticket（本地 markdown tracker，**刻意入库**） |
 | `Tools/` | 独立命令行验证工具，不属于产品代码 |
@@ -175,7 +175,8 @@ MarqueeCore  ── 接缝（协议/值类型）+ 编排逻辑，可在没有屏
    ├── MarqueeOverlay    选区覆盖层、浮动工具条、钉图、倒计时 HUD
    ├── MarqueeEditor     标注编辑器窗口（只从长截图进入）
    ├── MarqueeSettings   偏好设置窗口
-   └── MarqueeHistory    最近截图的磁盘仓库
+   ├── MarqueeHistory    最近截图的磁盘仓库
+   └── MarqueeStore      StoreKit 适配器（**只有它 import StoreKit**）
 ```
 
 把"编排"放进 Core 是刻意的：SwiftPM 的依赖是单向的，编排要能脱机单测，
@@ -230,7 +231,7 @@ spec → solution → test plan → impl → delivery
 
 | 文档 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **129 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
+| **`docs/PITFALLS.md`** | **136 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | 进度 / 阻塞项 / 人工验收清单（A–W 分组 + 与 SPIKE M1–M20 的对应 + 排障速查） |
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告（37 项） |
@@ -317,6 +318,8 @@ open -a Marquee.app --args -marqueeRequestPermission # 走一次屏幕录制的�
 open -a Marquee.app --args -marqueeSmokeOverlay      # 覆盖层冒烟（1.5 s 后自动退出，不留残影）
 open -a Marquee.app --args -marqueeSmokeEditor
 open -a Marquee.app --args -marqueeSmokeScrollOverlay
+open -a Marquee.app --args -marqueeEntitlement          # 内购：打印权益判定 + 商店核对结果后退出
+open -a Marquee.app --args -marqueeEntitlement purchase # 内购：真的走一次购买（本地 StoreKit 配置）
 ```
 
 > 权限相关的请用 `open -a … --args` 而不是直接 exec 可执行文件：
