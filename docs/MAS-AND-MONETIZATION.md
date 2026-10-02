@@ -343,6 +343,7 @@ App Review 原文（3.1.1）明确允许：
 | 29 | App 图标与上架元数据 | 无 | ✅ **已完成** | `Tools/IconGen` 按 Apple 网格出十档 PNG → `App/Assets.xcassets`；补 `NSScreenCaptureUsageDescription` / `LSApplicationCategoryType` / `ITSAppUsesNonExemptEncryption`；`CFBundleDevelopmentRegion` 纠正为 `zh-Hans`（原先是 `zh_CN`） |
 | 30 | 权益状态机（Core，可脱机单测） | 无 | ✅ **已完成** | `Entitlement` / `TrialPolicy` / `ProFeature` / `ProLimits` / `LicenseResolver`；**18 条测试 + 5 个变异**。**不含** StoreKit、不含界面 |
 | 31 | StoreKit 2 接入 | 30 | ⏳ 待开工 | 查询 / 购买 / 恢复 / `Transaction.updates`；`Products.storekit` 本地配置；能在沙盒环境真买一次 |
+| **—** | **开发版与正式版的区分** | 无 | ⏳ **待选机制**（`docs/DEV-VS-PROD.md`） | 它是 31 的前置：没有它，"这次买的是沙盒的还是本地的"说不清；也顺带把"数据根目录只有一处"做掉，32 才不会漏改 |
 | 32 | 沙盒化改造 | 无 | ⏳ 待开工 | `Marquee.entitlements` + 默认目录改 Pictures + 数据迁移；`-marqueeDemoEditor` 与主流程在沙盒下全绿 |
 | 33 | MAS 打包与提审路线 | 32 | ⏳ 待开工 | `archive → exportArchive(app-store) → 上传`；至少过一次 TestFlight / 内部测试 |
 
