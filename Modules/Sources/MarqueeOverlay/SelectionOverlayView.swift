@@ -742,17 +742,24 @@ final class SelectionOverlayView: NSView {
     private func draw(toolbarItem slot: OverlayToolbarSlot,
                       in rect: CGRect,
                       state: OverlayToolbarPresentation) {
+        // 点不点亮**统一走 Core 那条规则**（可以在 Core 里单测）。
+        //
+        // 原先 `.style` 写的是"有弹层开着就亮"，而弹层有两个 ——
+        // 于是打开**表情**面板时「样式」也一起亮了（用户报的第三个问题）。
+        // 判据散在绘制回调里就没法单测，只有把两个面板都开一遍才看得出来。
+        let lit = OverlayToolbarHighlight.isLit(slot,
+                                                activeTool: state.activeTool,
+                                                openPalette: state.palette?.kind)
+        if lit { highlight(rect) }
+
         switch slot {
         case .tool(let tool):
-            let active = state.activeTool == tool
-            if active { highlight(rect) }
             drawSymbol(Self.symbol(for: tool),
                        in: rect,
-                       tint: active ? .controlAccentColor : .white)
+                       tint: lit ? .controlAccentColor : .white)
         case .style:
             // 展开时点亮：面板开着却看不出"是它开的"，用户会以为点空了
-            if state.palette != nil { highlight(rect) }
-            drawSymbol("paintpalette", in: rect, tint: state.palette != nil ? .controlAccentColor : .white)
+            drawSymbol("paintpalette", in: rect, tint: lit ? .controlAccentColor : .white)
         case .ocr:
             drawSymbol(state.isRecognizing ? "hourglass" : "text.viewfinder",
                        in: rect,
@@ -790,7 +797,11 @@ final class SelectionOverlayView: NSView {
         case .arrow: "arrow.up.right"
         case .pen: "pencil.tip"
         case .mosaic: "checkerboard.rectangle"
-        case .text: "textformat"
+        // ⚠️ **不能用 `textformat`** —— 它有中文本地化变体，中文环境下
+        // 系统会自动换成 `textformat.zh`，而那个变体渲染出来是**两个字「格式」**，
+        // 夹在一排图标里非常突兀（用户的原话就是"格式这个文字还在"）。
+        // `t.square` 是"方框里的 T"，两种语言下都长一样，也正是参考工具条那一格的画法。
+        case .text: "t.square"
         }
     }
 
@@ -930,6 +941,15 @@ final class SelectionOverlayView: NSView {
             image = cached
         } else {
             let configuration = NSImage.SymbolConfiguration(paletteColors: [color])
+                // ⚠️ `.preferringMonochrome()` **不能省**。
+                //
+                // 不写它的时候，符号会按自己的**首选渲染模式**画：多色符号的第一层
+                // 会被整片填满。表情那一格（`face.smiling`）因此变成一个**实心圆点** ——
+                // 而它看起来只是"这个图标长得怪"，完全想不到是着色方式的问题。
+                //
+                // 我们本来就要"整格一种颜色"，所以单调渲染才是**意图**，
+                // 不是降级。十个图标逐一对比过：除了 `face.smiling`，其余完全一样。
+                .applying(.preferringMonochrome())
                 .applying(NSImage.SymbolConfiguration(pointSize: 14, weight: .medium))
             guard let made = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(configuration) else { return }

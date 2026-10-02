@@ -201,7 +201,10 @@ private struct AnnotationEditorView: View {
             toolButton(.ellipse, systemImage: "circle", title: L10n.t("椭圆"))
             toolButton(.arrow, systemImage: "arrow.up.right", title: L10n.t("箭头"))
             toolButton(.pen, systemImage: "pencil.tip", title: L10n.t("画笔"))
-            toolButton(.text, systemImage: "textformat", title: L10n.t("文字"))
+            // ⚠️ 与覆盖层**同一个图标**（`t.square`）：同一个功能在两处用不同图标，
+            // 用户会以为是两个不同的东西。也不能用 `textformat` ——
+            // 它在中文本地化下会变成两个字「格式」。
+            toolButton(.text, systemImage: "t.square", title: L10n.t("文字"))
             toolButton(.mosaic, systemImage: "checkerboard.rectangle", title: L10n.t("马赛克"))
             toolButton(.blur, systemImage: "camera.filters", title: L10n.t("模糊"))
             cropButton
@@ -209,7 +212,7 @@ private struct AnnotationEditorView: View {
             // 序号是**文字工具的一个预设**，不占独立工具位（PRD：工具栏 ≤ 9 个工具）
             if session.tool == .text {
                 toolbarSeparator
-                presetButton(L10n.t("文字"), systemImage: "textformat.abc", preset: .plain)
+                presetButton(L10n.t("文字"), systemImage: "text.alignleft", preset: .plain)
                 presetButton(L10n.t("序号"), systemImage: "list.number", preset: .counter)
                 if session.textPreset == .counter {
                     // 这里只留**数字**：它是"从几开始"的当前值，本身就是内容；

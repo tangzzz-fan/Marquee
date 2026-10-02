@@ -16,6 +16,7 @@ xcuserdata/
 Tools/Spikes/spikes
 Tools/RenderBench/bench
 Tools/RenderBench/bench2
+Tools/SymbolProbe/out-*.png
 
 # macOS
 .DS_Store
