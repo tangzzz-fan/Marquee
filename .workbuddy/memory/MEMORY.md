@@ -14,7 +14,7 @@
 | 产品 / 最低系统 | **Marquee**（`dev.tango.Marquee`），**macOS 15.0**；26/27 专属能力走 `if #available` + 降级 |
 | 采集 / 覆盖层 | ScreenCaptureKit（不用弃用的 `CGWindowListCreateImage`）；覆盖层＝逐屏 `NSPanel`（变暗蒙层 + 镂空 + 描边），**不铺整屏截图** |
 | 画布渲染 | SwiftUI Canvas；CG 只做导出/剪贴板/降采样，滤镜走 CoreImage；**Metal 首期不引入**，留 `CanvasRendering` 协议边界 |
-| 分发 | Developer ID 公证，**非 MAS**（沙盒会约束滚动截屏） |
+| 分发 | Developer ID 公证，**非 MAS**（沙盒会约束滚动截屏）。**2026-10-02 核实**：Apple 文档明文「用 `CGEventPost` 一类函数向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API，唯一出路是 Developer ID」 ⇒ **自动滚动与 MAS 互斥**（腾讯 Snip 的 App Store 版同样"滚动截屏不可用"）。另：**桌面没有对应 entitlement**（只有 user-selected / Downloads / Pictures / Music / Movies）⇒ 默认存桌面在沙盒下写不进去 |
 | 工程 | XcodeGen（`project.yml`）+ SPM 6 模块 + 宿主 `App`；**Run 走 Release**（性能预算只在优化构建下有意义） |
 | 模块依赖 | 只有 `MarqueeCore` 无依赖，其余只依赖 Core。**Core 持「接缝 + 编排」**，实现模块只给 OS 实现（编排才能脱机单测） |
 | 签名 | **由 `project.yml` 负责**（Apple Development + `DEVELOPMENT_TEAM: UKXWZ3FS84`），不是构建脚本重签 |
@@ -98,6 +98,7 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 | 路径 | 内容 |
 | --- | --- |
 | **`docs/PITFALLS.md`** | **116 条实现陷阱**（写代码前必扫） |
+| **`docs/MAS-AND-MONETIZATION.md`** | **上架 MAS 与收费方案**（完成度量化 · 买断 vs 订阅 · 沙盒干掉什么 · 工程改造清单 · 两条路线）｜**当前是 spec，实现未开工** |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–U 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |
 | `docs/PRD.md` / `docs/SPIKE-PLAN.md` | 产品与方案设计 / 坑点清单 + 提前验证报告（37 项） |
 | `docs/DEV-NOTES.md` / `docs/RELEASE.md` | 开发循环的已知摩擦 / 打包公证更新的复现步骤 |
