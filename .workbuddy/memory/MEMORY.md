@@ -4,7 +4,7 @@
 > 远端 `git@github.com:tangzzz-fan/Marquee.git`；开发机 **macOS 27**（⇒ 玻璃那条路实际生效）。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（119 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
+> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（121 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
 > 本文件只记**决策**与**索引**；理由与实现细节在 `docs/` 与 ticket 里。
 
 ## 已固化决策（勿随意推翻）
@@ -98,7 +98,7 @@ defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool 
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **119 条实现陷阱**（写代码前必扫） |
+| **`docs/PITFALLS.md`** | **121 条实现陷阱**（写代码前必扫） |
 | **`docs/MAS-AND-MONETIZATION.md`** | **收费与上架方案（决策已定）**：买断 · 路线 B · **Pro 边界与「被挡住时」的界面行为** · ticket 29–33 施工图 |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–U 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |
 | `docs/PRD.md` / `docs/SPIKE-PLAN.md` | 产品与方案设计 / 坑点清单 + 提前验证报告（37 项） |
