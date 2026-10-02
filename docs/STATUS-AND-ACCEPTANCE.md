@@ -663,10 +663,14 @@ cd /Users/tango/Developments/Marquee
 > ```
 >
 > 报告同时写到 `~/Library/Logs/Marquee/entitlement-probe.txt`（用 `open` 启动时 stdout 不回终端）。
+>
+> ⚠️ 本机跑构建时如果报 `swift-plugin-server ... malformed response`（宏插件），
+> 那是**嵌套沙箱**：加 `MARQUEE_DISABLE_COMPILER_SANDBOX=1` 再跑（见 `docs/DEV-NOTES.md` §4.1）。
+> 正常终端不需要。
 
 | # | 步骤 | 预期 |
 | --- | --- | --- |
-| Z1 | **Xcode → Edit Scheme → Run → Options → StoreKit Configuration** | 下拉里选中 `Products.storekit`。**若为空**，说明生成的相对路径不对 —— 把 `project.yml` 里那行改成 `../../../App/Products.storekit` 再 `xcodegen generate`（这一条我推导不出确定答案，只能眼看） |
+| Z1 | **Xcode → Edit Scheme → Run → Options → StoreKit Configuration** | 下拉里应当能选到 `Products.storekit`。**2026-10-03 已修**：原来它显示红色/选不中，根因是 `.storekit` **不在工程的文件引用里**（`pbxproj` 里 0 次），而下拉只列工程已知的文件；现已用 `buildPhase: none` 加进工程。若仍为空，**手动选一次**再把 `git diff` 的 identifier 行告诉我 |
 | Z2 | 跑 `-marqueeEntitlement`（不买） | 报告里「身份」是 `com.tango.Marquee.dev（开发版）`、「商店核对：成功」、「商品价格」是一个带货币符号的字符串（不是 `¥36` 写死的那个） |
 | Z3 | 跑 `-marqueeEntitlement purchase`，在弹窗里确认 | 「权益判定」变成 `pro`、「能放行 Pro：是」；**没有真实扣款** |
 | Z4 | 再跑一次 `-marqueeEntitlement`（新进程） | 仍然是 `pro` —— 这一次是**读缓存**得来的（启动不等网络那条规则的落点） |

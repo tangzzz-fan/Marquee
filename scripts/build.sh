@@ -48,8 +48,19 @@ cd "$(dirname "$0")/.."
 #   -IDEPackageSupportDisableManifestSandbox=1
 #   -IDEPackageSupportDisablePluginExecutionSandbox=1
 #   ENABLE_USER_SCRIPT_SANDBOXING=NO
-# 它们对**外层**沙箱无效（外层的 apply 本身就被拒），因此这里不加 ——
-# 加了会让人误以为脚本能自愈。
+# 它们对**外层**沙箱无效（外层的 apply 本身就被拒）。
+#
+# ── ✅ 有效解法（2026-10-03 实测，见 docs/DEV-NOTES.md 4.1）────────────────
+#
+# `swiftc` 自己有一个 `-disable-sandbox`（"Disable using the sandbox when
+# executing subprocesses"）。传给它之后，**编译器不再去套那层沙箱**，
+# 于是 `swift-plugin-server` 不需要 apply、也就不会被杀。
+#
+#   MARQUEE_DISABLE_COMPILER_SANDBOX=1 ./scripts/build.sh
+#
+# ⚠️ **默认不开**：那一层沙箱是真实的隔离（宏插件会执行代码），
+# 正常终端没有这个问题，不该为了少数环境全局削弱它。
+# 需要它的典型场合：被外部沙箱包裹的 shell（agent 会话、某些 CI 容器）。
 
 if [ "$(defaults read com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox 2>/dev/null || echo 0)" != "1" ]; then
   echo "✗ 缺少必需的 Xcode 设置，构建无法进行。请先执行（一次性，可回退）：" >&2
@@ -78,12 +89,22 @@ xcodegen generate
 # 覆盖 CLI 路径：MARQUEE_DERIVED_DATA=/some/path ./scripts/build.sh
 DERIVED_DATA="${MARQUEE_DERIVED_DATA:-$PWD/DerivedData}"
 
+# 嵌套沙箱逃逸（见上面的说明）。值里没有空格，所以下面可以不加引号直接展开 ——
+# 加引号反而会把 `OTHER_SWIFT_FLAGS=-disable-sandbox` 当成一个整体参数名。
+EXTRA_BUILD_SETTING=""
+if [ "${MARQUEE_DISABLE_COMPILER_SANDBOX:-}" = "1" ]; then
+  EXTRA_BUILD_SETTING="OTHER_SWIFT_FLAGS=-disable-sandbox"
+  echo "⚠️  已关闭编译器的子进程沙箱（MARQUEE_DISABLE_COMPILER_SANDBOX=1）——"
+  echo "    只在被沙箱包裹的 shell 里需要；正常终端请去掉这个变量。"
+fi
+
 xcodebuild \
   -workspace Marquee.xcworkspace \
   -scheme Marquee \
   -configuration "${CONFIGURATION:-Dev}" \
   -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED_DATA" \
+  $EXTRA_BUILD_SETTING \
   build
 
 # ── 签名核验：稳定身份 = 「屏幕录制」授权能留住的前提 ──────────────────

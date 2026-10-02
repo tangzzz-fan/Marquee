@@ -197,3 +197,70 @@ open -a Marquee.app --args -marqueeEntitlement restore    # 恢复购买
 
 这一批要新增一个 `MarqueePro` 界面模块或放进 `MarqueeOverlay`，接线时需同步
 `docs/STATUS-AND-ACCEPTANCE.md` §3 Z 组（那里已经列了要人工看的项目）。
+
+---
+
+## 第三批（2026-10-03）：构建环境 + Xcode 里的商店配置接线
+
+用户反馈两件事，都在"验证链路"这一层 —— 代码没问题，是**环境与工程接线**。
+
+### ① 我这边跑不了 xcodebuild 的根因（已解决）
+
+**症状**：`MarqueeEditor/AnnotationEditorWindow.swift` 的 `@State` 报
+`external macro implementation type 'SwiftUIMacros.StateMacro' could not be found ... produced malformed response`。
+
+**根因**（这次拿到了第一手日志，不是推测）：日志里在它**之前**还有一行
+
+```
+sandbox-exec: sandbox_apply: Operation not permitted
+```
+
+—— `swift-plugin-server` 启动时要**自己再套一层沙箱**，而本会话的 shell 已经在受限 profile 里，
+那次 apply 被拒、进程随即失效。**后一句是症状，前一句才是根因。**
+
+Xcode 常被推荐的那三个参数（`-IDEPackageSupportDisableManifestSandbox=1` /
+`-IDEPackageSupportDisablePluginExecutionSandbox=1` / `ENABLE_USER_SCRIPT_SANDBOXING=NO`）
+在本机**实测无效**：它们关的是内层沙箱。
+
+**有效解**（`xcrun swiftc -help-hidden`）：
+
+```
+-disable-sandbox        Disable using the sandbox when executing subprocesses
+```
+
+实测 `OTHER_SWIFT_FLAGS="-disable-sandbox"` → **BUILD SUCCEEDED**（1 分 5 秒，含签名核验）。
+
+已固化：`scripts/build.sh` 加了显式开关
+
+```bash
+MARQUEE_DISABLE_COMPILER_SANDBOX=1 ./scripts/build.sh
+```
+
+**默认不开** —— 那层沙箱是真实隔离，正常终端没有这个问题。
+
+### ② Xcode 里 `Products.storekit` 红色 / 未选中
+
+**根因**：`storeKitConfiguration:` 只往 **scheme** 里写了一个路径字符串，
+**不会**把 `.storekit` 加进工程的文件引用；而 Xcode 的下拉框列的是
+**工程已知的 `.storekit` 文件**。实测那一版 `project.pbxproj` 里它出现 **0 次**。
+
+**修法**：`project.yml` 的 sources 里显式声明 + `buildPhase: none`（只做文件引用，
+不进任何构建阶段）。生成后 `pbxproj` 里已出现它。
+
+**路径前缀保持默认 `../../`**：查了官方文档（`schemePathPrefix`）：默认值
+「suitable for **non-workspace** projects」，workspace 才用 `"../"`。
+而本项目实测是**非 workspace 形态** —— scheme 只有一份、在
+`Marquee.xcodeproj/xcshareddata/xcschemes/`，`Marquee.xcworkspace/xcshareddata/`
+下**没有** schemes 目录。所以默认值是对的。
+
+### 待人工确认（10 秒）
+
+Xcode → Edit Scheme → Run → Options → **StoreKit Configuration 下拉**里应当能选到
+`Products.storekit`。若仍为空/红：**在下拉里手动选一次**，然后
+
+```bash
+git diff Marquee.xcodeproj/xcshareddata/xcschemes/Marquee.xcscheme
+```
+
+把 `identifier` 那一行告诉我 —— 我会把它固化进 `project.yml` 的 `schemePathPrefix`
+（那份 xcscheme 是生成物，手动改会被 `xcodegen generate` 覆盖，必须回到 project.yml）。

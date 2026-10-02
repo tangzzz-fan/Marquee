@@ -29,7 +29,7 @@
 | 现在到哪了、卡在哪 | **`docs/STATUS-AND-ACCEPTANCE.md`** §1–2 |
 | 照着跑一遍验收 | **`docs/STATUS-AND-ACCEPTANCE.md`** §3（A–W 分组） |
 | 逐条 ticket 状态与设计理由 | `.scratch/issues/2026-09-30-marquee-mvp/INDEX.md` |
-| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（136 条实测） |
+| 写代码前必扫的实现陷阱 | **`docs/PITFALLS.md`**（139 条实测） |
 | 收费与上架怎么定、为什么这么定 | **`docs/MAS-AND-MONETIZATION.md`** |
 
 ---
@@ -114,6 +114,17 @@ defaults delete com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox
 ```bash
 CONFIGURATION=Release ./scripts/build.sh
 ```
+
+被**外部沙箱**包裹的 shell（agent 会话、某些 CI 容器）里还需要一个开关：
+那里 `swift-plugin-server`（跑 `@State` 这类宏的辅助进程）无法 apply 自己的沙箱，
+宏就编不过。`swiftc` 有现成的逃逸口：
+
+```bash
+MARQUEE_DISABLE_COMPILER_SANDBOX=1 ./scripts/build.sh
+```
+
+**默认不开** —— 那层沙箱是真实隔离（宏插件会执行代码），正常终端没有这个问题。
+判据与根因见 `docs/DEV-NOTES.md` §4.1。
 
 ## 测试
 
@@ -231,7 +242,7 @@ spec → solution → test plan → impl → delivery
 
 | 文档 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **136 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
+| **`docs/PITFALLS.md`** | **139 条实现陷阱** —— 大多是「不崩溃、不报错、只悄悄错」那一类，**写代码前必扫** |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | 进度 / 阻塞项 / 人工验收清单（A–W 分组 + 与 SPIKE M1–M20 的对应 + 排障速查） |
 | `docs/PRD.md` | 产品定位、功能范围、技术方案、里程碑、决策记录 |
 | `docs/SPIKE-PLAN.md` | 坑点/难点/重点清单与提前验证报告（37 项） |

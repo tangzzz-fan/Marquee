@@ -4,7 +4,7 @@
 > 远端 `git@github.com:tangzzz-fan/Marquee.git`；开发机 **macOS 27**。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（136 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
+> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（139 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
 > 本文件只记**决策**与**索引**；理由与实现细节在 `docs/` 与 ticket 里。
 
 ## 身份 · 分发 · 收费
@@ -68,9 +68,10 @@ CONFIGURATION=Release ./scripts/build.sh   # 发版 / 内购真实沙盒验证
 **必需的一次性设置**（`docs/DEV-NOTES.md` 4）：
 `defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool YES`
 
-⚠️ **本机（沙箱内）跑不了 `xcodebuild`**：宏插件 `swift-plugin-server` 会被杀。
-判据是「`test.sh` 与 `swift build --disable-sandbox` 都过、只有 `build.sh` 报宏插件错」——
-那是环境问题不是代码问题，请用户代跑。
+⚠️ **被外部沙箱包裹的 shell 里要加 `MARQUEE_DISABLE_COMPILER_SANDBOX=1`**：
+那里的 `swift-plugin-server`（宏）无法 apply 自己的沙箱，报 `sandbox_apply: Operation not permitted`
+→ 宏展开失败。逃逸口是 `swiftc` 自己的 `-disable-sandbox`（**官方那三个 `IDEPackageSupport*`
+参数无效**，它们关的是内层）。已固化进 `build.sh`，默认不开。**有了它我可以自己跑完整构建。**
 
 ## 不可砍 / 明确砍掉
 
@@ -104,7 +105,7 @@ CONFIGURATION=Release ./scripts/build.sh   # 发版 / 内购真实沙盒验证
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **136 条实现陷阱**（写代码前必扫） |
+| **`docs/PITFALLS.md`** | **139 条实现陷阱**（写代码前必扫） |
 | **`docs/MAS-AND-MONETIZATION.md`** | **收费与上架方案（决策已定）**：买断 ¥36 · 路线 B · Pro 边界与**「被挡住时」的界面行为** · ticket 29–33 施工图 |
 | **`docs/DEV-VS-PROD.md`** | **开发版与正式版怎么区分**（两个 id · 三个配置 · 改名时间窗 · 波及面） |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–Z 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |

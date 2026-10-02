@@ -119,6 +119,20 @@ targets:
       # 必须钉在生成工程那一刻（与 `.xcstrings` 同一条理由）。
       - path: App/Assets.xcassets
         buildPhase: resources
+      # 本地商店配置（ticket 31）。
+      #
+      # ⚠️ **必须作为工程里的文件引用存在**：Xcode 的 scheme 编辑器里那个
+      # 「StoreKit Configuration」下拉框列的是**工程已知的 .storekit 文件** ——
+      # 文件不进工程，下拉就是空的（2026-10-03 首次生成时正是如此：
+      # Xcode 里那个引用是红色、且没有默认选中）。
+      #
+      # 实测确认过：那一版 `Marquee.xcodeproj/project.pbxproj` 里
+      # `Products.storekit` 出现 **0 次**。
+      #
+      # `buildPhase: none` = 只做引用，**不参与任何构建阶段**
+      # （它不是要拷进 app 包的资源，只是给 scheme 与 Xcode 编辑器看的）。
+      - path: App/Products.storekit
+        buildPhase: none
     dependencies:
       - package: MarqueeModules
         product: MarqueeCore

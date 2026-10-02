@@ -875,3 +875,59 @@
     > 第三方说明互相矛盾（我看的两份就冲突）。正确的做法是**保留默认值**，
     > 然后在 Xcode 里**打开 scheme 的 Run → Options 看一眼**那个下拉框是否选中了文件
     > —— 10 秒就能确定，比读文档推导可靠。
+
+---
+
+## V. 构建环境与工程接线（2026-10-03）
+
+137. **嵌套沙箱：`swiftc -disable-sandbox` 是那个逃逸口，而官方的三个参数不是。**
+    `swift-plugin-server`（跑 `@State` 这类宏的辅助进程）**启动时会自己再套一层沙箱**。
+    当外层已经被某个受限 profile 包裹（agent 会话、某些 CI 容器）时，那次 `sandbox_apply()`
+    会被拒 —— 日志里的第一行永远是：
+
+    ```
+    sandbox-exec: sandbox_apply: Operation not permitted
+    ```
+
+    跟着才是 `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`。
+    **后一句是症状，前一句才是根因** —— 只看后一句会一路去查宏插件的路径与缓存。
+
+    Xcode 常被推荐的那三个参数（`-IDEPackageSupportDisableManifestSandbox=1`、
+    `-IDEPackageSupportDisablePluginExecutionSandbox=1`、`ENABLE_USER_SCRIPT_SANDBOXING=NO`）
+    **在本机实测无效**：它们关的是**内层**（清单求值 / 插件执行）沙箱，
+    而外层那次 apply 本身就被拒。
+
+    有效的是 `swiftc` 自己的开关（`xcrun swiftc -help-hidden | grep sandbox`）：
+
+    ```
+    -disable-sandbox        Disable using the sandbox when executing subprocesses
+    ```
+
+    它让**编译器根本不去套那层沙箱**，于是 `swift-plugin-server` 不需要 apply。
+    实测：`OTHER_SWIFT_FLAGS="-disable-sandbox"` → **BUILD SUCCEEDED**。
+    `scripts/build.sh` 里做成了显式开关 `MARQUEE_DISABLE_COMPILER_SANDBOX=1`，
+    **默认不开** —— 那层沙箱是真实隔离，不该为了少数环境全局削弱它。
+
+138. **`.storekit` 不进工程，Xcode 里那个下拉就是空的 —— 而且它显示为「红色」。**
+    XcodeGen 的 `storeKitConfiguration:` 只往 **scheme** 里写了一个**路径字符串**，
+    它**不会**把 `.storekit` 加进工程的文件引用。而 Xcode 的
+    Run → Options → StoreKit Configuration 下拉框，列的是**工程已知的 `.storekit` 文件**。
+    ⇒ 文件不进工程，下拉里就没有可选项、旁边那个引用显示为红色。
+    （实测确认：那一版 `project.pbxproj` 里 `Products.storekit` 出现 **0 次**。）
+
+    修法是在 `project.yml` 的 sources 里显式声明，并给 `buildPhase: none`
+    —— 它只需要成为一个**文件引用**，不该进任何构建阶段（不是要拷进 app 包的资源）。
+
+    > 判据：**"配置里写了个路径"与"工程里有个文件"是两件事**。
+    > 任何"Xcode 编辑器里选一个文件"的设置（StoreKit 配置、GPX、`.xcconfig`…），
+    > 都要先确认那个文件在工程里。
+
+139. **XcodeGen 的 `schemePathPrefix` 默认值是给「非 workspace」的。**
+    官方文档原文：默认 `"../../"`「suitable for non-workspace projects」，
+    而「For use in workspaces, use `"../"`」。
+    所以本项目的形态要先确认清楚：**scheme 实际在哪**。
+    实测本项目的 scheme 只有一份、在 `Marquee.xcodeproj/xcshareddata/xcschemes/` 里
+    —— 即使仓库里有 `Marquee.xcworkspace`，它 `xcshareddata/` 下**没有 schemes 目录**。
+    因此这是「非 workspace」形态，默认前缀是对的，**不要**想当然地改成 `"../"`。
+    > 顺带：它是**拼接**而不是解析（源码里是 `Path(components: [prefix, value])`
+    > 然后简化 `..`），所以 value 里自己再补 `../` 会得到叠加的结果。
