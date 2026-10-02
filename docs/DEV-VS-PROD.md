@@ -120,6 +120,54 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 | **`Dev`** | **本地运行（scheme 的 Run）** | **`<正式 id>.dev`** | 自动（按 id） | **照抄 `Release`** |
 | `Release` | 发版 / 打包 / **沙盒验证** | 正式 id | 自动（按 id） | 优化 |
 
+### 4.1 `Dev` 与 `Debug` 的区别（逐项对比过）
+
+**先说最容易搞错的一点：两者在「身份」上毫无区别。** 都是 `com.tango.Marquee.dev`，
+于是数据目录、偏好域、TCC 授权都是同一份 —— **从 Debug 切到 Dev 不会多出一个身份**。
+
+真正的差别只在编译器设置。生成工程后把两份 `XCBuildConfiguration` 摊开对比：
+**48 项相同、11 项不同**，且那 11 项全是这类东西：
+
+| 项 | `Debug` | `Dev`（＝同 `Release`） | 实际影响 |
+| --- | --- | --- | --- |
+| `SWIFT_OPTIMIZATION_LEVEL` | `-Onone` | `-O` | **Debug 慢得多** |
+| `SWIFT_COMPILATION_MODE` | （未设置 → 增量） | `wholemodule` | 全模块优化 |
+| `GCC_OPTIMIZATION_LEVEL` | `0` | （未设置 → 默认优化） | C/C++ 侧同上 |
+| `DEBUG_INFORMATION_FORMAT` | `dwarf` | `dwarf-with-dsym` | Dev/Release 有 dSYM |
+| `ENABLE_TESTABILITY` | `YES` | （未设置 → `NO`） | Debug 才能 `@testable import` |
+| `ONLY_ACTIVE_ARCH` | `YES` | （未设置 → `NO`） | Debug 只编当前架构，更快 |
+| `SWIFT_ACTIVE_COMPILATION_CONDITIONS` | `DEBUG` | （未设置） | 见下面那条警告 |
+| `MTL_ENABLE_DEBUG_INFO` | `INCLUDE_SOURCE` | `NO` | Metal 调试信息 |
+| `ENABLE_NS_ASSERTIONS` | （未设置 → `YES`） | `NO` | 关的是 ObjC 的 `NSAssert` |
+| `GCC_DYNAMIC_NO_PIC` / `GCC_PREPROCESSOR_DEFINITIONS` | `NO` / `DEBUG=1` | （未设置） | —— |
+
+**谁在用哪个配置**（读 scheme 得来）：
+
+| Action | 配置 |
+| --- | --- |
+| Run（`⌘R`） | **`Dev`** |
+| Test（`⌘U`） | `Debug` —— ⚠️ 但工程里**没有 test target**（单元测试走 SwiftPM），所以这个 action 是空转 |
+| Analyze | `Debug` |
+| Profile | `Release` |
+| Archive | `Release` |
+
+⇒ **本项目里 `Debug` 的真实用途只有一个：要"能用的断点"时，把 Run 临时切过去。**
+（`Dev` 是优化构建，断点与变量查看会被优化打乱 —— 这正是项目一开始把 Run 放在 Release 上的原因。）
+
+### 4.2 与 `Debug` 有关的两条硬规则
+
+1. **测性能只能用 `Dev` 或 `Release`。** `-Onone` 下"落点→剪贴板 ≤150 ms""选区拖拽 120 fps"
+   这些数字没有参考价值 —— 而 `Dev` 存在的**全部理由**就是让"本地跑的那个"与发版同优化。
+   在 Debug 下觉得卡，**不代表产品卡**。
+2. **断言只在 `Debug`（以及 `swift test`）下真的会触发。** Swift 的 `assert` 由**优化级别**决定：
+   `-O` 会把它移除，所以 `Dev` / `Release` 里它不跑。`ENABLE_NS_ASSERTIONS` 管的是
+   Objective-C 的 `NSAssert`（本项目没用）。⇒ 想靠断言发现的问题，得在 Debug 下跑一遍。
+
+> ⚠️ 顺带一条：`Debug` 会定义 `SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG`，
+> 但本项目**全仓 0 处 `#if DEBUG`** —— 也就是说这个编译条件目前一点用都没有。
+> **不要**用它来区分开发/正式行为；要区分就用 `AppIdentity.isDevelopmentBuild`
+> （见 §4 的"关键简化"）—— 那是能脱机单测的。
+
 ### 关键简化：「是不是开发版」由 bundle id 推导，不用编译期开关
 
 - **数据目录**：`~/Library/Application Support/<bundle id>/history/`
