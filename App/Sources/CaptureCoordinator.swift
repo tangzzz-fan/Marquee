@@ -356,6 +356,20 @@ final class CaptureCoordinator {
         controller.present()
     }
 
+    /// 应用每次被激活时，重读一遍引导页上的权限状态。
+    ///
+    /// ⚠️ **必须真的有一条这样的路径。** 引导上写的权限状态，用户会去
+    /// 「系统设置 → 隐私与安全性 → 屏幕录制」把它勾上，然后切回 Marquee ——
+    /// 如果不重读，他看到的是"我明明勾了，它还说没有"，
+    /// 而下一步他会去怀疑是 Marquee 坏了、或者去重新授权一遍。
+    ///
+    /// 原先只在构造时读一次，也就是说**那句"每次切回都会重读"是句空话**。
+    /// 放在 app delegate 的 `applicationDidBecomeActive` 里调：窗口那一层
+    /// 收不到"应用被激活"，只有 delegate 收得到。
+    func refreshOnboardingPermission() {
+        onboardingWindow?.refreshPermissionStatus()
+    }
+
     /// `page` 给了就切到那一页；不给则停在用户上次看的那一页（菜单「设置…」走这条）。
     func showPreferences(page: SettingsPage? = nil) {
         let controller: PreferencesWindowController

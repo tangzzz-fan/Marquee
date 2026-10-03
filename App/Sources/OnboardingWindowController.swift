@@ -9,41 +9,34 @@ import MarqueeCore
 /// 是一个默认快捷键（`⌃Q`）。第一次用的人面对的是一个"什么都没发生"的桌面，
 /// 他能看到的只有"我装了个东西，但它在哪"。
 ///
-/// 引导就补这一句话：它是什么、怎么触发、键在哪改、还差什么权限。
+/// ## 为什么是**一页**（原先是三步）
 ///
-/// ## 三步，每一步都能跳过
+/// 原先拆成「它是什么 / 挑一个键 / 权限」三步。三步的代价是**每步都要点一次继续**，
+/// 而它真正要说的只有三句话 —— 摊成三页，用户要多点两次才能开始用，
+/// 换来的只是每页更空。
 ///
-/// 强制的引导是最招人烦的一类欢迎页。这里只要求"看到"：右下角从「继续」走到
-/// 「开始使用」，中途直接关窗口也算跳过（状态照样记下，不会下次再弹）。
+/// 现在一页说完，**没有「上一步 / 继续」**：看完直接按「开始使用」。
+/// 三件事一件不少 —— 它在菜单栏、键在这儿就能改、还差什么权限。
+///
+/// ## 文案原则：能删就删
+///
+/// 引导页没人会读完。所以每一句都要回答一个问题，答不上就删：
+///
+/// - **它是什么 / 在哪** → 标题（一句话）
+/// - **怎么用** → 副标题（一句话）
+/// - **能干什么** → 一行名词，**不带解释**（细节留给菜单栏，那儿本来就有）
+/// - **键怎么改** → 控件本身（能操作就不用说明）
+/// - **还差什么** → 权限行（状态 + 一个按钮）
+///
+/// 原先六行「能力 —— 说明」的表被整段砍掉：那是**产品介绍**，不是引导。
+/// 引导只需要让人能**开始用**，剩下的他自己会点。
+///
+/// 关窗口也算跳过（状态照样记下，下次不再弹）。
 @MainActor
 final class OnboardingWindowController: NSWindowController {
 
     /// 引导结束（走完或跳过）。宿主据此落状态。
     var onFinish: (() -> Void)?
-
-    // MARK: - 步骤
-
-    private enum Step: Int, CaseIterable {
-        case features
-        case shortcut
-        case permission
-
-        var title: String {
-            switch self {
-            case .features: L10n.t("Marquee 就在菜单栏")
-            case .shortcut: L10n.t("先挑一个顺手的键")
-            case .permission: L10n.t("还差「屏幕录制」权限")
-            }
-        }
-
-        var subtitle: String {
-            switch self {
-            case .features: L10n.t("它不占 Dock、不弹窗口。按一下快捷键，屏幕就冻住，等你框出要截的那块。")
-            case .shortcut: L10n.t("点下面的框，直接按下你想用的组合键。随时可以在菜单栏的「设置…」里改。")
-            case .permission: L10n.t("macOS 不允许任何应用在没有这个权限的情况下截屏 —— 包括 Marquee。")
-            }
-        }
-    }
 
     // MARK: - 依赖
 
@@ -53,17 +46,15 @@ final class OnboardingWindowController: NSWindowController {
 
     // MARK: - 控件
 
-    private var step: Step = .features
-    private let container = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
-    private let dotsLabel = NSTextField(labelWithString: "")
-    private let backButton = NSButton()
-    private let nextButton = NSButton()
-
+    private let featureLabel = NSTextField(labelWithString: "")
+    private let keyLabel = NSTextField(labelWithString: "")
     private let recorder: ShortcutRecorderView
     private let shortcutStatus = NSTextField(labelWithString: "")
     private let permissionStatus = NSTextField(labelWithString: "")
+    private let openSettingsButton = NSButton()
+    private let startButton = NSButton()
 
     init(shortcut: ShortcutService,
          currentPermission: @escaping () -> ScreenRecordingPermission,
@@ -73,7 +64,7 @@ final class OnboardingWindowController: NSWindowController {
         self.onShortcutChanged = onShortcutChanged
         recorder = ShortcutRecorderView(combo: shortcut.current)
 
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 440),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 336),
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
@@ -85,8 +76,8 @@ final class OnboardingWindowController: NSWindowController {
         recorder.onRecord = { [weak self] combo in self?.apply(combo) }
         window.delegate = self
 
-        buildShell()
-        show(.features)
+        build()
+        refreshPermissionStatus()
     }
 
     @available(*, unavailable)
@@ -105,172 +96,110 @@ final class OnboardingWindowController: NSWindowController {
 
     // MARK: - 骨架
 
-    private func buildShell() {
+    private func build() {
         guard let window else { return }
 
+        titleLabel.stringValue = L10n.t("Marquee 就在菜单栏")
         titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
         titleLabel.maximumNumberOfLines = 1
 
+        subtitleLabel.stringValue = L10n.t("按一下快捷键，屏幕冻住，框出要截的地方。")
         subtitleLabel.font = .systemFont(ofSize: 13)
         subtitleLabel.textColor = .secondaryLabelColor
-        subtitleLabel.maximumNumberOfLines = 3
-        subtitleLabel.lineBreakMode = .byWordWrapping
-        subtitleLabel.preferredMaxLayoutWidth = 480
 
-        dotsLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        dotsLabel.textColor = .tertiaryLabelColor
+        // 只给名词，不给解释 —— 说明留给菜单栏，那儿本来就有。
+        featureLabel.stringValue = L10n.t("截图 · 标注 · 滚动截屏 · 识别文字 · 钉图")
+        featureLabel.font = .systemFont(ofSize: 12)
+        featureLabel.textColor = .tertiaryLabelColor
 
-        backButton.title = L10n.t("上一步")
-        backButton.bezelStyle = .rounded
-        backButton.target = self
-        backButton.action = #selector(goBack)
+        keyLabel.stringValue = L10n.t("截屏快捷键")
+        keyLabel.font = .systemFont(ofSize: 12)
+        keyLabel.textColor = .secondaryLabelColor
+        keyLabel.alignment = .right
+        keyLabel.translatesAutoresizingMaskIntoConstraints = false
+        keyLabel.widthAnchor.constraint(equalToConstant: 84).isActive = true
 
-        nextButton.title = L10n.t("继续")
-        nextButton.bezelStyle = .rounded
-        nextButton.keyEquivalent = "\r"
-        nextButton.target = self
-        nextButton.action = #selector(goNext)
+        // 改键的反馈（成功 / 冲突）。空着时它只是一条看不见的窄行，
+        // 不占地方也不动布局 —— 所以不必做成"有事才插进来"。
+        shortcutStatus.font = .systemFont(ofSize: 11)
+        shortcutStatus.textColor = .secondaryLabelColor
+        shortcutStatus.maximumNumberOfLines = 2
+        shortcutStatus.lineBreakMode = .byWordWrapping
+        shortcutStatus.preferredMaxLayoutWidth = 384
 
-        let header = NSStackView(views: [titleLabel, subtitleLabel])
+        permissionStatus.font = .systemFont(ofSize: 13, weight: .medium)
+
+        openSettingsButton.title = L10n.t("打开系统设置")
+        openSettingsButton.bezelStyle = .rounded
+        openSettingsButton.target = self
+        openSettingsButton.action = #selector(openSystemSettings)
+
+        startButton.title = L10n.t("开始使用")
+        startButton.bezelStyle = .rounded
+        startButton.keyEquivalent = "\r"
+        startButton.target = self
+        startButton.action = #selector(startUsing)
+
+        let header = NSStackView(views: [titleLabel, subtitleLabel, featureLabel])
         header.orientation = .vertical
         header.alignment = .leading
-        header.spacing = 6
+        header.spacing = 8
 
-        let footer = NSStackView(views: [dotsLabel, NSView(), backButton, nextButton])
-        footer.orientation = .horizontal
-        footer.alignment = .centerY
-        footer.spacing = 10
+        let keyRow = NSStackView(views: [keyLabel, recorder])
+        keyRow.orientation = .horizontal
+        keyRow.alignment = .centerY
+        keyRow.spacing = 12
 
-        let root = NSStackView(views: [header, container, footer])
+        let permissionRow = NSStackView(views: [permissionStatus, NSView(), openSettingsButton])
+        permissionRow.orientation = .horizontal
+        permissionRow.alignment = .centerY
+        permissionRow.spacing = 12
+
+        let actionRow = NSStackView(views: [NSView(), startButton])
+        actionRow.orientation = .horizontal
+        actionRow.alignment = .centerY
+
+        // 中间那个空 `NSView` 是弹性占位：它把权限行与按钮压到底部，
+        // 上半部分保持紧凑。与原先 footer 里那个横向占位同一个做法。
+        let root = NSStackView(views: [header, keyRow, shortcutStatus,
+                                       NSView(), permissionRow, actionRow])
         root.orientation = .vertical
         root.alignment = .leading
-        root.spacing = 18
-        root.edgeInsets = NSEdgeInsets(top: 24, left: 28, bottom: 20, right: 28)
+        root.edgeInsets = NSEdgeInsets(top: 26, left: 28, bottom: 22, right: 28)
+        root.setCustomSpacing(20, after: header)
+        root.setCustomSpacing(6, after: keyRow)
         root.translatesAutoresizingMaskIntoConstraints = false
 
         let content = NSView()
         content.addSubview(root)
-        NSLayoutConstraint.activate([
-            root.topAnchor.constraint(equalTo: content.topAnchor),
-            root.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            root.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            header.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -56),
-            container.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -56),
-            container.heightAnchor.constraint(equalToConstant: 240),
-            footer.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -56),
-        ])
+
+        // 每一行都钉到"根宽度减去左右内边距"：不然行会缩到内容的自然宽度，
+        // 弹性占位就没有可撑开的空间了。
+        let rows = [header, keyRow, shortcutStatus, permissionRow, actionRow]
+        NSLayoutConstraint.activate(
+            [
+                root.topAnchor.constraint(equalTo: content.topAnchor),
+                root.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                root.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            ]
+            + rows.map { $0.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -56) }
+        )
         window.contentView = content
     }
 
-    // MARK: - 切步骤
+    // MARK: - 收尾
 
-    private func show(_ next: Step) {
-        step = next
-        titleLabel.stringValue = next.title
-        subtitleLabel.stringValue = next.subtitle
-        dotsLabel.stringValue = Self.stepDots(current: next)
-
-        container.subviews.forEach { $0.removeFromSuperview() }
-
-        let body: NSView
-        switch next {
-        case .features: body = makeFeaturesStep()
-        case .shortcut: body = makeShortcutStep()
-        case .permission: body = makePermissionStep()
-        }
-        body.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(body)
-        NSLayoutConstraint.activate([
-            body.topAnchor.constraint(equalTo: container.topAnchor),
-            body.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            body.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor),
-        ])
-
-        backButton.isHidden = (next == .features)
-        nextButton.title = (next == .permission) ? L10n.t("开始使用") : L10n.t("继续")
-    }
-
-    /// 「● ○ ○」—— 用字符而不是自绘，省掉一套几何。
-    private static func stepDots(current: Step) -> String {
-        Step.allCases.map { $0 == current ? "●" : "○" }.joined(separator: " ")
-    }
-
-    @objc private func goBack() {
-        guard let previous = Step(rawValue: step.rawValue - 1) else { return }
-        show(previous)
-    }
-
-    @objc private func goNext() {
-        guard let next = Step(rawValue: step.rawValue + 1) else {
-            finish()
-            return
-        }
-        show(next)
-    }
-
-    private func finish() {
-        // **这里不调 `onFinish`。** `close()` 会触发 `windowWillClose`，
-        // 那才是唯一的收尾点 —— 两处各调一次的话状态会被写两遍，
-        // 而且将来有人往其中一个里加了动作，它就会执行两次。
+    /// 唯一一条出口。**这里不调 `onFinish`** —— `close()` 会触发 `windowWillClose`，
+    /// 那才是唯一的收尾点。两处各调一次的话状态会被写两遍，
+    /// 而且将来有人往其中一个里加了动作，它就会执行两次。
+    @objc private func startUsing() {
         close()
     }
 
-    // MARK: - 第一步：能干什么
+    // MARK: - 改键
 
-    private func makeFeaturesStep() -> NSView {
-        let rows: [(String, String)] = [
-            (L10n.t("截图"), L10n.t("拖出一块区域，或者单击一个窗口")),
-            (L10n.t("就地标注"), L10n.t("矩形、箭头、画笔、马赛克、文字，画完直接进剪贴板")),
-            (L10n.t("滚动截屏"), L10n.t("一屏装不下的，接着往下滚")),
-            (L10n.t("识别文字"), L10n.t("把图里的字直接复制出来")),
-            (L10n.t("钉图"), L10n.t("把一张图钉在屏幕上，对着改东西")),
-            (L10n.t("最近截图"), L10n.t("刚截的那张永远找得回来")),
-        ]
-        let stack = NSStackView(views: rows.map { featureRow($0.0, $0.1) })
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        return stack
-    }
-
-    private func featureRow(_ title: String, _ detail: String) -> NSView {
-        let name = NSTextField(labelWithString: title)
-        name.font = .systemFont(ofSize: 13, weight: .medium)
-        name.alignment = .right
-        name.translatesAutoresizingMaskIntoConstraints = false
-        name.widthAnchor.constraint(equalToConstant: 84).isActive = true
-
-        let text = NSTextField(labelWithString: detail)
-        text.font = .systemFont(ofSize: 13)
-        text.textColor = .secondaryLabelColor
-
-        let row = NSStackView(views: [name, text])
-        row.orientation = .horizontal
-        row.alignment = .firstBaseline
-        row.spacing = 12
-        return row
-    }
-
-    // MARK: - 第二步：热键
-
-    private func makeShortcutStep() -> NSView {
-        shortcutStatus.font = .systemFont(ofSize: 12)
-        shortcutStatus.textColor = .secondaryLabelColor
-        recorder.translatesAutoresizingMaskIntoConstraints = false
-
-        let hint = NSTextField(labelWithString: L10n.t("默认是 ⌃Q。"))
-        hint.font = .systemFont(ofSize: 12)
-        hint.textColor = .tertiaryLabelColor
-
-        let stack = NSStackView(views: [recorder, shortcutStatus, hint])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        return stack
-    }
-
-    /// 与偏好页**同一套**改键逻辑（`PreferencesWindowController.apply`）——
+    /// 与偏好页**同一套**逻辑（`PreferencesWindowController.apply`）——
     /// 两处各写一遍的话，"改键失败要回滚显示"这类细节必然只修一处。
     private func apply(_ combo: KeyCombo) {
         let result = shortcut.change(to: combo)
@@ -280,52 +209,30 @@ final class OnboardingWindowController: NSWindowController {
             recorder.update(combo: shortcut.current)
             window?.makeFirstResponder(recorder)
         } else {
-            shortcutStatus.stringValue = L10n.t("已生效：\(combo.displayString) · 以后按它就能截")
+            shortcutStatus.stringValue = L10n.t("已生效：\(combo.displayString)")
             shortcutStatus.textColor = .secondaryLabelColor
             onShortcutChanged(combo)
         }
     }
 
-    // MARK: - 第三步：权限
-
-    private func makePermissionStep() -> NSView {
-        permissionStatus.font = .systemFont(ofSize: 13, weight: .medium)
-
-        let open = NSButton(title: L10n.t("打开系统设置"),
-                            target: self,
-                            action: #selector(openSystemSettings))
-        open.bezelStyle = .rounded
-
-        let note = NSTextField(labelWithString:
-            L10n.t("授权之后可能需要重启 Marquee。权限只影响截屏，不影响别的功能。"))
-        note.font = .systemFont(ofSize: 12)
-        note.textColor = .tertiaryLabelColor
-        note.maximumNumberOfLines = 2
-        note.lineBreakMode = .byWordWrapping
-        note.preferredMaxLayoutWidth = 440
-
-        let buttons = NSStackView(views: [open, NSView()])
-        buttons.orientation = .horizontal
-
-        let stack = NSStackView(views: [permissionStatus, buttons, note])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 14
-        refreshPermissionStatus()
-        return stack
-    }
+    // MARK: - 权限
 
     /// 权限可能在**别的窗口里**被改掉（用户在系统设置里勾完再切回来），
     /// 所以每次切回本应用都重读一次状态 —— 只查一次的话，用户会看到
     /// "我明明勾了，它还说没有"。
-    private func refreshPermissionStatus() {
+    ///
+    /// 状态与按钮**同一条判据**：已授权就把按钮藏起来，别让一个已经做完的动作
+    /// 还立在那儿等人点。
+    func refreshPermissionStatus() {
         switch currentPermission() {
         case .granted:
-            permissionStatus.stringValue = L10n.t("当前状态：已授权")
+            permissionStatus.stringValue = L10n.t("屏幕录制：已授权")
             permissionStatus.textColor = .systemGreen
+            openSettingsButton.isHidden = true
         case .notDetermined, .denied:
-            permissionStatus.stringValue = L10n.t("当前状态：还没授权")
+            permissionStatus.stringValue = L10n.t("屏幕录制：还没授权")
             permissionStatus.textColor = .systemOrange
+            openSettingsButton.isHidden = false
         }
     }
 

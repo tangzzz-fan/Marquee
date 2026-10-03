@@ -277,42 +277,27 @@ EN = {
         "The free version keeps the last %lld captures · Upgrade to Pro to keep them all",
 
     # ── 首次启动的引导（ticket 34）──────────────────────────────────────
+    #
+    # ⚠️ 引导是**一页**，不是三步（2026-10-03 合并）。文案原则：能删就删 ——
+    # 引导页没人会读完，每句都要回答一个问题，答不上就删。
+    # 原先那六行「能力 —— 说明」和「上一步 / 继续」整段砍掉了，
+    # 所以这里的条目比第一版**少一大截**：那不是漏翻，是那些 key 已经不存在。
     "欢迎使用 Marquee": "Welcome to Marquee",
     "Marquee 就在菜单栏": "Marquee lives in the menu bar",
-    "它不占 Dock、不弹窗口。按一下快捷键，屏幕就冻住，等你框出要截的那块。":
-        "No Dock icon, no windows. Press the shortcut and the screen freezes, "
-        "so you can drag out the part you want.",
-    "先挑一个顺手的键": "Pick a shortcut you like",
-    "点下面的框，直接按下你想用的组合键。随时可以在菜单栏的「设置…」里改。":
-        "Click the box below and press the combination you want. "
-        "You can change it any time from the menu bar: Settings….",
-    "还差「屏幕录制」权限": "One more thing: Screen Recording",
-    "macOS 不允许任何应用在没有这个权限的情况下截屏 —— 包括 Marquee。":
-        "macOS won't let any app capture the screen without it — Marquee included.",
-    # 能力清单（第一步那六行）
-    "截图": "Capture",
-    "拖出一块区域，或者单击一个窗口": "Drag out an area, or click a window",
-    "就地标注": "Annotate in place",
-    "矩形、箭头、画笔、马赛克、文字，画完直接进剪贴板":
-        "Rectangles, arrows, pen, mosaic, text — straight to the clipboard when you're done",
-    "滚动截屏": "Scrolling capture",
-    "一屏装不下的，接着往下滚": "When a page doesn't fit, keep scrolling",
-    "识别文字": "Text recognition",
-    "把图里的字直接复制出来": "Copy the text inside the image",
-    "钉图": "Pin to screen",
-    "把一张图钉在屏幕上，对着改东西": "Pin an image on screen to compare against",
-    "刚截的那张永远找得回来": "The one you just took is always there",
-    # 底部与状态
-    "上一步": "Back",
-    "继续": "Continue",
+    "按一下快捷键，屏幕冻住，框出要截的地方。":
+        "Press the shortcut, the screen freezes, and you drag out what you want.",
+    "截图 · 标注 · 滚动截屏 · 识别文字 · 钉图":
+        "Capture · Annotate · Scrolling capture · Text recognition · Pin",
+    "截屏快捷键": "Capture shortcut",
+    "屏幕录制：已授权": "Screen Recording: granted",
+    "屏幕录制：还没授权": "Screen Recording: not granted yet",
     "开始使用": "Get started",
-    "默认是 ⌃Q。": "The default is ⌃Q.",
-    "已生效：%@ · 以后按它就能截": "Active: %@ · press it any time to capture",
-    "当前状态：已授权": "Status: granted",
-    "当前状态：还没授权": "Status: not granted yet",
-    "授权之后可能需要重启 Marquee。权限只影响截屏，不影响别的功能。":
-        "You may need to restart Marquee after granting it. "
-        "This permission only affects screen capture.",
+    "已生效：%@": "Active: %@",
+
+    # ⚠️ 下面这两句**看着像引导里的**，其实菜单与工具条也在用 ——
+    # 删掉它们不会变成"孤儿"，而是变成"缺翻译"。
+    "滚动截屏": "Scrolling capture",
+    "识别文字": "Text recognition",
 
     # 自动滚动的两种「不能用」（ticket 32）。⚠️ 这两句**不能混用** ——
     # 沙盒里让用户去勾辅助功能，是把他送去做一件注定没用的事。

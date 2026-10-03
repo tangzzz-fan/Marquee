@@ -157,6 +157,17 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 切回本应用时，重读引导页上的屏幕录制权限状态。
+    ///
+    /// 用户看到引导说"还没授权"，多半就切去系统设置勾上了；勾完切回来，
+    /// 那一行**必须自己变**。只读一次的话，他会以为勾选没生效。
+    ///
+    /// `currentPermission()` 是纯读（`CGPreflightScreenCaptureAccess` + 进程内记忆），
+    /// 不会登记 TCC、也不弹框，所以每次激活都调它是安全的。
+    func applicationDidBecomeActive(_ notification: Notification) {
+        coordinator?.refreshOnboardingPermission()
+    }
+
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
     }
