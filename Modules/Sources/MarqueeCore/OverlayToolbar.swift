@@ -289,6 +289,130 @@ public enum OverlayToolbar {
     /// 工具条高（单行）。
     public static var height: CGFloat { buttonSize + padding * 2 }
 
+    // MARK: - 提示行（稿子 §03 / §10）
+
+    /// 提示行的高（点）。稿子 §01 的表：「提示行 513 × 22 pt」。
+    public static let hintLineHeight: CGFloat = 22
+
+    /// 提示行里那行字的字号。稿子 §01：11。
+    public static let hintLineFontSize: CGFloat = 11
+
+    /// 提示行与工具条之间的间隙 —— **必须是 0**。
+    ///
+    /// 稿子 §03 的原话：「工具条与提示行共材质、无间隙，圆角只在提示行的底部 ——
+    /// 它们是**一个东西**，不是『工具条 + 一条通知』。」
+    ///
+    /// 留一个常量而不是在各处写死 `0`，是为了让"这里本来可以有个缝"这件事有个可改的地方；
+    /// 而真正要紧的是它**被断言钉住**了（见 `OverlayToolbarTests.hintLineMetricsMatchSpec`）：
+    /// 有缝就不是一个东西了。
+    public static let hintLineGap: CGFloat = 0
+
+    /// 工具条 + 提示行一起摆位的结果。
+    public struct PanelFrames: Equatable, Sendable {
+        public let toolbar: CGRect
+        /// 没有提示行时为 `nil`
+        public let hintLine: CGRect?
+    }
+
+    /// 工具条与提示行**一起**摆在选区外侧（**Cocoa 全局点**）。
+    ///
+    /// ## 为什么必须整体摆位
+    ///
+    /// 直觉的写法是"先按 `frame(for:)` 摆好工具条，再在它下面挂一行 22 点的提示行"。
+    /// 那在**贴屏底的选区**上会当场错：`frame(for:)` 只保证**工具条自己**在屏幕内，
+    /// 于是它的下边可能正好压在屏幕下缘 —— 再往下挂一行就出屏了。
+    ///
+    /// 更糟的是"翻面"那条路：工具条翻到选区**上方**之后，在它下面挂一行，
+    /// 那一行会落在**工具条与选区之间** —— 把用户正要截的东西盖住。
+    ///
+    /// 所以这里是**先把 62 点（或 40 点）高的整块摆好，再切成两段**：
+    /// 靠近选区的那段是工具条，外侧那段是提示行。
+    ///
+    /// ## 与 `frame(for:)` 的关系
+    ///
+    /// `frame(for:)` 就是本函数 `showingHint: false` 的那个特例 —— 它转发过来，
+    /// 于是"贴边 / 翻面 / 夹取"这三条规则**只有一份**。
+    public static func panelFrames(for selection: CGRect,
+                                   screenFrame: CGRect,
+                                   showingHint: Bool,
+                                   gap: CGFloat = gap) -> PanelFrames {
+        let size = toolbarSize
+        let blockHeight = size.height + (showingHint ? hintLineHeight + hintLineGap : 0)
+        let box = selection.standardized
+        let screen = screenFrame.standardized
+
+        // ① 优先：选区正下方，左对齐
+        var origin = CGPoint(x: box.minX, y: box.minY - gap - blockHeight)
+        // 「够不够放」要按**整块**判：这才是整体摆位的意义所在
+        let fitsBelow = origin.y >= screen.minY
+        // ② 下方放不下 → 翻到上方
+        if !fitsBelow {
+            origin.y = box.maxY + gap
+        }
+        // ③ 最后统一夹进屏幕（水平竖直都要）
+        //
+        // 屏幕比整块还小时（外接小屏、可见区被 Dock 压得很矮），
+        // `maxX`/`maxY` 会算成比 `minX`/`minY` 更小的值 —— 用 `max` 兜住，
+        // 那样至少保证"左上角在屏幕内、尺寸不变"，而不是算出个反向矩形。
+        let minX = screen.minX + screenMargin
+        let maxX = max(minX, screen.maxX - screenMargin - size.width)
+        let minY = screen.minY + screenMargin
+        let maxY = max(minY, screen.maxY - screenMargin - blockHeight)
+        origin.x = min(max(minX, origin.x), maxX)
+        origin.y = min(max(minY, origin.y), maxY)
+
+        guard showingHint else {
+            return PanelFrames(toolbar: CGRect(origin: origin, size: size), hintLine: nil)
+        }
+
+        // 切两段：靠选区的那段是工具条，外侧那段是提示行。
+        //
+        // ⚠️ 用**夹取之前**那条判据（`fitsBelow`）决定切的顺序，不是"看现在的高度关系"——
+        // 夹取之后整块可能被推到屏幕里，那时它下面那侧已经不代表"外侧"了。
+        let hintSize = CGSize(width: size.width, height: hintLineHeight)
+        if fitsBelow {
+            // 整块在选区下方 ⇒ 工具条在上（靠近选区）、提示行在下
+            return PanelFrames(
+                toolbar: CGRect(x: origin.x,
+                                y: origin.y + hintLineHeight + hintLineGap,
+                                width: size.width, height: size.height),
+                hintLine: CGRect(origin: origin, size: hintSize))
+        }
+        // 整块在选区上方 ⇒ 工具条在下（靠近选区）、提示行在上
+        return PanelFrames(
+            toolbar: CGRect(origin: origin, size: size),
+            hintLine: CGRect(x: origin.x,
+                             y: origin.y + size.height + hintLineGap,
+                             width: hintSize.width, height: hintSize.height))
+    }
+
+    /// 工具条 + 提示行合起来那块**面板**的矩形。
+    ///
+    /// 零间隙时它就是两者的并集 —— 也就是说"圆角只在提示行的底部"这句话，
+    /// 画出来正好等于**一整块圆角矩形**（工具条上圆角 + 中间方 + 提示行下圆角）。
+    /// 视图只需要给这一块铺一次材质，不必去分别遮罩两个角的圆。
+    public static func panelFrame(toolbar: CGRect, hintLine: CGRect?) -> CGRect {
+        guard let hintLine else { return toolbar }
+        return toolbar.union(hintLine)
+    }
+
+    /// 一块面板该用多大的圆角。
+    ///
+    /// ## 为什么不能一律 10
+    ///
+    /// 同一块面板有三种高度：40（② 只有工具条）、62（工具条 + 提示行）、
+    /// **22（③ 只有提示行 —— 那时工具条不出现，见 `OverlayHintLinePresentation`）**。
+    ///
+    /// 10 点的圆角放在 40 与 62 上是"圆角"；放到 22 高的条上，上下两个圆角一合，
+    /// 它就成了一个**胶囊** —— 而胶囊读起来像一颗徽章，不像一条说明。
+    ///
+    /// 判据用**三分之一**而不是"高度的一半减几"：这条线上 40 与 62 都得拿到完整的 10
+    /// （它们才是常态），只有真的矮到放不下时才收 —— `40/3 > 10`、`62/3 > 10`，
+    /// 所以那两个值一个都不变。
+    public static func panelCornerRadius(panelHeight: CGFloat) -> CGFloat {
+        min(cornerRadius, panelHeight / 3)
+    }
+
     /// 走一遍排布。**尺寸也从这里出** —— 这就是"单一来源"。
     public static func layout() -> Layout {
         var items: [Layout.Item] = []
@@ -430,37 +554,16 @@ public enum OverlayToolbar {
 
     /// 算出工具栏该放在哪（**Cocoa 全局点**，y 向上）。
     ///
-    /// 与读数框（`SelectionOverlayView.drawReadout`）同一套思路：
-    /// 优先贴在选区**下方**；下方空间不够就翻到上方；最后统一夹进屏幕可见区。
+    /// ⚠️ **规则只有一份**：它是 `panelFrames(showingHint: false)` 的特例。
+    /// 原先这里那三段（贴边 / 翻面 / 夹取）是独立写的一份，加提示行时必然要写第二份 ——
+    /// 而两份规则各自都对、凑在一起才错的那种坑，本文件开头已经踩过一次。
     ///
     /// ⚠️ **夹取必须最后做**。先夹再翻会得到"翻上去之后又被夹回屏幕外"这种组合 ——
     /// 两个规则各自都对，顺序一错结果就错，而且只在贴边的选区上出现。
     public static func frame(for selection: CGRect,
                              screenFrame: CGRect,
                              gap: CGFloat = gap) -> CGRect {
-        let size = toolbarSize
-        let box = selection.standardized
-        let screen = screenFrame.standardized
-
-        // ① 优先：选区正下方，左对齐
-        var origin = CGPoint(x: box.minX, y: box.minY - gap - size.height)
-        // ② 下方放不下 → 翻到上方
-        if origin.y < screen.minY {
-            origin.y = box.maxY + gap
-        }
-        // ③ 最后统一夹进屏幕（水平竖直都要）
-        //
-        // 屏幕比工具栏还小时（外接小屏、可见区被 Dock 压得很矮），
-        // `maxX`/`maxY` 会算成比 `minX`/`minY` 更小的值 —— 用 `max` 兜住，
-        // 那样至少保证"左上角在屏幕内、尺寸不变"，而不是算出个反向矩形。
-        let minX = screen.minX + screenMargin
-        let maxX = max(minX, screen.maxX - screenMargin - size.width)
-        let minY = screen.minY + screenMargin
-        let maxY = max(minY, screen.maxY - screenMargin - size.height)
-        origin.x = min(max(minX, origin.x), maxX)
-        origin.y = min(max(minY, origin.y), maxY)
-
-        return CGRect(origin: origin, size: size)
+        panelFrames(for: selection, screenFrame: screenFrame, showingHint: false, gap: gap).toolbar
     }
 
     /// 某一格的命中区域（Cocoa 全局点）。

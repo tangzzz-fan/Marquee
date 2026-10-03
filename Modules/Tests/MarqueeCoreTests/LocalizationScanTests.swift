@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 
@@ -417,5 +418,100 @@ struct LocalizationScanTests {
                 "两条插值不同的串归一后应当相同")
         #expect(Self.normalized(#"\(1) 秒"#) == Self.normalized("%lld 秒"),
                 "源码的 `\\(…)` 要与 catalog 的 `%lld` 归一成同一个形状")
+    }
+
+    // MARK: - 提示行必须单行放得下
+
+    /// 提示行那套文案。**加一条提示行文案时也要加到这里** ——
+    /// 这份清单本身就是"哪些字符串要受 501 点约束"的声明。
+    ///
+    /// 注意这里写的是 **key（中文原句）**：英文从 catalog 里取，
+    /// 于是"中文放得下、英文放不下"这种错也会被同一条断言抓住。
+    static let hintLineKeys = [
+        // 长截图（稿子 §10 那六个面孔）
+        "继续往下滚，或按空格自动滚 · ⏎ 结束 · ⌘S 结束并保存 · Esc 取消",
+        "自动滚动中 · 空格停止 · Esc 停止（已拼的保留） · ⏎ 结束",
+        "看起来已经滚到底了 · 还可以继续滚，或按 ⏎ 结束",
+        "看起来已经滚到底了，按 ⏎ 结束",
+        "这一帧没对齐：%@",
+        "没检测到滚动…继续往下滚",
+        "这个版本不提供自动滚动：沙盒不允许代替你操作别的应用。",
+        "自动滚动需要「辅助功能」授权（系统设置 → 隐私与安全性 → 辅助功能）。",
+        // 落点后的例外提示（打码预览 / 选中 / 画标注 / 输入文字）
+        "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图",
+        "已选中 %lld 个标注  ·  拖动移动  ·  Delete 删除  ·  Esc 取消选择",
+        "点一个标注选中它  ·  拖角改大小  ·  选个工具可直接标注",
+        "在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具",
+        "输入文字 · ⏎ 确认 · Esc 放弃",
+    ]
+
+    /// 把格式符换成**最坏情况**的实数。
+    ///
+    /// 拿 `%lld` 原样去量会低估 —— 而"低估"正是这条约束最容易悄悄失效的方式：
+    /// 真跑起来时那个数可能是 `9999`，而行宽是按 `%lld` 五个字符算的。
+    static func materialized(_ key: String) -> String {
+        key.replacingOccurrences(of: "%lld", with: "9999")
+            .replacingOccurrences(of: "%@", with: "xxxxxxxx")
+    }
+
+    static func textWidth(_ s: String) -> CGFloat {
+        // 与视图里同一条路径：11pt、500 字重（`OverlayToolbar.hintLineFontSize`）
+        let font = NSFont.systemFont(ofSize: OverlayToolbar.hintLineFontSize, weight: .medium)
+        return (s as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    /// 稿子 §10 给了这条约束的物理前提：
+    /// 「六种文字全部 ≤ 34 字（11 pt → 约 374 pt），单行放得下 513 宽的提示行 ——
+    ///  这是『不许换行、不许加高』的物理前提」。
+    ///
+    /// ⚠️ **那个「34 字」是按中文量的**，而英文同样占这条行宽。
+    /// 这条断言第一次跑就抓出一条真超宽的英文（556 pt，比可用的 533 多 23 pt），
+    /// 而它**只会在英文系统上被截断尾巴** —— 中文开发机上永远看不见。
+    /// 「够不够长」这件事不能靠字数估，只能用真字体量。
+    ///
+    /// ⚠️ 宽度用的是**我们自己工具条的实际宽度**（545 − 2×6 = 533），不是稿子那个 513：
+    /// 513 是按「内边距 5 / 组内间隙 2 / 分隔线两侧各 8」算的，而我们实现里是 6 / 4 / 9 ——
+    /// 两者都放得进 1024，但提示行的预算必须跟着**我们这一条**走，
+    /// 否则约束会变成"按别人的尺寸检查自己"。
+    @Test("提示行文案：中英文都必须单行放得下面板宽度")
+    func hintLineTextsFitOnOneLine() throws {
+        let catalog = try Self.loadCatalog()
+        // 可用宽度 = 面板宽 − 两侧内边距。面板与工具条**同宽**（稿子定的）。
+        let available = OverlayToolbar.toolbarSize.width - OverlayToolbar.padding * 2
+        #expect(available > 400, "可用宽度算出来只有 \(available)，先看面板宽是不是被改小了")
+
+        var overflows: [String] = []
+        for key in Self.hintLineKeys {
+            let zh = Self.materialized(key)
+            // ⚠️ 查表用**原样**的 key，不用 `normalized` ——
+            // `loadCatalog` 的字典是按 catalog 里的**原文**键的（`%lld` 还没被折成 `{X}`）。
+            // 拿归一化之后的形状去查会一条都查不到，而表现是"13 条全缺英文"。
+            let rawEnglish = catalog.keys[key] ?? nil
+            let en = Self.materialized(rawEnglish ?? "")
+            #expect(!(rawEnglish ?? "").isEmpty,
+                    "「\(key)」在 catalog 里没有英文 —— 英文用户会看到一句中文")
+            for (tag, text) in [("中", zh), ("英", en)] {
+                let width = Self.textWidth(text)
+                if width > available {
+                    overflows.append(String(format: "%@ %.0fpt（上限 %.0f）%@", tag, width, available, text))
+                }
+            }
+        }
+        #expect(overflows.isEmpty,
+                Comment(rawValue: "这些提示行文案放不下，会被截断尾巴：\n"
+                        + overflows.joined(separator: "\n")))
+    }
+
+    /// 反向：清单里不许有**源码里已经不用**的 key。
+    ///
+    /// 少了这条，改了文案之后旧句子会一直留在这份清单里 ——
+    /// 而它**看起来像是在被检查**，其实只是在检查一句没人用的话。
+    @Test("提示行清单里没有源码找不到的孤儿")
+    func hintLineKeysHaveNoOrphans() throws {
+        let used = Set(try Self.scan().keys)
+        let orphans = Self.hintLineKeys.filter { !used.contains(Self.normalized($0)) }
+        #expect(orphans.isEmpty,
+                Comment(rawValue: "这些提示行文案已经没人用了：\n"
+                        + orphans.joined(separator: "\n")))
     }
 }

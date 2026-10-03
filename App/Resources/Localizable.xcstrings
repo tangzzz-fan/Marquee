@@ -71,6 +71,26 @@
         }
       }
     },
+    "%lld px 高": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld px tall"
+          }
+        }
+      }
+    },
+    "%lld 帧": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld frames"
+          }
+        }
+      }
+    },
     "%lld 秒": {
       "localizations": {
         "en": {
@@ -246,7 +266,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ Redaction preview unavailable (no screen pixels) — the marks will still be applied to the saved image"
+            "value": "⚠️ Redaction preview unavailable (no screen pixels) — marks still apply on save"
           }
         }
       }
@@ -546,7 +566,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Drag inside the selection to annotate  ·  Click the tool again to deselect  ·  Esc to leave the tool"
+            "value": "Drag inside to annotate · tap the tool again to cancel · Esc leaves the tool"
           }
         }
       }
@@ -967,16 +987,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Drag here to move this pin"
-          }
-        }
-      }
-    },
-    "拖角改大小 · 框内拖动移动  ·  选个工具可直接标注  ·  ⏎ 确认  ·  Esc 取消": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Drag a corner to resize · Drag inside to move  ·  Pick a tool to annotate  ·  ⏎ to confirm  ·  Esc to cancel"
           }
         }
       }
@@ -1536,7 +1546,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keep scrolling, or press Space to auto-scroll · ⏎ to finish · ⌘S to finish and save · Esc to cancel"
+            "value": "Keep scrolling, or press Space to auto-scroll · ⏎ finish · ⌘S save · Esc cancel"
           }
         }
       }
@@ -1561,17 +1571,17 @@
         }
       }
     },
-    "自动滚动中 · 已拼 %lld px · %lld 帧": {
+    "自动滚动中 · %lld px 高": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Auto-scrolling · %lld px stitched · %lld frames"
+            "value": "Auto-scrolling · %lld px tall"
           }
         }
       }
     },
-    "自动滚动中 · 空格停止 · Esc 停止（已拼的保留）· ⏎ 结束": {
+    "自动滚动中 · 空格停止 · Esc 停止（已拼的保留） · ⏎ 结束": {
       "localizations": {
         "en": {
           "stringUnit": {
@@ -1586,7 +1596,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Auto-scroll needs Accessibility permission (System Settings → Privacy & Security → Accessibility)."
+            "value": "Auto-scroll needs Accessibility · System Settings → Privacy & Security → Accessibility"
           }
         }
       }
@@ -2071,16 +2081,6 @@
         }
       }
     },
-    "长截图 · 已拼 %lld px · %lld 帧": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scrolling capture · %lld px stitched · %lld frames"
-          }
-        }
-      }
-    },
     "长截图区域太小，或者不落在任何显示器上": {
       "localizations": {
         "en": {
@@ -2097,16 +2097,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Scrolling capture cancelled"
-          }
-        }
-      }
-    },
-    "长截图已开始 · 往下滚": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scrolling capture started · scroll down"
           }
         }
       }

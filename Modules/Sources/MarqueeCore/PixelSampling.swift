@@ -146,6 +146,18 @@ public struct MagnifierLayout: Equatable, Sendable {
         ///
         /// 现在：**40 点的取样区（≈ 三四个字宽）× 3 倍 = 120 点的盒子**。
         /// 内容可辨认，边缘仍能靠十字线与中心像素框对准。
+        ///
+        /// ## ⚠️ 这一档**刻意没有**照设计稿改（2026-10-03 与用户确认过）
+        ///
+        /// 稿子 §01 写的是「放大镜 104 × 129 pt，**8 × 8 像素格 · 每格 13 pt**」——
+        /// 按我们这个公式换算过去大约是 **26 倍**：那是一个**像素检视器**
+        /// （视野只有 4 点宽，适合逐颗像素查色/查错），
+        /// 而现在这一档是**取景器**（40 点的视野，适合"对准某个元素的边框再取色"）。
+        ///
+        /// 两者不是同一件工具，而稿子给的是**它自己那张图上的**数字。
+        /// 现场用 `defaults write dev.tango.Marquee lens.zoom -float 8` 就能看到那一路的效果
+        /// （见 `MagnifierSettingsStore`）——
+        /// **想换档时先改这个默认值，不要去改公式。**
         public init(samplePoints: Double = 40, zoom: Double = 3, gap: Double = 22) {
             self.samplePoints = samplePoints
             self.zoom = max(1, zoom.rounded())

@@ -44,6 +44,24 @@ enum ChromeBackground {
         return container
     }
 
+    /// 改一块背景的圆角。
+    ///
+    /// ⚠️ **每次摆位都要调它**：覆盖层那块面板有三种高度（40 / 62 / 22），
+    /// 圆角必须跟着收 —— 10 点的圆角放在 22 高的条上会变成一个胶囊。
+    /// 而 `makeBackgroundView` 只在第一次创建时给过圆角，之后改 frame 不会改它。
+    ///
+    /// 判据来自 Core（`OverlayToolbar.panelCornerRadius`），这里只负责把值按下去 ——
+    /// 两处各算一遍的话，"40 高的工具条圆角变成 7"这种错不会报错，只会看着有点怪。
+    static func setCornerRadius(_ radius: CGFloat, on container: NSView) {
+        for piece in container.subviews {
+            if #available(macOS 26.0, *), let glass = piece as? NSGlassEffectView {
+                glass.cornerRadius = radius
+            } else if let effect = piece as? NSVisualEffectView {
+                effect.layer?.cornerRadius = radius
+            }
+        }
+    }
+
     // MARK: - 内部
 
     private static func makeMaterialView(cornerRadius: CGFloat) -> NSView {

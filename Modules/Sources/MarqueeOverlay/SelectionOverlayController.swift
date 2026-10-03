@@ -1243,14 +1243,24 @@ public final class SelectionOverlayController {
 
     /// 浮动工具栏该放哪、长什么样（ticket 20/21）。`nil` = 不显示。
     ///
+    /// 工具条 + 提示行这一帧的内容与位置。
+    ///
+    /// ⚠️ **两者必须一次算出来**（`OverlayToolbar.panelFrames`）：
+    /// 分两次算的话，贴屏底的选区的提示行会落到**工具条与选区之间**，
+    /// 把用户正要截的东西盖住。而"它们是**一个东西**"正是稿子 §03 强调的。
+    private struct PanelContent {
+        var toolbar: OverlayToolbarPresentation
+        var hintLine: OverlayHintLinePresentation?
+    }
+
     /// 三种情况不显示：
     /// - 还没落点（拖到一半工具条跟着晃，既干扰又没意义）
-    /// - 长截图期间（那时一切操作由提示行负责，见 ticket 12）
+    /// - 长截图期间（那时**只有提示行**，见 `scrollPresentation`）
     /// - 拿不到所在屏
     ///
-    /// 具体坐标交给 `MarqueeCore.OverlayToolbar.frame`（贴下方 → 放不下翻上方 → 夹进屏幕），
+    /// 具体坐标交给 `MarqueeCore.OverlayToolbar.panelFrames`（贴下方 → 放不下翻上方 → 夹进屏幕），
     /// 那里有单测：贴边与跨屏靠肉眼试不全。
-    private func toolbarPresentationIfSettled() -> OverlayToolbarPresentation? {
+    private func panelPresentationIfSettled() -> PanelContent? {
         guard session.isSettled, !hasScrollSession, let rect = annotationRect() else { return nil }
         // ⚠️ 这里的判据**只能看"会话状态"，不能看"鼠标是不是正按着"**。
         //
@@ -1264,9 +1274,7 @@ public final class SelectionOverlayController {
         //
         // 重画选区时工具栏本来就会消失，因为那时 `session` 处于 `.dragging`、
         // 上面的 `isSettled` 已经是 false —— 判"会话状态"就够了。
-        let visibleFrame = NSScreen.screens.first { $0.frame.intersects(rect) }?.visibleFrame
-            ?? NSScreen.main?.visibleFrame
-        guard let visibleFrame else { return nil }
+        guard let visibleFrame = visibleFrame(containing: rect) else { return nil }
         // 那三档尺寸按**当前工具**换意义：画图形是线宽、画打码是打码强度、写文字是字号。
         // 与编辑器同一套做法，且**不新增控件** —— 工具栏每多一格就更宽，
         // 而它有一条"必须放得进 1024 点的屏"的硬约束。
@@ -1275,9 +1283,17 @@ public final class SelectionOverlayController {
         // 散开写成 `tool == .mosaic || tool == .blur` 的话，加第四种含义时一定漏一处。
         let meaning = annotationSession.sizeMeaning
         let sizeValues = meaning.values
-        let barFrame = OverlayToolbar.frame(for: rect, screenFrame: visibleFrame)
 
-        return OverlayToolbarPresentation(
+        // ⚠️ **提示行的有无会改变工具条的位置**（整块 62 点 vs 40 点要整体摆），
+        // 所以这里必须先决定"有没有话说"，再算位置 —— 反过来写的话，
+        // 提示行出现/消失的那一帧工具条会**跳一下**。
+        let hint = settledHintLine()
+        let frames = OverlayToolbar.panelFrames(for: rect,
+                                                screenFrame: visibleFrame,
+                                                showingHint: hint != nil)
+        let barFrame = frames.toolbar
+
+        let toolbar = OverlayToolbarPresentation(
             frame: barFrame,
             activeTool: annotationSession.tool,
             stroke: annotationSession.style.stroke,
@@ -1292,6 +1308,17 @@ public final class SelectionOverlayController {
             lockedFeatures: lockedFeatures,
             hoveredSlot: hoveredSlot
         )
+        return PanelContent(
+            toolbar: toolbar,
+            hintLine: frames.hintLine.flatMap { frame in
+                hint.map { OverlayHintLinePresentation(frame: frame, line: $0) }
+            })
+    }
+
+    /// 这一帧画在哪块屏上。拿不到时返回 `nil`（那时工具条与提示行都不出现）。
+    private func visibleFrame(containing rect: CGRect) -> CGRect? {
+        NSScreen.screens.first { $0.frame.intersects(rect) }?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
     }
 
     /// 展开的弹层要画成什么样。
@@ -1446,15 +1473,16 @@ public final class SelectionOverlayController {
                 globalRect: cocoaRect,
                 hoverRect: nil,
                 hoverCornerRadius: 10,
-                // 读数框**换内容不换位置**（稿子 §08）：落点前它说颜色、落点后说尺寸。
-                // 第一行是主角（用户关心的那个值），其余都是副手。
-                readout: ReadoutLine.compact([
-                    ReadoutLine("\(Int(quartz.width.rounded())) × \(Int(quartz.height.rounded())) pt   /   "
-                                + "\(Int(pixelSize.width)) × \(Int(pixelSize.height)) px", .primary),
-                    ReadoutLine("(\(Int(quartz.minX.rounded())), \(Int(quartz.minY.rounded())))", .secondary),
-                    // 落点后放大镜已收起，取色随之结束（那时 `⌥` 归 ticket 04 的"无阴影"）
-                    ReadoutLine(settledHintText(), .secondary),
-                ])
+                // 读数框**换内容不换位置、也不换行数**（稿子 §08）：
+                // 落点前它说颜色、落点后说尺寸，永远两行 —— 第一行是主角，第二行是副手。
+                //
+                // ⚠️ 那几条"必须说出来的事实"（打码预览不可用 / OCR 回执 / 正在输入文字）
+                // 不在这里 —— 它们走**提示行**（见 `settledHintLine`）。
+                // 塞进这个框会让它在有话说的时候长高，而稿子那句
+                // 「同一个框，三种内容」的前提正是**它不变**。
+                readout: [ReadoutLine("\(Int(quartz.width.rounded())) × \(Int(quartz.height.rounded())) pt   /   "
+                                      + "\(Int(pixelSize.width)) × \(Int(pixelSize.height)) px", .primary),
+                          ReadoutLine("(\(Int(quartz.minX.rounded())), \(Int(quartz.minY.rounded())))", .secondary)]
             )
         } else if let hovered = hoveredWindow, session.phase == .awaitingDrag {
             let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: hovered.frame,
@@ -1487,7 +1515,13 @@ public final class SelectionOverlayController {
         // 就地标注与浮动工具栏（ticket 20/21）：对"区域落点"和"窗口落点"一视同仁，
         // 所以在这里**统一挂一次**，而不是塞进上面每个分支 ——
         // 那样以后加第三种落点方式时一定会漏掉一处。
-        presentation.toolbar = toolbarPresentationIfSettled()
+        //
+        // 提示行与工具条**同出同进**：它们的位置是一次算出来的
+        // （见 `panelPresentationIfSettled`），分开挂会让两者落在不同的那一侧。
+        if let panel = panelPresentationIfSettled() {
+            presentation.toolbar = panel.toolbar
+            presentation.hintLine = panel.hintLine
+        }
         presentation.annotationOrigin = annotationOrigin()
         presentation.annotations = annotationSession.visibleAnnotations
 
@@ -1518,31 +1552,48 @@ public final class SelectionOverlayController {
         }
     }
 
-    /// 落点后那一行操作提示。
+    /// 落点后那一行提示（**工具条外侧那 22 点的提示行**）。
     ///
-    /// 打码那一条必须**说出来**：底图来自冻结的整屏帧，拿不到时预览不画打码，
-    /// 而导出仍会应用（底图从真实采集里来）。不说的话，用户会看到"导出图里
-    /// 凭空多了一块打码"—— 那是"静默不一致"，正是这个项目最怕的一类。
-    private func settledHintText() -> String {
+    /// ## 常态下它**不出现**
+    ///
+    /// 稿子 §02 的原话：「『拖它 = 移动选区』这条提示只在悬停选区时出现，**不常显** ——
+    /// 常显会挡住他自己要截的内容。」所以那句"拖角改大小 · 框内拖动移动 · ⏎ 确认 · Esc 取消"
+    /// 被**删掉**了：它列的全是用户下一步要做的事，而工具条与读数的形状已经把话说完了。
+    ///
+    /// ## 但有三类信息没有别的地方可去
+    ///
+    /// 它们不是"提示"，是**必须说出来的事实** —— 少了就是 PITFALLS 里那类静默不一致：
+    ///
+    /// | 何时 | 为什么非说不可 |
+    /// | --- | --- |
+    /// | 打码底图没拿到 | 预览里不画打码、导出却会应用 —— 不说就是"成品图里凭空多了一块" |
+    /// | OCR 的回执 | 用户刚点了一个异步动作，没有回执就等于"点了没反应" |
+    /// | 正在输入文字 | 那一段键盘**整条让行**给输入框，不说用户不知道 `⏎` 归谁 |
+    ///
+    /// 它们只在真的发生时占那一行 —— 常态那一帧与稿子逐点一致。
+    private func settledHintLine() -> ReadoutLine? {
         // OCR 的状态**优先于**常规提示：它是刚刚发生的事，而提示行只有那么大。
         // 识别完会在几秒后自动让位（见 `setOCRStatus`）。
-        if let ocrStatus { return ocrStatus }
+        if let ocrStatus { return ReadoutLine(ocrStatus, .primary) }
         if annotationSession.isEditingText {
-            return L10n.t("输入文字 · ⏎ 确认 · Esc 放弃")
+            return ReadoutLine(L10n.t("输入文字 · ⏎ 确认 · Esc 放弃"), .secondary)
         }
         if annotationSession.isSelecting {
             let count = annotationSession.selectedAnnotations.count
-            return count > 0
+            return ReadoutLine(count > 0
                 ? L10n.t("已选中 \(count) 个标注  ·  拖动移动  ·  Delete 删除  ·  Esc 取消选择")
-                : L10n.t("点一个标注选中它  ·  拖角改大小  ·  选个工具可直接标注")
+                : L10n.t("点一个标注选中它  ·  拖角改大小  ·  选个工具可直接标注"), .secondary)
         }
         if annotationSession.isDrawing {
             if annotationSession.usesRedaction, redactionBackdrop == nil {
-                return L10n.t("⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图")
+                // 琥珀：这一条会改变**结果**（成品的图里有一块打码，而你没看见）。
+                return ReadoutLine(L10n.t("⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图"),
+                                   .caution)
             }
-            return L10n.t("在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具")
+            return ReadoutLine(L10n.t("在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具"),
+                               .secondary)
         }
-        return L10n.t("拖角改大小 · 框内拖动移动  ·  选个工具可直接标注  ·  ⏎ 确认  ·  Esc 取消")
+        return nil
     }
 
     /// `nil` = 鼠标不在这块屏上（走了 / 移出屏幕）—— 那种情况下**一切悬停都要收掉**。
@@ -1604,43 +1655,75 @@ public final class SelectionOverlayController {
     /// 只会让用户觉得"这个选项时灵时不灵"。
     private var windowShadowInEffect: Bool { windowShadowDefault != isOptionDown }
 
-    /// 长截图抓帧中的读数：进度 + 操作提示 + 告警。
+    /// 长截图抓帧中的读数：**两行进度 + 一行提示**（稿子 §10）。
+    ///
+    /// ## 读数框（两行，换内容不换位置）
+    ///
+    /// | 行 | 内容 |
+    /// | --- | --- |
+    /// | 一（主角） | `2 480 px 高` —— 刚拖出时就是「0 px 高」 |
+    /// | 二（副手） | `18 帧 · 配准 4 ms`；配准是**可选值，拿不到就不显示、不留空位** |
+    ///
+    /// ## 提示行（工具条外侧那 22 点）
+    ///
+    /// ⚠️ **告警取代提示行，不叠行**（稿子 §10）。两行的话，用户会以为
+    /// "已经滚到底了"是**除了**当前提示之外的另一个状态，而它其实是在说
+    /// "刚才那句现在不作数了"。
+    ///
+    /// ⚠️ 而工具条**不在这里**：长截图期间面板是鼠标穿透的（用户要滚下面的应用），
+    /// 那时工具条上的按钮**一个也点不动** —— 摆一排点不动的按钮就是"假入口"。
+    /// 所以这一段是一块**只有提示行**的 22 点圆角条（见 `OverlayToolbar.panelRect`）。
+    ///
+    /// **这是与稿子的一处刻意背离，2026-10-03 与用户确认过**：稿子 §03 的 ③ 里画着工具条
+    /// （提示行从它下面长出来），而稿子是不知道"面板必须鼠标穿透"这条约束的。
+    /// 真要按稿子显示，`panelFrames(showingHint:)` 已经是现成的，改一行即可 ——
+    /// 但那样会多出一排**看得见、点不动**的按钮，而那正是菜单栏那一节明令禁止的。
     private func scrollPresentation(rect: CGRect?,
                                     progress: ScrollCaptureSession.Progress) -> SelectionPresentation {
         let autoScrolling = autoScrollDriver != nil
-        var status: String
-        if autoScrolling {
-            status = L10n.t("自动滚动中 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧")
-        } else {
-            status = progress.frameCount <= 1
-                ? L10n.t("长截图已开始 · 往下滚")
-                : L10n.t("长截图 · 已拼 \(progress.canvasHeight) px · \(progress.frameCount) 帧")
-        }
+        // 第一行：已拼高度。自动滚动时把状态并进去 —— 它与高度是同一件事的两面
+        //（"还在长"与"长了多少"），分成两行会把读数框撑到三行。
+        let heightLine = autoScrolling
+            ? L10n.t("自动滚动中 · \(progress.canvasHeight) px 高")
+            : L10n.t("\(progress.canvasHeight) px 高")
+        // 第二行：帧数 · 配准耗时。配准拿不到时**不留空位**（稿子原话）。
+        var detail = L10n.t("\(progress.frameCount) 帧")
         if let milliseconds = progress.lastRegistrationMilliseconds {
-            status += String(format: L10n.t(" · 配准 %.0f ms"), milliseconds)
+            detail += String(format: L10n.t(" · 配准 %.0f ms"), milliseconds)
         }
         // 提示行必须跟着状态走：自动滚动期间用户不需要"自己滚"的提示，
         // 他需要知道"怎么停"。反之亦然 —— 不写这一条，第一个问题就是"怎么不动了"。
         let hint = autoScrolling
-            ? L10n.t("自动滚动中 · 空格停止 · Esc 停止（已拼的保留）· ⏎ 结束")
+            ? L10n.t("自动滚动中 · 空格停止 · Esc 停止（已拼的保留） · ⏎ 结束")
             : L10n.t("继续往下滚，或按空格自动滚 · ⏎ 结束 · ⌘S 结束并保存 · Esc 取消")
-        // ⚠️ **告警不叠行，它取代提示行**（稿子 §10）。
-        //
-        // 目前三行还都在读数框里（"工具条下方那 22 点提示行"还没做），
-        // 但**顺序与角色**已经按稿子定了：主角是进度、告警是唯一那枚琥珀、
-        // 提示永远排最后。等提示行做出来时，只需把这个数组的后两行搬过去。
-        return SelectionPresentation(
+        let notice = progress.warning ?? autoScrollMessage
+
+        var presentation = SelectionPresentation(
             globalRect: rect,
             hoverRect: nil,
             hoverCornerRadius: 10,
             isScrollCapturing: true,
-            readout: ReadoutLine.compact([
-                ReadoutLine(status, .primary),
-                ReadoutLine(progress.warning ?? autoScrollMessage ?? "", .caution),
-                ReadoutLine(hint, .secondary),
-            ])
+            readout: [ReadoutLine(heightLine, .primary),
+                      ReadoutLine(detail, .secondary)]
         )
+        // 提示行贴在"工具条本该在的地方" —— 用同一个 `panelFrames`，于是
+        // 将来若把工具条放回 ③，这一行会自动跟着挪到外侧，不必改这里。
+        presentation.hintLine = hintLinePresentation(for: rect,
+                                                     line: ReadoutLine(notice ?? hint,
+                                                                       notice == nil ? .secondary : .caution))
+        return presentation
     }
+
+    /// 只有提示行时的那块 22 点条（长截图期间没有工具条）。
+    private func hintLinePresentation(for rect: CGRect?,
+                                      line: ReadoutLine) -> OverlayHintLinePresentation? {
+        guard let rect, let visibleFrame = visibleFrame(containing: rect) else { return nil }
+        let frames = OverlayToolbar.panelFrames(for: rect,
+                                                screenFrame: visibleFrame,
+                                                showingHint: true)
+        return frames.hintLine.map { OverlayHintLinePresentation(frame: $0, line: line) }
+    }
+
 
     /// 指针所在屏（Quartz 空间）。
     private func displayUnderPointer() -> DisplayGeometry? {
@@ -1974,7 +2057,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     /// 这时把悬停留着会让下一次工具条出现时**带着一个不属于它的高亮**。
     private func updateToolbarHover(at globalPoint: CGPoint?) {
         var slot: OverlayToolbarSlot?
-        if let globalPoint, let bar = toolbarPresentationIfSettled() {
+        if let globalPoint, let bar = panelPresentationIfSettled()?.toolbar {
             slot = OverlayToolbar.slot(at: globalPoint, in: bar.frame)
         }
         guard slot != hoveredSlot else { return }
@@ -2091,7 +2174,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     }
 
     func overlayView(_ view: SelectionOverlayView, clickedToolbarAt globalPoint: CGPoint) {
-        guard !isFinishing, let bar = toolbarPresentationIfSettled(),
+        guard !isFinishing, let bar = panelPresentationIfSettled()?.toolbar,
               let slot = OverlayToolbar.slot(at: globalPoint, in: bar.frame) else { return }
         // 点工具条**不会把正在打的字扔掉**：
         // - 改样式 / 撤销重做 → 输入继续（用户想改的就是这一行）
@@ -2119,7 +2202,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
 
     func overlayView(_ view: SelectionOverlayView, clickedProCardAt globalPoint: CGPoint) {
         guard !isFinishing, let content = proCard,
-              let card = toolbarPresentationIfSettled()?.proCard else { return }
+              let card = panelPresentationIfSettled()?.toolbar.proCard else { return }
         guard let action = ProCardLayout.action(at: globalPoint,
                                                 in: card.frame,
                                                 buttons: content) else {
@@ -2285,7 +2368,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     ///
     /// 直接取呈现里的那一份，不再自己算一遍 —— 命中与绘制必须是同一份几何。
     private func currentPaletteFrame() -> CGRect? {
-        toolbarPresentationIfSettled()?.palette?.frame
+        panelPresentationIfSettled()?.toolbar.palette?.frame
     }
 
     /// 把就地画的标注打包给采集流程。

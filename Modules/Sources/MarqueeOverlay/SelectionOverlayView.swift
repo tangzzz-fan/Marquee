@@ -39,6 +39,13 @@ struct SelectionPresentation: Equatable {
     /// 浮动工具栏（ticket 20/21）。`nil` = 不显示 —— 还在拖拽、或者已经提交。
     var toolbar: OverlayToolbarPresentation?
 
+    /// 工具条外侧那 22 点的**提示行**（稿子 §03 / §10）。`nil` = 不显示。
+    ///
+    /// ⚠️ 它**不挂在 `toolbar` 里面**，因为它可以在没有工具条的时候单独出现
+    /// （长截图期间面板是鼠标穿透的，工具条上的按钮点不动 ——
+    /// 摆一排点不动的按钮就是"假入口"，见 `OverlayToolbarHighlight.isEnabled` 那段）。
+    var hintLine: OverlayHintLinePresentation?
+
     /// 就地标注的**坐标系原点**（Cocoa 全局点，即选区 / 窗口的左上角）。
     ///
     /// 标注本身存的是"相对原点的点坐标、y 向下"（`Annotation` 的约定），
@@ -100,19 +107,24 @@ struct SelectionPresentation: Equatable {
         return lhs == rhs
     }
 
-    /// 除工具条的悬停态之外，其余是否相等。用来判断"是不是只有鼠标在格子上扫"。
+    /// 除工具条的悬停态、以及**提示行**之外，其余是否相等。
+    /// 用来判断"是不是只有鼠标在格子上扫、或者提示行换了一句话"。
     ///
-    /// ⚠️ 判据是**工具条那一整块**相等，不是"只把 `hoveredSlot` 抹掉"：
-    /// 抹掉再比会把"工具条整体移动了位置"也算成"只有悬停变了" ——
-    /// 那种情况下覆盖层自己也得重画（选区镂空的提示行位置跟着变），
-    /// 而漏掉它的表现是"工具条移过去了、原地留了一条残影"。
-    func equalsIgnoringToolbarHover(_ other: SelectionPresentation) -> Bool {
-        guard var lhs = toolbar, var rhs = other.toolbar else { return false }
-        lhs.hoveredSlot = nil
-        rhs.hoveredSlot = nil
-        var mine = self, theirs = other
-        mine.toolbar = lhs
-        theirs.toolbar = rhs
+    /// ⚠️ 判据是**把这两样抹掉之后整体相等**，不是"只比某几个字段"：
+    /// 只抹 `hoveredSlot` 的话，"工具条整体移动了位置"会被误判成"只有悬停变了" ——
+    /// 而那种情况下覆盖层自己也得重画，漏掉它的表现是"工具条移过去了、原地留了一条残影"。
+    ///
+    /// 提示行那一条同理，而且它变的是**内容**：告警"取代"提示行就是同一处换个词、位置一动不动。
+    ///
+    /// ⚠️ 两个都可为 `nil`（勾选里的"工具条不在、只有提示行"就是一种），
+    /// 所以这里**不能**用 `guard let` 早退 —— 那会把长截图那一路全部退化成整屏重绘。
+    func equalsIgnoringChildChrome(_ other: SelectionPresentation) -> Bool {
+        var mine = self
+        var theirs = other
+        mine.toolbar?.hoveredSlot = nil
+        theirs.toolbar?.hoveredSlot = nil
+        mine.hintLine = nil
+        theirs.hintLine = nil
         return mine == theirs
     }
 }
@@ -191,6 +203,29 @@ struct OverlayToolbarPresentation: Equatable {
     ///
     /// 控制层每次 `mouseMoved` 用 `OverlayToolbar.slot(at:in:)` 算一次推过来。
     var hoveredSlot: OverlayToolbarSlot?
+}
+
+/// 工具条外侧那 22 点的**提示行**（稿子 §03 / §10）。
+///
+/// ## 它和工具条是**一个东西**
+///
+/// 稿子的原话：「工具条与提示行共材质、无间隙，圆角只在提示行的底部 ——
+/// 它们是**一个东西**，不是『工具条 + 一条通知』」。
+///
+/// 所以这块面板的材质底铺的是**两者的并集**（`OverlayToolbar.panelFrame`），
+/// 提示行自己不另起一块背景。零间隙 + 只在外侧圆角，画出来正好等于一整块圆角矩形 ——
+/// 视图因此**不需要**去做"只遮罩两个角的圆"那件事（那件事在 AppKit 里很容易做反，
+/// 而做反的样子是"工具条上边变成方的"，比不做还难看）。
+///
+/// ## 为什么不换行
+///
+/// 稿子 §10：「六种文字全部 ≤ 34 字（11 pt → 约 374 pt），单行放得下 513 宽的提示行 ——
+/// 这是『不许换行、不许加高』的物理前提」。换行会把面板撑高，
+/// 而面板的高度是"工具条在哪儿"的一部分 —— 它会连带把工具条从该在的地方顶走。
+struct OverlayHintLinePresentation: Equatable {
+    /// 提示行矩形，**Cocoa 全局坐标**
+    var frame: CGRect
+    var line: ReadoutLine
 }
 
 /// 升级卡片要画什么。
@@ -355,12 +390,12 @@ final class SelectionOverlayView: NSView {
                let old = oldValue.magnifier,
                let new = presentation.magnifier {
                 setNeedsDisplay(dirtyRect(for: old).union(dirtyRect(for: new)))
-            } else if !presentation.equalsIgnoringToolbarHover(oldValue) {
+            } else if !presentation.equalsIgnoringChildChrome(oldValue) {
                 needsDisplay = true
             }
-            // ↑ 「只有悬停态在变」时**两件事都不做**：覆盖层自己的 `draw` 里
-            //   没有任何一个像素依赖 `hoveredSlot`（工具条是两个子视图画的），
-            //   而那条 513 × 40 的前景由下面这一句负责重画。
+            // ↑ 「只有工具条悬停 / 提示行文字在变」时**两件事都不做**：
+            //   覆盖层自己的 `draw` 里没有任何一个像素依赖它们
+            //   （工具条与提示行都是子视图画的），那两块由下面这一句负责重画。
             //
             //   写 `needsDisplay = false` 是不对的：那会把上一帧还挂着的重绘请求一起取消掉。
             //   "什么都不做"才是这里准确的意思。
@@ -371,13 +406,21 @@ final class SelectionOverlayView: NSView {
         }
     }
 
-    // MARK: - 工具条与弹层的背景（ticket 17 / 24）
+    // MARK: - 工具条 / 提示行 / 弹层的背景（ticket 17 / 24 / 稿子 §03）
 
-    /// 工具条的材质底。**必须是与前景并列的子视图**，不能挂在覆盖层自己身上 ——
+    /// **工具条与提示行共用**的材质底。
+    ///
+    /// ⚠️ 一块，不是两块。稿子 §03：「工具条与提示行共材质、无间隙……
+    /// 它们是**一个东西**，不是『工具条 + 一条通知』」。
+    /// 铺两块会露出两处圆角，中间出现一道"腰" —— 一眼就看出是拼的。
+    ///
+    /// **必须是与前景并列的子视图**，不能挂在覆盖层自己身上 ——
     /// AppKit 里子视图永远画在父视图自己的 `draw` 之上（见 `ChromeForegroundView`）。
     private var toolbarChrome: NSView?
     /// 工具条的前景（描边 / 分隔线 / 图标）。
     private var toolbarForeground: ChromeForegroundView?
+    /// 提示行的前景（那一行 11 点的字）。**背景与工具条共用**，所以这里只有前景。
+    private var hintForeground: ChromeForegroundView?
     /// 弹层的材质底与前景。与工具条同一套做法。
     private var paletteChrome: NSView?
     private var paletteForeground: ChromeForegroundView?
@@ -385,42 +428,60 @@ final class SelectionOverlayView: NSView {
     private var proCardChrome: NSView?
     private var proCardForeground: ChromeForegroundView?
 
-    /// 上一次同步过去的工具条 / 弹层内容（含位置）。
+    /// 上一次同步过去的工具条 / 提示行 / 弹层内容（含位置）。
     ///
     /// ⚠️ 有它才有"只在**真的变了**的时候才让子视图重画"这条：
     /// `presentation` 的 `didSet` 里有一条快路径 —— "只有放大镜在动"时只重画光标周围一小块。
     /// 若在这里无条件 `needsDisplay = true`，那条快路径会被抵消：
     /// **鼠标每动一下都要把整条工具条重画一遍**（15 个图标）。那是可感的卡顿。
     private var syncedToolbar: OverlayToolbarPresentation?
+    private var syncedHint: OverlayHintLinePresentation?
     private var syncedPalette: OverlayPalettePresentation?
     private var syncedProCard: ProCardPresentation?
 
-    /// 把工具条与弹层的子视图摆到当前位置。
+    /// 把工具条 / 提示行 / 弹层的子视图摆到当前位置。
     ///
     /// **不在 `draw` 里懒创建**：绘制过程中改视图树会让本次绘制作废，
     /// 表现是它第一次出现时闪一下。
     private func syncToolbarChrome() {
-        guard let toolbar = presentation.toolbar else {
+        let toolbar = presentation.toolbar
+        let hint = presentation.hintLine
+
+        // 材质底铺的是**并集**：有提示行时是"工具条 + 提示行"那一整块，
+        // 只有提示行时（长截图期间没有工具条）就是它自己那块圆角条。
+        let panel = Self.panelRect(toolbar: toolbar?.frame, hintLine: hint?.frame)
+        guard let panel else {
             // 收起时把这些标记清掉，下次出现才会重新同步一遍
             syncedToolbar = nil
+            syncedHint = nil
             syncedPalette = nil
             syncedProCard = nil
-            toolbarChrome?.isHidden = true
-            toolbarForeground?.isHidden = true
-            paletteChrome?.isHidden = true
-            paletteForeground?.isHidden = true
-            proCardChrome?.isHidden = true
-            proCardForeground?.isHidden = true
+            for view in [toolbarChrome, toolbarForeground, hintForeground,
+                         paletteChrome, paletteForeground,
+                         proCardChrome, proCardForeground] {
+                view?.isHidden = true
+            }
             return
         }
 
-        if syncedToolbar != toolbar {
-            if toolbarChrome == nil {
-                let chrome = ChromeBackground.makeBackgroundView(cornerRadius: OverlayToolbar.cornerRadius)
-                chrome.isHidden = true
-                addSubview(chrome)
-                toolbarChrome = chrome
+        if toolbarChrome == nil {
+            let chrome = ChromeBackground.makeBackgroundView(cornerRadius: OverlayToolbar.cornerRadius)
+            chrome.isHidden = true
+            addSubview(chrome)
+            toolbarChrome = chrome
+        }
+        let panelBox = globalToLocal(panel)
+        toolbarChrome?.frame = panelBox
+        toolbarChrome?.isHidden = false
+        // 面板的高度会在 40 / 62 / 22 之间变，圆角得跟着收 —— 见 `setCornerRadius`。
+        if let toolbarChrome {
+            ChromeBackground.setCornerRadius(OverlayToolbar.panelCornerRadius(panelHeight: panel.height),
+                                             on: toolbarChrome)
+        }
 
+        // ── 工具条前景
+        if let toolbar {
+            if toolbarForeground == nil {
                 let foreground = ChromeForegroundView()
                 foreground.isHidden = true
                 // 前景自己不做几何判断：矩形就是它的 bounds，内部按工具条布局画。
@@ -429,17 +490,61 @@ final class SelectionOverlayView: NSView {
                 toolbarForeground = foreground
             }
             let box = globalToLocal(toolbar.frame)
-            toolbarChrome?.frame = box
-            toolbarChrome?.isHidden = false
             toolbarForeground?.frame = box
             toolbarForeground?.isHidden = false
-            toolbarForeground?.needsDisplay = true
-            syncedToolbar = toolbar
+            if syncedToolbar != toolbar {
+                toolbarForeground?.needsDisplay = true
+                syncedToolbar = toolbar
+            }
+        } else {
+            toolbarForeground?.isHidden = true
+            syncedToolbar = nil
         }
 
-        syncProCardChrome(toolbar.proCard)
+        // ── 提示行前景
+        //
+        // ⚠️ 判定用 `syncedHint != hint` 而不是"位置变了没"：文字也会变
+        // （告警取代提示行就是**同一行换个词**，位置一动不动），
+        // 只比位置的话那句告警永远不会出现。
+        if let hint {
+            if hintForeground == nil {
+                let foreground = ChromeForegroundView()
+                foreground.isHidden = true
+                foreground.render = { [weak self] rect in self?.drawHintLineForeground(in: rect) }
+                addSubview(foreground)
+                hintForeground = foreground
+            }
+            hintForeground?.frame = globalToLocal(hint.frame)
+            hintForeground?.isHidden = false
+            if syncedHint != hint {
+                hintForeground?.needsDisplay = true
+                syncedHint = hint
+            }
+        } else {
+            hintForeground?.isHidden = true
+            syncedHint = nil
+        }
 
-        guard let palette = toolbar.palette else {
+        // ⚠️ 工具条不在时，**挂在它身上的那两样必须一起收掉**。
+        //
+        // 不写这一句的话：② 里开着弹层，用户一按空格进长截图 → 工具条消失（面板要鼠标穿透），
+        // 而那块弹层会**留在屏幕上**，还是点得动的位置 —— 一个孤零零悬在那里的色板。
+        // 提示行本身仍然要显示（它就是这条路来的），所以不能像以前那样直接 `return`。
+        guard let toolbar else {
+            syncProCardChrome(nil)
+            syncPaletteChrome(nil)
+            return
+        }
+        syncProCardChrome(toolbar.proCard)
+        syncPaletteChrome(toolbar.palette)
+    }
+
+    /// 摆放弹层的子视图。`nil` = 收起来。
+    ///
+    /// 与升级卡片一样**单独成一个方法**：原来这段是接在工具条那段后面的（靠早退收尾），
+    /// 而"工具条不在、提示行还在"这个新情况要求两条路都能单独跑到它。
+    private func syncPaletteChrome(_ palette: OverlayPalettePresentation?) {
+        guard let palette else {
             if syncedPalette != nil {
                 syncedPalette = nil
                 paletteChrome?.isHidden = true
@@ -901,6 +1006,55 @@ final class SelectionOverlayView: NSView {
         return NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
     }
 
+    /// 画提示行的那一行字（稿子 §03 / §10）。
+    ///
+    /// 三条硬约束都来自稿子，而且每条都有代价：
+    ///
+    /// 1. **单行、不换行**。稿子：「六种文字全部 ≤ 34 字（11 pt → 约 374 pt），
+    ///    单行放得下 513 宽的提示行 —— 这是『不许换行、不许加高』的物理前提」。
+    ///    换行会把这块面板撑高，而面板高度是"工具条在哪儿"的一部分 ——
+    ///    它会把工具条从该在的地方顶走。所以超宽时**截断**，不换行。
+    /// 2. **左对齐**，缩进与工具条自己的内边距同一个数。
+    /// 3. **行色按角色走**：常态是副手（白 64%），告警换成琥珀 ——
+    ///    稿子 §10：「告警**取代**提示行，不叠行」。
+    private func drawHintLineForeground(in box: NSRect) {
+        guard let hint = presentation.hintLine else { return }
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
+        paragraph.alignment = .left
+        let attributes: [NSAttributedString.Key: Any] = [
+            // 500 字重（`.medium`）—— 稿子 §10：「行内的分隔符用 500 字重的白，不用竖线」。
+            // 竖线在 22 pt 的行高里会显得像表格。
+            .font: NSFont.systemFont(ofSize: OverlayToolbar.hintLineFontSize, weight: .medium),
+            .foregroundColor: ReadoutStyle.color(hint.line.role),
+            .paragraphStyle: paragraph,
+        ]
+        let text = hint.line.text as NSString
+        let textHeight = text.size(withAttributes: attributes).height
+        let inset = OverlayToolbar.padding
+        text.draw(in: NSRect(x: box.minX + inset,
+                             y: box.midY - textHeight / 2,
+                             width: max(0, box.width - inset * 2),
+                             height: textHeight),
+                  withAttributes: attributes)
+    }
+
+    /// 材质底要铺哪一块：工具条与提示行的并集。
+    ///
+    /// 三个分支各对应一种真实情况：
+    /// - 两者都在 → 一整块 62 点的圆角面板（②+③ 里"它们是一个东西"的样子）
+    /// - 只有工具条 → 40 点（稿子：「② 的工具条仍然是一个 40 高的圆角块」）
+    /// - 只有提示行 → 22 点（长截图期间工具条不出现，见 `hintLine` 那段说明）
+    static func panelRect(toolbar: CGRect?, hintLine: CGRect?) -> CGRect? {
+        switch (toolbar, hintLine) {
+        case let (bar?, line?): OverlayToolbar.panelFrame(toolbar: bar, hintLine: line)
+        case let (bar?, nil): bar
+        case let (nil, line?): line
+        case (nil, nil): nil
+        }
+    }
+
     // MARK: - 浮动工具栏（ticket 20/21）
 
     /// 画浮动工具栏的**前景**：描边、组间分隔线、图标。
@@ -1337,14 +1491,23 @@ final class SelectionOverlayView: NSView {
     private func drawReadout(in localSelection: CGRect, lines: [ReadoutLine]) {
         guard let box = makeBox(lines: lines) else { return }
 
-        // 默认贴在选区左上角外侧；上下空间不够就翻到另一侧，再不够就贴进选区内部
-        var origin = CGPoint(x: localSelection.minX, y: localSelection.maxY + 6)
+        // ⚠️ 贴的是选区的**右上外侧**，不是左上。
+        //
+        // 稿子 §03 的原话：「读数框换内容不换位置：还是 ② 那个 132 × 44 的框，
+        // 贴在**选区右上外侧**同一处 —— 用户不需要重新找它。」
+        //
+        // 放右边还有一个实际理由：工具条贴在选区**左下外侧**（`OverlayToolbar.frame`），
+        // 两个东西分居一角，谁也不压谁、也不会把用户正在看的内容挡在同一侧。
+        var origin = CGPoint(x: localSelection.maxX - box.size.width,
+                             y: localSelection.maxY + 6)
+        // 上方放不下 → 翻到选区下方；再放不下 → 贴进选区内部靠上
         if origin.y + box.size.height > bounds.maxY {
             origin.y = localSelection.minY - box.size.height - 6
         }
         if origin.y < bounds.minY {
             origin.y = localSelection.minY + 6
         }
+        // 水平方向也要夹：选区贴屏左边时，"右对齐"会把框推到屏幕外
         draw(box, at: origin)
     }
 

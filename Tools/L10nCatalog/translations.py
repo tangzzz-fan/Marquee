@@ -3,6 +3,11 @@
 
 EN = {
     "开发版": "Development build",
+    # 长截图读数框（稿子 §10）：第一行**已拼高度**、第二行**帧数 · 配准耗时**。
+    # 两行分开是为了让主角（高度）单独占一行 —— 原先挤成一句时它和帧数一样重。
+    "%lld px 高": "%lld px tall",
+    "自动滚动中 · %lld px 高": "Auto-scrolling · %lld px tall",
+    "%lld 帧": "%lld frames",
     "  ·  ⏎ 确认": "  ·  ⏎ to confirm",
     # 按住 ⌥ 时读数框第二行那句话 —— **说的是结果，不是键**：
     # 它跟着「设置 → 截屏 → 窗口截图带阴影」那一项算，所以两种结果各有一条。
@@ -25,7 +30,7 @@ EN = {
     "PNG（无损）": "PNG (lossless)",
     "Vision 没有返回平移观测值": "Vision returned no translation observation",
     "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图":
-        "⚠️ Redaction preview unavailable (no screen pixels) — the marks will still be applied to the saved image",
+        "⚠️ Redaction preview unavailable (no screen pixels) — marks still apply on save",
     "不延时": "No delay",
     "不透明度：现在是 %lld%。点一下换下一档": "Opacity: %lld%% now. Click to cycle.",
     "也可以自己滚 —— 手动模式一样能拼长图":
@@ -55,7 +60,7 @@ EN = {
     "在编辑器里打开（原有的标注仍可编辑）": "Open in editor (existing annotations stay editable)",
     "在覆盖层里按 ⌥ 可以临时反过来": "Hold ⌥ in the overlay to flip it temporarily",
     "在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具":
-        "Drag inside the selection to annotate  ·  Click the tool again to deselect  ·  Esc to leave the tool",
+        "Drag inside to annotate · tap the tool again to cancel · Esc leaves the tool",
     "太短，丢弃": "Too short, discarded",
     "好": "OK",
     "字号": "Font size",
@@ -92,8 +97,6 @@ EN = {
     "打码强度": "Redaction strength",
     "抓帧失败：%@": "Frame capture failed: %@",
     "拖动这里可以移动这张钉图": "Drag here to move this pin",
-    "拖角改大小 · 框内拖动移动  ·  选个工具可直接标注  ·  ⏎ 确认  ·  Esc 取消":
-        "Drag a corner to resize · Drag inside to move  ·  Pick a tool to annotate  ·  ⏎ to confirm  ·  Esc to cancel",
     "拼接选区图像失败": "Failed to compose the selected region",
     "拼接长图失败": "Failed to stitch the long image",
     "按下快捷键后等几秒再出现选择框，方便先把画面摆好":
@@ -161,14 +164,13 @@ EN = {
         "release builds are unaffected.",
     "线宽": "Line width",
     "继续往下滚，或按空格自动滚 · ⏎ 结束 · ⌘S 结束并保存 · Esc 取消":
-        "Keep scrolling, or press Space to auto-scroll · ⏎ to finish · ⌘S to finish and save · Esc to cancel",
+        "Keep scrolling, or press Space to auto-scroll · ⏎ finish · ⌘S save · Esc cancel",
     "编辑": "Edit",
     "缩小": "Zoom Out",
-    "自动滚动中 · 已拼 %lld px · %lld 帧": "Auto-scrolling · %lld px stitched · %lld frames",
-    "自动滚动中 · 空格停止 · Esc 停止（已拼的保留）· ⏎ 结束":
+    "自动滚动中 · 空格停止 · Esc 停止（已拼的保留） · ⏎ 结束":
         "Auto-scrolling · Space to stop · Esc to stop (keeps what's stitched) · ⏎ to finish",
     "自动滚动需要「辅助功能」授权（系统设置 → 隐私与安全性 → 辅助功能）。":
-        "Auto-scroll needs Accessibility permission (System Settings → Privacy & Security → Accessibility).",
+        "Auto-scroll needs Accessibility · System Settings → Privacy & Security → Accessibility",
     "自动滚动需要「辅助功能」授权；也可以自己滚（手动模式）":
         "Auto-scroll needs Accessibility permission; you can also scroll yourself (manual mode)",
     "至少要有一个修饰键（⌘ ⌃ ⌥）": "At least one modifier key is required (⌘ ⌃ ⌥)",
@@ -218,11 +220,9 @@ EN = {
     "锁定屏幕": "Lock Screen",
     "长图已达 %lld px 上限，按 ⏎ 结束": "The long image hit the %lld px limit. Press ⏎ to finish.",
     "长图已达高度上限，按 ⏎ 结束": "The long image hit the height limit. Press ⏎ to finish.",
-    "长截图 · 已拼 %lld px · %lld 帧": "Scrolling capture · %lld px stitched · %lld frames",
     "长截图区域太小，或者不落在任何显示器上":
         "The scrolling region is too small, or doesn't land on any display",
     "长截图已取消": "Scrolling capture cancelled",
-    "长截图已开始 · 往下滚": "Scrolling capture started · scroll down",
     "长截图没有采到任何画面": "Scrolling capture didn't capture any frames",
     "长截图起步失败：%@": "Couldn't start the scrolling capture: %@",
     "长截图还没开始，没法自动滚动": "The scrolling capture hasn't started, so there's nothing to auto-scroll",

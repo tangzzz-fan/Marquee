@@ -388,4 +388,119 @@ struct OverlayToolbarTests {
                     "\(meaning) 的默认值 \(meaning.defaultValue) 不在 \(meaning.values) 里")
         }
     }
+
+    // MARK: - 提示行（稿子 §03 / §10）
+
+    @Test("提示行是 22 点高、11 点字、**与工具条零间隙**")
+    func hintLineMetricsMatchSpec() {
+        // 稿子 §01 的表：「提示行 513 × 22 pt，11 pt」。
+        #expect(OverlayToolbar.hintLineHeight == 22)
+        #expect(OverlayToolbar.hintLineFontSize == 11)
+
+        // ⚠️ **零间隙是这条里最要紧的一个数**。稿子 §03 的原话是
+        // 「工具条与提示行共材质、无间隙，圆角只在提示行的底部 ——
+        //  它们是**一个东西**，不是『工具条 + 一条通知』」。
+        // 留一个缝就会读成两个控件，而"两个控件"正是设计要避免的那种关系。
+        #expect(OverlayToolbar.hintLineGap == 0, "有缝就不是一个东西了")
+    }
+
+    @Test("不带提示行时，摆位结果与原来那条路**逐字相同**")
+    func panelPlacementWithoutHintEqualsToolbarPlacement() {
+        // 单一来源：`frame(for:)` 现在转发到 `panelFrames`，规则只有一份。
+        // 少了这条，将来调一边忘一边 —— 而"工具条位置飘了几点"没人看得出来。
+        for selection in [CGRect(x: 400, y: 400, width: 300, height: 200),
+                          CGRect(x: 100, y: 100, width: 200, height: 150),
+                          CGRect(x: 1000, y: 700, width: 300, height: 150),
+                          CGRect(x: 600, y: 20, width: 400, height: 300),
+                          CGRect(x: 600, y: 580, width: 400, height: 300)] {
+            let old = OverlayToolbar.frame(for: selection, screenFrame: screen)
+            let new = OverlayToolbar.panelFrames(for: selection, screenFrame: screen,
+                                                 showingHint: false).toolbar
+            #expect(old == new, "选区 \(selection)：\(old) vs \(new)")
+        }
+    }
+
+    @Test("提示行贴在工具条的**外侧**：同一个 x、同一个宽度、边贴边")
+    func hintLineSitsFlushOutsideToolbar() {
+        let selection = CGRect(x: 400, y: 400, width: 300, height: 200)
+        let frames = OverlayToolbar.panelFrames(for: selection, screenFrame: screen, showingHint: true)
+        guard let hint = frames.hintLine else { return #expect(Bool(false), "该有提示行") }
+        let bar = frames.toolbar
+
+        #expect(hint.minX == bar.minX, "左边没对齐")
+        #expect(hint.width == bar.width, "宽度必须与工具条一样 —— 稿子给的是同一个 513")
+        #expect(hint.height == OverlayToolbar.hintLineHeight)
+        // 零间隙 ⇒ 两条边**重合**（不是"差一点点"）
+        #expect(hint.maxY == bar.minY, "提示行的上边要正好压在工具条的下边上")
+        #expect(bar.maxY <= selection.minY, "前提：工具条在选区下方")
+    }
+
+    @Test("工具条翻到选区上方时，提示行跟着翻到它**外侧**（不是翻进选区那侧）")
+    func hintLineFollowsTheToolbarToTheFarSide() {
+        // ⚠️ 这一条是整体摆位的理由。写成"先摆工具条、再在它下面挂一行"的话，
+        // 选区贴屏底时那一行会落在**工具条与选区之间** —— 把用户要截的东西盖住。
+        let selection = CGRect(x: 400, y: 20, width: 300, height: 200)
+        let frames = OverlayToolbar.panelFrames(for: selection, screenFrame: screen, showingHint: true)
+        guard let hint = frames.hintLine else { return #expect(Bool(false), "该有提示行") }
+        let bar = frames.toolbar
+
+        #expect(bar.minY >= selection.maxY, "前提：工具条已经翻上去了")
+        #expect(hint.minY >= bar.maxY, "提示行跑到工具条内侧去了 —— 那会盖住选区")
+        #expect(!hint.intersects(selection))
+        #expect(!bar.intersects(selection))
+    }
+
+    @Test("带提示行时整块永远落在屏幕里 —— 它一共 62 点高，得整体算")
+    func panelWithHintStaysOnScreen() {
+        for selection in [CGRect(x: 400, y: 400, width: 300, height: 200),
+                          CGRect(x: 100, y: 100, width: 200, height: 150),
+                          CGRect(x: 1000, y: 700, width: 300, height: 150),
+                          CGRect(x: 600, y: 20, width: 400, height: 300),
+                          CGRect(x: 600, y: 580, width: 400, height: 300),
+                          CGRect(x: 0, y: 0, width: 1440, height: 900)] {
+            let frames = OverlayToolbar.panelFrames(for: selection, screenFrame: screen,
+                                                    showingHint: true)
+            #expect(screen.contains(frames.toolbar), "选区 \(selection) 的工具条越屏：\(frames.toolbar)")
+            guard let hint = frames.hintLine else { return #expect(Bool(false), "该有提示行") }
+            #expect(screen.contains(hint), "选区 \(selection) 的提示行越屏：\(hint)")
+        }
+    }
+
+    @Test("合起来是**一块矩形**：零间隙时并集必须正好盖住两者，不能多出边角")
+    func panelIsExactlyTheUnion() {
+        let selection = CGRect(x: 400, y: 400, width: 300, height: 200)
+        let frames = OverlayToolbar.panelFrames(for: selection, screenFrame: screen, showingHint: true)
+        guard let hint = frames.hintLine else { return #expect(Bool(false), "该有提示行") }
+        let bar = frames.toolbar
+
+        let panel = OverlayToolbar.panelFrame(toolbar: bar, hintLine: hint)
+
+        #expect(panel == bar.union(hint))
+        #expect(panel.height == bar.height + hint.height, "多出来或少了的高度就是那条缝")
+        #expect(panel.width == bar.width, "面板不该比工具条宽")
+        #expect(panel.contains(bar) && panel.contains(hint))
+    }
+
+    @Test("没有提示行时，面板就是工具条自己 —— ② 那块 40 高的圆角块不变")
+    func panelIsToolbarWhenNoHint() {
+        // 稿子 §03：「提示行只在 ③ 出现，所以 ② 的工具条仍然是一个 40 高的圆角块」。
+        let bar = OverlayToolbar.frame(for: CGRect(x: 400, y: 400, width: 300, height: 200),
+                                       screenFrame: screen)
+        #expect(OverlayToolbar.panelFrame(toolbar: bar, hintLine: nil) == bar)
+        #expect(OverlayToolbar.height == 40, "② 的工具条是 40 高")
+    }
+
+    @Test("面板圆角：40 与 62 保持 10，只有 22 高的那条要收 —— 否则它变成胶囊")
+    func panelCornerRadiusShrinksForShortBars() {
+        // 同一块面板有三种高度：40（② 只有工具条）/ 62（工具条 + 提示行）/
+        // 22（③ 只有提示行）。10 点圆角放到 22 高上，上下两个圆角一合就是胶囊。
+        #expect(OverlayToolbar.panelCornerRadius(panelHeight: 40) == OverlayToolbar.cornerRadius)
+        #expect(OverlayToolbar.panelCornerRadius(panelHeight: 40 + OverlayToolbar.hintLineHeight)
+                    == OverlayToolbar.cornerRadius)
+        #expect(OverlayToolbar.panelCornerRadius(panelHeight: OverlayToolbar.hintLineHeight)
+                    < OverlayToolbar.cornerRadius,
+                "22 高的那一档必须收 —— 判据就是稿子那句『圆角只在提示行的底部』在单独出现时不成立")
+        // 但也不能收到看不见（4 点以下就成了一块方角条，与工具条的圆角语言对不上）
+        #expect(OverlayToolbar.panelCornerRadius(panelHeight: OverlayToolbar.hintLineHeight) >= 5)
+    }
 }
