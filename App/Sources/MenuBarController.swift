@@ -177,14 +177,49 @@ extension MenuBarController: NSMenuDelegate {
     /// ⚠️ **只换图标，绝不改 `isEnabled`。** 禁用菜单项会让用户点不动它 ——
     /// 也就永远看不到那张解释"为什么不行"的卡片。而免费版里这一项是**可点的**，
     /// 点了弹卡片（见 `CaptureCoordinator.performScrollCapture`）。
+    /// 稿子 §02 把这条讲得更直白：**「锁是路标，不是惩罚」**——
+    /// 它标记的是"唯一那个点了会先给你一张解释卡的入口"，条目文字保持全亮。
     func menuNeedsUpdate(_ menu: NSMenu) {
-        scrollItem.image = isScrollCaptureLocked() ? Self.lockImage : nil
+        scrollItem.image = Self.lockIndicator(locked: isScrollCaptureLocked())
     }
 
-    private static var lockImage: NSImage? {
-        let image = NSImage(systemSymbolName: "lock.fill",
-                            accessibilityDescription: L10n.t("需要 Pro"))
-        image?.isTemplate = true
-        return image
+    /// 那一格里的图标。**两种状态给的是同尺寸的两枚。**
+    ///
+    /// ## 为什么解锁时也要给一枚（哪怕是空的）
+    ///
+    /// 因为菜单项一旦有图，AppKit 会给**整张菜单**留出一列图标位。
+    /// 原先解锁时给的是 `nil` —— 于是买断之后那一列消失、**所有标题一起往左跳一下**。
+    /// 那种跳动的幅度只有十几点，看到的瞬间会以为菜单重排了。
+    ///
+    /// ## 为什么是模板图（`isTemplate`）而不是自己上灰色
+    ///
+    /// 稿子那张表写的是「锁 9 × 9 · 颜色 = 右列的灰（`--c-label2`）」，
+    /// 但它的 CSS 用的是 `stroke:currentColor`，并且专门画了一屏
+    /// 「悬停 · 整行反白，**锁跟着变白**（可点这件事要看得见）」。
+    /// 模板图在菜单里正是这个行为：常规态跟着菜单的前景色、高亮时跟着高亮色一起变白。
+    /// 自己画一个固定灰的位图反而做不到后半句 —— 那样鼠标划过去时锁是唯一不变的东西。
+    ///
+    /// ⚠️ **一处与稿子的刻意背离**：稿子把锁安排在**右列**（与快捷键同一列、同一条右缘）。
+    /// AppKit 没有把图形放进"快捷键列"的支持 API（那一列只画 `keyEquivalent`）——
+    /// 只有两条路：抬着 `NSMenuItem.view` 自绘整行（拿掉原生高亮与无障碍），
+    /// 或者让图形待在**前置**位置（就是这里）。
+    /// 自绘那一条的代价是"菜单不再像系统菜单"，而稿子自己说过
+    /// 「菜单是唯一一块改了尺寸就会被立刻察觉『不像系统』的界面」——
+    /// 两害相权，选后者。**全菜单只有这一把锁，这一点没有打折。**
+    static func lockIndicator(locked: Bool) -> NSImage? {
+        guard let lock = NSImage(systemSymbolName: "lock.fill",
+                                 accessibilityDescription: L10n.t("需要 Pro"))?
+            .withSymbolConfiguration(.init(pointSize: lockPointSize, weight: .regular)) else {
+            return nil
+        }
+        lock.isTemplate = true
+        guard !locked else { return lock }
+        // 空的同尺寸占位：什么都不画，但把那一格占住。
+        let placeholder = NSImage(size: lock.size)
+        placeholder.isTemplate = true
+        return placeholder
     }
+
+    /// 锁的字号。稿子：「锁 9 × 9（与 ④ 完全同尺寸）」。
+    private static let lockPointSize: CGFloat = 9
 }

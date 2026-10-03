@@ -31,12 +31,22 @@
         }
       }
     },
-    "%@ px · %lld 个标注": {
+    "%@ px": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ px · %lld annotations"
+            "value": "%@ px"
+          }
+        }
+      }
+    },
+    "%@ · %lld 个标注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %lld marks"
           }
         }
       }
@@ -47,6 +57,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ is already taken by another app (WeChat's screenshot shortcut, for example).\nPick a different combination from the menu bar: Shortcuts…."
+          }
+        }
+      }
+    },
+    "%@ 的压缩质量 · 越低文件越小、细节越少": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ compression quality · lower means smaller files and less detail"
           }
         }
       }
@@ -111,16 +131,6 @@
         }
       }
     },
-    "JPEG / HEIC 有损，可调质量": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "JPEG and HEIC are lossy; quality is adjustable"
-          }
-        }
-      }
-    },
     "Marquee Pro · 免费版（最近截图保留 %lld 张）": {
       "localizations": {
         "en": {
@@ -181,6 +191,16 @@
         }
       }
     },
+    "Marquee 不在前台也能触发 · 任何时候按它，屏幕就定住": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Works even when Marquee isn't in front · press it any time and the screen freezes"
+          }
+        }
+      }
+    },
     "Marquee 就在菜单栏": {
       "localizations": {
         "en": {
@@ -191,12 +211,12 @@
         }
       }
     },
-    "Marquee 常驻菜单栏，开机自启后随时按快捷键就能截": {
+    "Marquee 常驻菜单栏，开机就有": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Marquee lives in the menu bar; with this on, the shortcut works right after you log in"
+            "value": "Marquee lives in the menu bar, ready from the moment you log in"
           }
         }
       }
@@ -221,12 +241,22 @@
         }
       }
     },
-    "PNG（无损）": {
+    "PNG 无损 · JPEG / HEIC 有损": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "PNG (lossless)"
+            "value": "PNG is lossless · JPEG and HEIC are lossy"
+          }
+        }
+      }
+    },
+    "PNG 是无损格式，没有质量可调 —— 换成 JPEG 或 HEIC 才有": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PNG is lossless — there is no quality to adjust. Switch to JPEG or HEIC for that."
           }
         }
       }
@@ -321,12 +351,12 @@
         }
       }
     },
-    "从历史里删掉（连磁盘上的文件一起清）": {
+    "从历史里删掉 · 文件移入废纸篓": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Delete from history (removes the file on disk too)"
+            "value": "Remove from history · the file goes to the Trash"
           }
         }
       }
@@ -381,22 +411,22 @@
         }
       }
     },
-    "免费版只保留最近 %lld 张 · 升级到 Pro 可保留全部": {
+    "光标会画在图上 · 它常正好压在你要截的内容上": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The free version keeps the last %lld captures · Upgrade to Pro to keep them all"
+            "value": "The cursor gets drawn into the image · it often lands right on what you're capturing"
           }
         }
       }
     },
-    "全局生效，应用不在前台也能触发": {
+    "免费版只保留最近 %lld 张": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Works globally, even when the app is in the background"
+            "value": "Free keeps the last %lld"
           }
         }
       }
@@ -481,16 +511,6 @@
         }
       }
     },
-    "只在有损格式下有效": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Only applies to lossy formats"
-          }
-        }
-      }
-    },
     "只有 ⇧ 不够，会和普通输入冲突，请带上 ⌘ ⌃ 或 ⌥": {
       "localizations": {
         "en": {
@@ -501,22 +521,32 @@
         }
       }
     },
-    "只有按 ⌘S 或点「保存」时才写盘": {
+    "只有按 ⌘S 或点覆盖层里的「保存」才写盘 · 日常截图直接进剪贴板": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Written to disk only on ⌘S or Save"
+            "value": "Files are written only on ⌘S or Save in the overlay · everyday captures go straight to the clipboard"
           }
         }
       }
     },
-    "可用变量：{date} {time} {n} {app} {title}": {
+    "可保留全部": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Available: {date} {time} {n} {app} {title}"
+            "value": "to keep them all"
+          }
+        }
+      }
+    },
+    "可用变量 · 点一下插到模板光标处": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available variables · click one to insert it at the cursor"
           }
         }
       }
@@ -551,22 +581,22 @@
         }
       }
     },
-    "在覆盖层里按 ⌥ 可以临时反过来": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hold ⌥ in the overlay to flip it temporarily"
-          }
-        }
-      }
-    },
     "在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Drag inside to annotate · tap the tool again to cancel · Esc leaves the tool"
+          }
+        }
+      }
+    },
+    "复制到剪贴板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy to clipboard"
           }
         }
       }
@@ -651,16 +681,6 @@
         }
       }
     },
-    "已加入系统登录项。可在「系统设置 → 通用 → 登录项」里查看": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Added to login items. Check System Settings → General → Login Items."
-          }
-        }
-      }
-    },
     "已复制 %@": {
       "localizations": {
         "en": {
@@ -671,12 +691,12 @@
         }
       }
     },
-    "已恢复购买": {
+    "已恢复购买 ✓": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Purchases restored"
+            "value": "Purchase restored ✓"
           }
         }
       }
@@ -831,12 +851,12 @@
         }
       }
     },
-    "恢复失败，请检查网络后重试": {
+    "恢复失败 · 检查网络后重试": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Restore failed. Check your connection and try again."
+            "value": "Restore failed · check your connection and try again"
           }
         }
       }
@@ -851,12 +871,12 @@
         }
       }
     },
-    "恢复默认（⌃Q）": {
+    "恢复默认": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Restore default (⌃Q)"
+            "value": "Restore default"
           }
         }
       }
@@ -951,6 +971,36 @@
         }
       }
     },
+    "截成功时播一声系统音效 · 关掉适合连着截很多张的时候": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A system chime on success · turn it off when you shoot many in a row"
+          }
+        }
+      }
+    },
+    "所有更改会立刻生效并自动保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every change takes effect immediately and is saved automatically"
+          }
+        }
+      }
+    },
+    "打开登录项设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Login Items"
+          }
+        }
+      }
+    },
     "打开系统设置": {
       "localizations": {
         "en": {
@@ -1011,6 +1061,56 @@
         }
       }
     },
+    "按 %@ 后 10 秒才出现覆盖层": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press %@ and the overlay appears after 10 seconds"
+          }
+        }
+      }
+    },
+    "按 %@ 后 3 秒才出现覆盖层 —— 那几秒是留给你摆屏幕的": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press %@ and the overlay appears after 3 seconds — those seconds are for arranging your screen"
+          }
+        }
+      }
+    },
+    "按 %@ 后 5 秒才出现覆盖层": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press %@ and the overlay appears after 5 seconds"
+          }
+        }
+      }
+    },
+    "按 %@ 截第一张": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press %@ to take your first one"
+          }
+        }
+      }
+    },
+    "按 %@ 立刻出现覆盖层": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press %@ and the overlay appears immediately"
+          }
+        }
+      }
+    },
     "按一下快捷键，屏幕冻住，框出要截的地方。": {
       "localizations": {
         "en": {
@@ -1021,12 +1121,12 @@
         }
       }
     },
-    "按下快捷键后等几秒再出现选择框，方便先把画面摆好": {
+    "按下快捷键后立刻出现覆盖层": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wait a few seconds after the shortcut before the selection appears, so you can set the screen up first"
+            "value": "The overlay appears the moment you press the shortcut"
           }
         }
       }
@@ -1241,6 +1341,16 @@
         }
       }
     },
+    "正在恢复…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restoring…"
+          }
+        }
+      }
+    },
     "正在滚动…（第 %lld 屏）": {
       "localizations": {
         "en": {
@@ -1257,6 +1367,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Recognizing text…"
+          }
+        }
+      }
+    },
+    "每一份存盘文件的名字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The name of each saved file"
           }
         }
       }
@@ -1361,16 +1481,6 @@
         }
       }
     },
-    "点上面的方框后按下新的组合；Esc 取消。与系统或其他应用冲突时会明确告诉你。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Click the box above, then press a new combination; Esc cancels. Conflicts with the system or other apps are reported explicitly."
-          }
-        }
-      }
-    },
     "点击复制": {
       "localizations": {
         "en": {
@@ -1387,6 +1497,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Click to copy to clipboard"
+          }
+        }
+      }
+    },
+    "点缩略图 = 复制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click a thumbnail to copy"
+          }
+        }
+      }
+    },
+    "用系统的窗口阴影 · 在覆盖层里按住 ⌥ 可临时反转这一项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The system window shadow · hold ⌥ in the overlay to flip this for one shot"
           }
         }
       }
@@ -1821,12 +1951,12 @@
         }
       }
     },
-    "还没有截图。按 ⌃Q 截一张，它会出现在这里。": {
+    "还没有截图": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No captures yet. Press ⌃Q to take one — it will show up here."
+            "value": "No captures yet"
           }
         }
       }
@@ -1937,16 +2067,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "No text was recognized in this image"
-          }
-        }
-      }
-    },
-    "连着截很多张时想安静一点可以关掉": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Turn this off if you take many captures in a row and want it quieter"
           }
         }
       }
@@ -2141,6 +2261,16 @@
         }
       }
     },
+    "随时可截 · 全局生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always available · works system-wide"
+          }
+        }
+      }
+    },
     "隐藏当前应用": {
       "localizations": {
         "en": {
@@ -2167,16 +2297,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mosaic"
-          }
-        }
-      }
-    },
-    "默认不带 —— 指针会挡在内容上": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Off by default — the pointer would cover the content"
           }
         }
       }

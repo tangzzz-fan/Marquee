@@ -65,6 +65,36 @@ public struct CapturePreferences: Equatable, Sendable {
         delayOptions.contains(seconds) ? seconds : 0
     }
 
+    /// 延时那一行的**说明句** —— 它随档位改写。
+    ///
+    /// ## 为什么这一项的说明句要换
+    ///
+    /// 稿子 §04 的原话：「延时这一项改了**当场看不出效果**（要等下一次按快捷键），
+    /// 所以它的回执全押在说明句上：说明句随档位改写。」
+    ///
+    /// 窗口里没有「应用」按钮（改一下立刻落盘），而"立刻生效"这件事在多数项上
+    /// 是**看得见**的（开关会动、分区会变）。延时是唯一一项改完屏幕上什么都不会变的 ——
+    /// 所以它需要一句**说人话的回执**，而不是一个不动的控件。
+    ///
+    /// ⚠️ 句子里要带上**当前的快捷键**。写死 `⌃Q` 的话，用户把键改了之后
+    /// 这一句就成了一句反话 —— 而它会一直挂在那里，用户按图索骥按错键。
+    /// 这也是为什么这一条判据必须吃 `KeyCombo` 而不是一个 Bool。
+    ///
+    /// ⚠️ 「那几秒是留给你摆屏幕的」只出现在 **3 秒**那一档（稿子给的四句就是这样）：
+    /// 它是这个功能的**由来**，说一遍就够；四档各说一遍会变成墙上的标语。
+    public static func delayExplanation(seconds: Int, combo: KeyCombo) -> String {
+        switch normalize(seconds) {
+        case 0:
+            L10n.t("按 \(combo.displayString) 立刻出现覆盖层")
+        case 3:
+            L10n.t("按 \(combo.displayString) 后 3 秒才出现覆盖层 —— 那几秒是留给你摆屏幕的")
+        case 5:
+            L10n.t("按 \(combo.displayString) 后 5 秒才出现覆盖层")
+        default:
+            L10n.t("按 \(combo.displayString) 后 10 秒才出现覆盖层")
+        }
+    }
+
     public static let `default` = CapturePreferences()
 }
 

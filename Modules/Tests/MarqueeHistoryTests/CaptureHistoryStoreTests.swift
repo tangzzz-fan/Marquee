@@ -11,11 +11,54 @@ import Testing
 @Suite("最近截图的历史仓库")
 struct CaptureHistoryStoreTests {
 
+    /// 假废纸篓：每跑一次删除，文件被**移**到这里。
+    ///
+    /// ⚠️ 不能用真的 `FileManager.trashItem`：那会把测试造出来的文件丢进
+    /// **跑测试那个人的废纸篓**里，跑一次多几条。没人会注意到，
+    /// 但那是"测试污染用户的环境"，而且它只在真机上才看得见。
+    ///
+    /// 放在 `directory` 的**兄弟**位置（不是子目录）：`files(in:)` 列的是
+    /// `directory` 的内容，假废纸篓放在里面就会混进那些断言里。
+    private final class TrashCan {
+        let directory: URL
+        /// 成功收下的文件。
+        private(set) var received: [String] = []
+        /// **被问到过**的文件 —— 与 `received` 分开记。
+        ///
+        /// 少了它，"没去惹废纸篓"与"惹了但失败"这两种情况在断言里长得一模一样 ——
+        /// 而它们是两回事：前者是我们**刻意**不问（文件本来就不在），
+        /// 后者说明守卫被拿掉了（真机上那会往日志里灌一条假失败）。
+        private(set) var attempts: [String] = []
+        var failure: Error?
+
+        init(near directory: URL) {
+            self.directory = directory.deletingLastPathComponent()
+                .appendingPathComponent("marquee-trash-\(UUID().uuidString)", isDirectory: true)
+        }
+
+        func trash(_ url: URL) throws {
+            attempts.append(url.lastPathComponent)
+            if let failure { throw failure }
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let destination = directory.appendingPathComponent(url.lastPathComponent)
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.moveItem(at: url, to: destination)
+            received.append(url.lastPathComponent)
+        }
+
+        var contents: Set<String> {
+            Set((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
+        }
+    }
+
     private func makeStore(limit: Int = CaptureHistoryStore.defaultLimit)
         -> (store: CaptureHistoryStore, directory: URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("marquee-history-\(UUID().uuidString)", isDirectory: true)
-        return (CaptureHistoryStore(directory: directory, limit: limit), directory)
+        let can = TrashCan(near: directory)
+        return (CaptureHistoryStore(directory: directory, limit: limit,
+                                    trash: { try can.trash($0) }),
+                directory)
     }
 
     /// 一张纯色小图（够用即可，速度优先）
@@ -241,5 +284,96 @@ struct CaptureHistoryStoreTests {
         for _ in 0..<6 { _ = record(store, image: image()) }
 
         #expect(store.entries().count == 6)
+    }
+
+    // MARK: - 删除的去处：废纸篓（设计稿 §02）
+
+    /// 造一个"我能看见废纸篓里有什么"的仓库。
+    private func makeStoreWithTrash(limit: Int = CaptureHistoryStore.defaultLimit)
+        -> (store: CaptureHistoryStore, directory: URL, can: TrashCan) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("marquee-history-\(UUID().uuidString)", isDirectory: true)
+        let can = TrashCan(near: directory)
+        let store = CaptureHistoryStore(directory: directory, limit: limit,
+                                        trash: { try can.trash($0) })
+        return (store, directory, can)
+    }
+
+    @Test("用户删的那一条进**废纸篓** —— 原图与标注两份文件都进")
+    func deleteMovesFilesToTrash() throws {
+        // 设计稿 §02：「删除 = 从历史移除并**把磁盘文件移进废纸篓**」，
+        // 它替掉的是确认弹窗 —— 硬约束禁止新弹窗，而"删了就没 + 不可撤销"
+        // 在一个高频面板里是危险的。
+        let (store, directory, can) = makeStoreWithTrash()
+        let annotation = Annotation(kind: .rectangle,
+                                    frame: CGRect(x: 5, y: 6, width: 10, height: 8),
+                                    zIndex: 0)
+        let entry = try #require(record(store, image: image(), annotations: [annotation]))
+        let markers = try #require(entry.annotationsFileName)
+
+        store.delete(entry.id)
+
+        #expect(store.entries().isEmpty)
+        // 目录里两份都不在了……
+        let names = files(in: directory)
+        #expect(!names.contains(entry.originalFileName))
+        #expect(!names.contains(markers))
+        // ……因为它们**在废纸篓里**，而不是被抹掉了
+        #expect(can.contents == Set([entry.originalFileName, markers]))
+        #expect(can.received.count == 2)
+    }
+
+    @Test("自动淘汰**不**走废纸篓 —— 那不是用户按的那一下")
+    func evictionDoesNotUseTrash() throws {
+        // 淘汰是我们替他做的决定（"免费版只留 5 张"），他既没要求删那几张、
+        // 也不知道是哪几张。把它也塞进废纸篓，等于每截一张就往他的废纸篓里丢东西 ——
+        // 那是借系统的回收站来掩盖我们自己的决定。
+        let (store, directory, can) = makeStoreWithTrash(limit: 3)
+
+        for index in 0..<5 { _ = record(store, image: image(CGFloat(index) / 5)) }
+
+        #expect(store.entries().count == 3)
+        #expect(can.received.isEmpty, "自动淘汰不该往废纸篓里塞东西")
+        #expect(can.contents.isEmpty)
+        // 但被淘汰的文件确实从目录里清掉了（磁盘不能一直长）
+        #expect(files(in: directory).count == 4, "3 张原图 + index.json")
+    }
+
+    @Test("废纸篓不可用时退回永久删 —— 但记录**必须**离开索引，也不留孤儿文件")
+    func trashFailureFallsBackToErase() throws {
+        // 走到这里说明用户已经按了删除，那条记录一定会离开索引。
+        // 只剩两种结果：留一个**谁都看不见的孤儿文件**，或者少一次"还能捞回来"的机会。
+        // 前者是唯一那种既看不见又永久的坏结果，所以取后者。
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("marquee-history-\(UUID().uuidString)", isDirectory: true)
+        let can = TrashCan(near: directory)
+        can.failure = CocoaError(.fileWriteNoPermission)
+        let store = CaptureHistoryStore(directory: directory, trash: { try can.trash($0) })
+        let entry = try #require(record(store, image: image(), annotations: []))
+
+        store.delete(entry.id)
+
+        #expect(store.entries().isEmpty, "记录必须离开索引 —— 否则那一行会一直在面板里")
+        #expect(!files(in: directory).contains(entry.originalFileName),
+                "退回永久删：文件不能变成孤儿留在历史目录里")
+        #expect(can.contents.isEmpty)
+    }
+
+    @Test("文件本来就不在时，不去麻烦废纸篓")
+    func missingFileIsNotSentToTrash() throws {
+        // `trashItem` 对不存在的路径会抛错，而那会把上面那条退路**误触发**一次
+        // （日志里多一条"回收失败"，其实什么都没发生过）。
+        let (store, directory, can) = makeStoreWithTrash()
+        let entry = try #require(record(store, image: image(), annotations: []))
+        try FileManager.default.removeItem(at: directory.appendingPathComponent(entry.originalFileName))
+
+        store.delete(entry.id)
+
+        #expect(store.entries().isEmpty)
+        #expect(can.received.isEmpty, "文件都不在了，没什么可回收的")
+        // ⚠️ 断言的是"**问都没问过**"，不是"没成功"：
+        // 拿 `received.isEmpty` 当判据的话，把那条"文件不在就别去惹废纸篓"的守卫删掉
+        // 也照样绿 —— 因为假废纸篓会失败、失败也不算 `received`。变异测试当场抓到了这一条。
+        #expect(can.attempts.isEmpty, "文件都不在了，不该去问废纸篓")
     }
 }

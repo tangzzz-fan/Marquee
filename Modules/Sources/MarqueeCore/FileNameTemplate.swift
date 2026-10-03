@@ -10,6 +10,26 @@ public enum FileNameTemplate {
     public static let defaultTemplate = "Marquee {date} at {time} {index}"
     public static let maximumFieldLength = 80
 
+    /// `render` 认识的**全部**变量名。
+    ///
+    /// 提取成一个常量是为了让"界面摆的清单"与"实际会替换的清单"能对得上 ——
+    /// 两处各写一遍的话，界面摆出一个不认的变量时**不会报错**，
+    /// 只是那个占位符会原样留在文件名里。
+    public static let variables = ["date", "time", "yyyy", "MM", "dd", "HH", "mm", "ss",
+                                   "index", "app", "title"]
+
+    /// 界面上要摆出来的**常用变量**（顺序即从左到右）。
+    ///
+    /// ⚠️ 最早的一版 `PAGE-LOGIC.md` 里写的是 `{date} {time} {n} {app} {title}` ——
+    /// 而实现里的**序号变量叫 `{index}`，不叫 `{n}`**。
+    /// 这个差别是要命的那种：界面摆出一个 `render` 不认的变量，用户点一下
+    /// 得到的是**原样留在文件名里的一段字面量**（文件真的会叫 `Marquee-{n}.png`），
+    /// 而它看起来像"模板功能坏了"。
+    ///
+    /// ⇒ 所以这份清单**不手写**，而是与替换表同源（见 `variables`），
+    /// 并由 `FileNameTemplateTests.availableTokensAreAllReal` 钉住。
+    public static let availableTokens = ["{date}", "{time}", "{index}", "{app}", "{title}"]
+
     public static func render(_ template: String,
                               date: Date,
                               calendar: Calendar = .current,
@@ -39,7 +59,7 @@ public enum FileNameTemplate {
         ]
 
         var result = template
-        for key in ["date", "time", "yyyy", "MM", "dd", "HH", "mm", "ss", "index", "app", "title"] {
+        for key in variables {
             result = result.replacingOccurrences(of: "{\(key)}", with: values[key] ?? "")
         }
         let stem = sanitize(result, limit: 180)

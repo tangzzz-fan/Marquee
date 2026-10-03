@@ -3,6 +3,82 @@
 
 EN = {
     "开发版": "Development build",
+    # ── 最近截图面板（设计稿第 2 轮 D 块）────────────────────────────────
+    #
+    # ⚠️ 底部那一行是**三段拼起来的一句话**，中间那个词才是可点的：
+    #   免费版只保留最近 5 张 · [升级到 Pro] 可保留全部
+    # 拆成三段而不是整句带占位符，是因为中间那段要是一个**按钮** ——
+    # 整句塞进一个 label 就没法只让其中几个字可点。
+    # 代价是三种语言的语序都得靠这三段的翻译各自理顺（分隔符由布局给，不进文案）。
+    "点缩略图 = 复制": "Click a thumbnail to copy",
+    "还没有截图": "No captures yet",
+    "按 %@ 截第一张": "Press %@ to take your first one",
+    "复制到剪贴板": "Copy to clipboard",
+    "从历史里删掉 · 文件移入废纸篓": "Remove from history · the file goes to the Trash",
+    # ⚠️ 英文必须**短**：这一行只有 320 点可用（面板 340 − 左右各 10）。
+    # 原写 "The free version keeps the last %lld" 实测 370 点，会溢出 49 点 ——
+    # 而稿子那张图上量的是中文（254 点），所以这个约束在中文下永远不会被发现。
+    # 现在由 `LocalizationScanTests` 按真字体量着（两套语言一起）。
+    "免费版只保留最近 %lld 张": "Free keeps the last %lld",
+    "可保留全部": "to keep them all",
+    # ⚠️ 英文必须短：行里留给这行字只有 ~161 点。
+    # "2560×1440 px · 3 annotations" 实测 165 —— 在 1440p 屏上就已经被截断尾巴，
+    # 而中文同样那句只有 142。所以用短词 "marks"（Apple 那边这种标注就叫 Markup）。
+    "%@ · %lld 个标注": "%@ · %lld marks",
+    # ⚠️ 这条**全 ASCII**（只有 `px`）。它是被生成器漏掉过一次的那一类：
+    # 生成器原先只看"有没有中文"，于是它被静默跳过 —— 而源码里明明是 `L10n.t`。
+    # 现在生成器的判据是「有中文 **或** 带格式符」。
+    "%@ px": "%@ px",
+    # ── 偏好设置（稿子 §C）─────────────────────────────────────
+    # 窗底那行字：它是"没有应用按钮"这件事的**总回执**。
+    "所有更改会立刻生效并自动保存": "Every change takes effect immediately and is saved automatically",
+    "截图后播放提示音": "Play a sound after a capture",
+    "截成功时播一声系统音效 · 关掉适合连着截很多张的时候":
+        "A system chime on success · turn it off when you shoot many in a row",
+    "开机时自动启动": "Launch at login",
+    "Marquee 常驻菜单栏，开机就有": "Marquee lives in the menu bar, ready from the moment you log in",
+    "打开登录项设置": "Open Login Items",
+    "截图里包含鼠标指针": "Include the pointer in captures",
+    "光标会画在图上 · 它常正好压在你要截的内容上":
+        "The cursor gets drawn into the image · it often lands right on what you're capturing",
+    "窗口截图带阴影": "Shadow on window captures",
+    "用系统的窗口阴影 · 在覆盖层里按住 ⌥ 可临时反转这一项":
+        "The system window shadow · hold ⌥ in the overlay to flip this for one shot",
+    "延时截图": "Capture delay",
+    "按下快捷键后立刻出现覆盖层": "The overlay appears the moment you press the shortcut",
+    "保存位置": "Save to",
+    "只有按 ⌘S 或点覆盖层里的「保存」才写盘 · 日常截图直接进剪贴板":
+        "Files are written only on ⌘S or Save in the overlay · everyday captures go straight to the clipboard",
+    "选择…": "Choose…",
+    "图片格式": "Image format",
+    "PNG 无损 · JPEG / HEIC 有损": "PNG is lossless · JPEG and HEIC are lossy",
+    "质量": "Quality",
+    "文件名模板": "Filename template",
+    "每一份存盘文件的名字": "The name of each saved file",
+    "可用变量 · 点一下插到模板光标处": "Available variables · click one to insert it at the cursor",
+    "全屏截图": "Full-screen capture",
+    "随时可截 · 全局生效": "Always available · works system-wide",
+    "Marquee 不在前台也能触发 · 任何时候按它，屏幕就定住":
+        "Works even when Marquee isn't in front · press it any time and the screen freezes",
+    "恢复默认": "Restore default",
+    # Pro 状态区（恢复购买那四种结果**常驻**）
+    "正在恢复…": "Restoring…",
+    "已恢复购买 ✓": "Purchase restored ✓",
+    "这个账号下没有可恢复的购买": "No purchase to restore for this account",
+    "恢复失败 · 检查网络后重试": "Restore failed · check your connection and try again",
+    # 偏好设置「输出」页 —— 质量那一行的两种说明（稿子 §C.3 / §04）。
+    # 无损那句必须给出**下一步**（换成哪种格式才有），不是一句「质量不可用」。
+    "PNG 是无损格式，没有质量可调 —— 换成 JPEG 或 HEIC 才有":
+        "PNG is lossless — there is no quality to adjust. Switch to JPEG or HEIC for that.",
+    "%@ 的压缩质量 · 越低文件越小、细节越少":
+        "%@ compression quality · lower means smaller files and less detail",
+    # 偏好设置「截屏」页 —— 延时那一行的四档说明句（稿子 §04）。
+    # 这一项改了当场看不出效果，所以**说明句就是它唯一的回执**。
+    "按 %@ 立刻出现覆盖层": "Press %@ and the overlay appears immediately",
+    "按 %@ 后 3 秒才出现覆盖层 —— 那几秒是留给你摆屏幕的":
+        "Press %@ and the overlay appears after 3 seconds — those seconds are for arranging your screen",
+    "按 %@ 后 5 秒才出现覆盖层": "Press %@ and the overlay appears after 5 seconds",
+    "按 %@ 后 10 秒才出现覆盖层": "Press %@ and the overlay appears after 10 seconds",
     # 长截图读数框（稿子 §10）：第一行**已拼高度**、第二行**帧数 · 配准耗时**。
     # 两行分开是为了让主角（高度）单独占一行 —— 原先挤成一句时它和帧数一样重。
     "%lld px 高": "%lld px tall",
@@ -20,14 +96,9 @@ EN = {
         "Pick a different combination from the menu bar: Shortcuts….",
     "%@（当前工具）": "%@ (current tool)",
     "%@，按 ⏎ 结束可保留已拼好的部分": "%@ Press ⏎ to finish and keep what has been stitched so far.",
-    "%@ px · %lld 个标注": "%@ px · %lld annotations",
     "%lld 秒": "%lld seconds",
-    "JPEG / HEIC 有损，可调质量": "JPEG and HEIC are lossy; quality is adjustable",
-    "Marquee 常驻菜单栏，开机自启后随时按快捷键就能截":
-        "Marquee lives in the menu bar; with this on, the shortcut works right after you log in",
     "Marquee 设置": "Marquee Settings",
     "Marquee 需要「屏幕录制」权限": "Marquee needs Screen Recording permission",
-    "PNG（无损）": "PNG (lossless)",
     "Vision 没有返回平移观测值": "Vision returned no translation observation",
     "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图":
         "⚠️ Redaction preview unavailable (no screen pixels) — marks still apply on save",
@@ -35,14 +106,12 @@ EN = {
     "不透明度：现在是 %lld%。点一下换下一档": "Opacity: %lld%% now. Click to cycle.",
     "也可以自己滚 —— 手动模式一样能拼长图":
         "You can also scroll yourself — manual mode stitches the same long image",
-    "从历史里删掉（连磁盘上的文件一起清）": "Delete from history (removes the file on disk too)",
     "位移不是有限数值": "The offset is not a finite number",
     "保存位置": "Save location",
     "保存到磁盘并关闭（⌘S）": "Save to disk and close (⌘S)",
     "保存失败：%@ 里同名文件太多，剪贴板里的图仍然可用":
         "Save failed: too many files with the same name in %@. The image is still on the clipboard.",
     "先框出一块区域，再点识别": "Select a region first, then click Recognize",
-    "全局生效，应用不在前台也能触发": "Works globally, even when the app is in the background",
     "全屏切换": "Toggle full screen",
     "全屏截图": "Full-screen capture",
     "全部复制": "Copy All",
@@ -50,15 +119,11 @@ EN = {
     "关闭": "Close",
     "删除": "Delete",
     "取消（丢弃刚画的标注，不改剪贴板）": "Cancel (discard annotations, clipboard untouched)",
-    "只在有损格式下有效": "Only applies to lossy formats",
     "只有 ⇧ 不够，会和普通输入冲突，请带上 ⌘ ⌃ 或 ⌥":
         "⇧ alone is not enough — it collides with normal typing. Add ⌘, ⌃ or ⌥.",
-    "只有按 ⌘S 或点「保存」时才写盘": "Written to disk only on ⌘S or Save",
-    "可用变量：{date} {time} {n} {app} {title}": "Available: {date} {time} {n} {app} {title}",
     "图片格式": "Image format",
     "在 Finder 中显示": "Show in Finder",
     "在编辑器里打开（原有的标注仍可编辑）": "Open in editor (existing annotations stay editable)",
-    "在覆盖层里按 ⌥ 可以临时反过来": "Hold ⌥ in the overlay to flip it temporarily",
     "在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具":
         "Drag inside to annotate · tap the tool again to cancel · Esc leaves the tool",
     "太短，丢弃": "Too short, discarded",
@@ -67,8 +132,6 @@ EN = {
     "完成（复制到剪贴板并关闭）": "Done (copy to clipboard and close)",
     "尚未实现：%@": "Not implemented yet: %@",
     "已停止自动滚动": "Auto-scroll stopped",
-    "已加入系统登录项。可在「系统设置 → 通用 → 登录项」里查看":
-        "Added to login items. Check System Settings → General → Login Items.",
     "已复制 %@": "Copied %@",
     "已生效：%@": "Active: %@",
     "已获得屏幕录制权限。请退出并重新打开 Marquee，权限才会生效":
@@ -84,7 +147,6 @@ EN = {
     "当前：%@": "Current: %@",
     "快捷键": "Shortcuts",
     "快捷键没有生效": "The shortcut didn't take effect",
-    "恢复默认（⌃Q）": "Restore default (⌃Q)",
     "截图后播放提示音": "Play a sound after each capture",
     "截图失败：%@": "Capture failed: %@",
     "截图没有完成": "The capture didn't finish",
@@ -99,8 +161,6 @@ EN = {
     "拖动这里可以移动这张钉图": "Drag here to move this pin",
     "拼接选区图像失败": "Failed to compose the selected region",
     "拼接长图失败": "Failed to stitch the long image",
-    "按下快捷键后等几秒再出现选择框，方便先把画面摆好":
-        "Wait a few seconds after the shortcut before the selection appears, so you can set the screen up first",
     "按下新的组合…": "Press a new combination…",
     "按住 ⌥ 取色": "Hold ⌥ to pick a color",
     "描边颜色": "Stroke color",
@@ -139,9 +199,6 @@ EN = {
     "滚动步数已达上限，按 ⏎ 结束": "Reached the step limit. Press ⏎ to finish.",
     "点一个标注选中它  ·  拖角改大小  ·  选个工具可直接标注":
         "Click an annotation to select it  ·  Drag a corner to resize  ·  Pick a tool to annotate",
-    "点上面的方框后按下新的组合；Esc 取消。与系统或其他应用冲突时会明确告诉你。":
-        "Click the box above, then press a new combination; Esc cancels. "
-        "Conflicts with the system or other apps are reported explicitly.",
     "点击复制": "Click to copy",
     "点击复制到剪贴板": "Click to copy to clipboard",
     "画笔": "Pen",
@@ -194,8 +251,6 @@ EN = {
     "输出": "Output",
     "还没拿到这块区域的像素 —— 稍等一下再点一次":
         "The pixels for this region aren't ready yet — wait a moment and click again",
-    "还没有截图。按 ⌃Q 截一张，它会出现在这里。":
-        "No captures yet. Press ⌃Q to take one — it will show up here.",
     "这一帧可信度不足（%@）": "This frame isn't reliable enough (%@)",
     "这一帧没对齐：%@": "This frame didn't align: %@",
     "这一帧滚动幅度过大（%lld 行），与前帧几乎不重叠，没法对齐":
@@ -207,7 +262,6 @@ EN = {
     "这张图的文件已经不在了（可能被清理过）":
         "The file for this image is gone (it may have been cleaned up)",
     "这张图里没有识别到文字": "No text was recognized in this image",
-    "连着截很多张时想安静一点可以关掉": "Turn this off if you take many captures in a row and want it quieter",
     "连续采不到画面，自动滚动已停下": "Couldn't capture any frames in a row — auto-scroll stopped",
     "退出 Marquee": "Quit Marquee",
     "选区太小，或者不落在任何显示器上": "The selection is too small, or doesn't land on any display",
@@ -230,7 +284,6 @@ EN = {
         "Scrolling capture: drag out the region to scroll, or click the window to scroll",
     "隐藏当前应用": "Hide current app",
     "马赛克": "Mosaic",
-    "默认不带 —— 指针会挡在内容上": "Off by default — the pointer would cover the content",
     "鼠标穿透：关着。点开后点击会落到下面的应用":
         "Click-through: off. Turn it on and clicks fall through to the app below.",
     "鼠标穿透：开着（点击会落到下面的应用）。点一下关掉":
@@ -271,13 +324,9 @@ EN = {
         "Marquee Pro · No purchase found for this account",
     "升级到 Pro": "Upgrade to Pro",
     "已购买": "Purchased",
-    "已恢复购买": "Purchases restored",
     "这个账号下没有可恢复的购买": "No purchases to restore for this account",
-    "恢复失败，请检查网络后重试": "Restore failed. Check your connection and try again.",
 
     # ── 最近截图面板的配额说明（ticket 31）──────────────────────────────
-    "免费版只保留最近 %lld 张 · 升级到 Pro 可保留全部":
-        "The free version keeps the last %lld captures · Upgrade to Pro to keep them all",
 
     # ── 首次启动的引导（ticket 34）──────────────────────────────────────
     #

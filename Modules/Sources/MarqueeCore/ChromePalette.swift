@@ -167,6 +167,29 @@ public enum ChromePalette {
         public let ghost: RGB
         public let ghostPressed: RGB
 
+        // ── 面板上的两枚「洗底」（最近截图面板）──────────────────────
+        /// 整行悬停时铺在行上的底。
+        ///
+        /// ⚠️ **为什么不直接用稿子给的 `soft`**：稿子在浅色下写的行悬停是
+        /// `--c-soft` = `rgba(255,255,255,.92)` —— 而那枚 token 的本意是
+        /// 「描边按钮压在**窗底** `#E7E7E7` 上的底」，白 92% 压在那里看得见；
+        /// 压到**面板** `#FCFCFC` 上，两者只差 **1%**，肉眼等于没有。
+        /// 「同一个 token 用在它本来不是为了它准备的那层底上」是这一类错的总形态。
+        ///
+        /// 所以这一枚是**面板上的洗底**：深色沿用稿子的白 7%，
+        /// 浅色换成在近白面板上真的看得见的那一档。
+        public let rowHover: RGB
+        /// 行里那两个动作（编辑 / 删除）浮出的底。
+        ///
+        /// 必须比 `rowHover` **强一档**：动作是**浮在行上的东西** ——
+        /// 与行同色的话，那一块的边界就消失了，看起来像整行只是一条色带。
+        ///
+        /// ⚠️ 这一枚同时管两种触发（稿子的 CSS 就是这么写的）：
+        /// **行被悬停**时两个动作一起浮出（「整行一起亮，不是各亮各的」），
+        /// 以及**鼠标正好压在某个动作上**时。两处刻意同值 —— 稿子那张图里
+        /// "停在行上"与"停在按钮上"本来就不做区分，只有**按下**是另一档（`ghostPressed`）。
+        public let actionHover: RGB
+
         /// **必须达到正文级（≥ 4.5）**的「前景 → 底」组合 —— 供测试遍历。
         ///
         /// 把"哪些组合必须达标"写成数据而不是散在测试里：加一个颜色时，
@@ -236,7 +259,10 @@ public enum ChromePalette {
         softHover: RGB(hex: 0xFFFFFF, alpha: 0.11),
         softPressed: RGB(hex: 0xFFFFFF, alpha: 0.15),
         ghost: RGB(hex: 0xFFFFFF, alpha: 0.10),
-        ghostPressed: RGB(hex: 0xFFFFFF, alpha: 0.16))
+        ghostPressed: RGB(hex: 0xFFFFFF, alpha: 0.16),
+        // 深色这两枚就是稿子的 `--c-soft` / `--c-ghost` —— 在 #313131 面板上本来就看得见。
+        rowHover: RGB(hex: 0xFFFFFF, alpha: 0.07),
+        actionHover: RGB(hex: 0xFFFFFF, alpha: 0.10))
 
     // MARK: 浅色
 
@@ -274,7 +300,12 @@ public enum ChromePalette {
         softHover: RGB(hex: 0xFFFFFF),
         softPressed: RGB(hex: 0xEEEEEE),
         ghost: RGB(hex: 0x000000, alpha: 0.06),
-        ghostPressed: RGB(hex: 0x000000, alpha: 0.10))
+        ghostPressed: RGB(hex: 0x000000, alpha: 0.10),
+        // 浅色这两枚**不是**稿子那两枚（见字段文档）：`soft` 在浅色下是白 92%，
+        // 压在近白面板上等于没有。这里取"面板上洗一层黑"——与深色那两枚同构，
+        // 只是方向相反（深色洗白、浅色洗黑），差值也一样。
+        rowHover: RGB(hex: 0x000000, alpha: 0.055),
+        actionHover: RGB(hex: 0x000000, alpha: 0.10))
 
     /// 按外观取一套。**入参化**（而不是在里面读 `NSApp.effectiveAppearance`）
     /// 是为了能脱机单测，与 `ChromeMaterial.resolved(glassAvailable:)` 同一套路。

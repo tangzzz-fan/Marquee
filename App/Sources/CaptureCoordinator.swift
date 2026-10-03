@@ -546,15 +546,196 @@ final class CaptureCoordinator {
     /// 造那层面板。菜单每次打开都会重建内容（`viewWillAppear` 里重读磁盘），
     /// 所以"刚截的那张"一定在列表最上面。
     func makeRecentPanelController() -> NSViewController {
-        RecentCapturesPanelController(store: history, actions: .init(
-            onCopy: { [weak self] entry in self?.copyHistory(entry) },
-            onEdit: { [weak self] entry in self?.editHistory(entry) },
-            onDelete: { [weak self] entry in
-                self?.history.delete(entry.id)
-                self?.logger.info("历史：删掉一条")
-            }
-        ))
+        RecentCapturesPanelController(
+            store: history,
+            actions: .init(
+                onCopy: { [weak self] entry in self?.copyHistory(entry) },
+                onEdit: { [weak self] entry in self?.editHistory(entry) },
+                onDelete: { [weak self] entry in
+                    // 用户的这一下**文件进废纸篓**（见 `CaptureHistoryStore.delete`），
+                    // 所以面板里不留撤销条、不留灰行 —— 撤销权交给系统。
+                    self?.history.delete(entry.id)
+                    self?.logger.info("历史：删掉一条（文件已移入废纸篓）")
+                }
+            ),
+            // 空态那句里的键位。**每次现问**，不是构造时快照 ——
+            // 用户可能正是在面板开着的时候去偏好里改了键。
+            currentShortcut: { [weak self] in self?.shortcut.current ?? KeyCombo.fullScreenCapture },
+            // 「升级到 Pro」升起的那张卡片。与覆盖层、菜单里那两处走**同一个判据**
+            //（`ProCard.content` 返回 nil 就是"这一格不该出现"）。
+            upgradeCard: {
+                ProCard.content(for: ProEntitlement.shared.snapshot, feature: .unlimitedHistory)
+            },
+            onUpgradeAction: { [weak self] action in self?.handleProCardAction(action) }
+        )
     }
+
+    // L10N-EXEMPT-START: `-marqueeSmokeRecent` 的报告 —— 贴回来给我看的诊断文字，
+    // 翻译了反而看不懂（与 `-marqueeDiagnostics` 那份同一类）。
+    // MARK: - 最近截图面板的冒烟（`-marqueeSmokeRecent`）
+
+    /// 把面板搭出来、**量一遍每个子视图的矩形**，把报告交出去。
+    ///
+    /// ## 为什么这一块需要冒烟而不是单测
+    ///
+    /// Core 那一半（`RecentPanel`）已经单测钉住了：四段宽度之和、面板总高、徽章不出行……
+    /// 但"把那些数字摆成真的视图"这一步只能在**运行期**验证：
+    ///
+    /// - 约束冲突（面板高度、列表高度、底部那一行的三段）**不会崩**，
+    ///   它只是让某个视图位置不对 —— 而控制台那行 "Unable to simultaneously satisfy
+    ///   constraints" 在应用日志里，开发机上很容易被别的输出冲掉；
+    /// - 模糊布局（`hasAmbiguousLayout`）同理：看起来"差不多对"，实际由引擎随手定一个解。
+    ///
+    /// 所以这个入口找一个**临时历史**造 3 条（其中一条带标注，两行文字都要出现），
+    /// 把面板搭起来，然后把"算出来的"与"排出来的"并排写进报告。
+    /// 与 `-marqueeSmokeOverlay` / `-marqueeDemoEditor` 同一个理由：
+    /// 这条路径要靠眼睛和真机，而它一旦坏是每个用户都会撞上的。
+    func recentPanelSmokeReport() -> String {
+        var lines: [String] = ["最近截图面板冒烟"]
+        lines.append(contentsOf: measurePanel(rows: 3, title: "三行（免费版）", expectsFooter: true))
+        lines.append(contentsOf: measurePanel(rows: 0, title: "空态（免费版）", expectsFooter: true))
+        lines.append(contentsOf: measurePanel(rows: 12, title: "满 12 行（免费版）", expectsFooter: true))
+        return lines.joined(separator: "\n")
+    }
+
+    /// 造一个有 n 条的临时历史，把面板搭起来，量一遍。
+    private func measurePanel(rows: Int, title: String, expectsFooter: Bool) -> [String] {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("marquee-smoke-recent-\(UUID().uuidString)", isDirectory: true)
+        // 上限给够，否则 12 条那一次会被淘汰掉 —— 量出来的就不是"满 12 行"。
+        let store = CaptureHistoryStore(directory: directory, limit: max(rows, 1))
+        let annotation = Annotation(kind: .rectangle,
+                                    frame: CGRect(x: 5, y: 6, width: 10, height: 8),
+                                    zIndex: 0)
+        for index in 0..<rows {
+            _ = store.record(original: Self.smokeImage(index % 4),
+                             originalPNG: nil,
+                             annotations: index % 3 == 0 ? [annotation] : [],
+                             at: Date().addingTimeInterval(TimeInterval(-index * 3600)))
+        }
+
+        let controller = RecentCapturesPanelController(
+            store: store,
+            actions: .init(onCopy: { _ in }, onEdit: { _ in }, onDelete: { _ in }),
+            currentShortcut: { self.shortcut.current },
+            upgradeCard: { ProCardContent(feature: .unlimitedHistory,
+                                          reason: .neverPurchased,
+                                          primary: .purchase,
+                                          secondary: .restore) },
+            onUpgradeAction: { _ in })
+        _ = controller.view
+        controller.reload()
+        controller.view.layoutSubtreeIfNeeded()
+
+        var lines: [String] = []
+        let expected = RecentPanel.panelHeight(rowCount: rows, showsFooter: expectsFooter)
+        let actual = controller.view.fittingSize
+        let ok = abs(actual.height - expected) < 0.5 && abs(actual.width - RecentPanel.width) < 0.5
+        lines.append("")
+        lines.append("── \(title) ──")
+        lines.append("  面板          : \(actual.width) × \(actual.height)  "
+                        + "期望 \(RecentPanel.width) × \(expected)  \(ok ? "✅" : "❌")")
+        lines.append("  模糊布局      : \(Self.ambiguousViews(in: controller.view))")
+
+        let rowViews = Self.allSubviews(of: controller.view).compactMap { $0 as? ChromeRecentRow }
+        lines.append("  行数          : \(rowViews.count)（期望 \(rows)） "
+                        + "\(rowViews.count == rows ? "✅" : "❌")")
+        for row in rowViews.prefix(2) {
+            lines.append(contentsOf: Self.compare(row).map { "  " + $0 })
+        }
+        // 底部那一行：**只有免费版才有**，而且那三段排在一条基线上。
+        // 这里把它逐件量出来 —— 那段话是"免费版只留 5 张 · [升级到 Pro] 可保留全部"。
+        if let footerBar = controller.view.subviews.first?.subviews.last,
+           let row = Self.allSubviews(of: footerBar).first(where: { $0 is NSStackView }) as? NSStackView {
+            let pieces = row.arrangedSubviews.map { piece in
+                let text = (piece as? NSTextField)?.stringValue
+                    ?? (piece as? ChromeTextButton)?.title ?? ""
+                // 打印**对齐矩形**而不是 frame：`NSStackView` 是按对齐矩形摆的，
+                // 而 `NSTextField` 的对齐矩形比 frame 大一圈（AppKit 给焦点环留的余量）。
+                // 看 frame 会以为"句首被推左了 2 点"，看对齐矩形才知道它正好落在内边距上。
+                return "\(text)\(Self.rect(piece.alignmentRect(forFrame: piece.frame)))"
+            }
+            lines.append("  底部那一行    : 底 \(footerBar.isHidden ? "隐藏" : "显示")"
+                            + "  高 \(String(format: "%.0f", footerBar.frame.height))"
+                            + "  三段 \(pieces.joined(separator: " "))")
+        }
+        try? FileManager.default.removeItem(at: directory)
+        return lines
+    }
+
+    /// 把"算出来的"与"排出来的"逐项比一遍。
+    ///
+    /// 单测能钉住算式，钉不住"视图有没有照它摆"—— 这一步中间隔着 Auto Layout，
+    /// 而它错起来的样子只是"某个东西偏了几点"。
+    private static func compare(_ row: ChromeRecentRow) -> [String] {
+        let buttons = allSubviews(of: row).compactMap { $0 as? ChromeTextButton }
+        let layout = RecentPanel.rowLayout(in: row.bounds,
+                                           actionWidths: buttons.map(\.intrinsicContentSize.width))
+        let thumbnail = allSubviews(of: row).compactMap { $0 as? ChromeThumbnailButton }.first
+        var lines: [String] = []
+        func check(_ name: String, _ actual: CGRect?, _ expected: CGRect, tolerance: CGFloat = 0.5) {
+            guard let actual else {
+                lines.append("\(name)：**没找到这个视图** ❌")
+                return
+            }
+            let same = abs(actual.minX - expected.minX) <= tolerance
+                && abs(actual.minY - expected.minY) <= tolerance
+                && abs(actual.width - expected.width) <= tolerance
+                && abs(actual.height - expected.height) <= tolerance
+            lines.append("\(name)：\(rect(actual)) 期望 \(rect(expected)) \(same ? "✅" : "❌")")
+        }
+        check("缩略图", thumbnail?.frame, layout.thumbnail)
+        // 动作由 Core 从右往左给，视图里两个按钮的顺序是 [编辑, 删除] —— 反着配。
+        for (index, button) in buttons.enumerated() {
+            let rect = layout.actions[layout.actions.count - 1 - index]
+            check(button.title.isEmpty ? "动作" : button.title, button.frame, rect)
+        }
+        if let thumbnail {
+            check("徽章(相对缩略图)", RecentPanel.copyBadgeInThumbnail,
+                  RecentPanel.copyBadgeInThumbnail)
+            let badge = RecentPanel.copyBadgeInThumbnail
+            lines.append("  徽章外扩      : 角外 "
+                            + String(format: "(%.0f, %.0f)",
+                                     badge.maxX - RecentPanel.thumbnailSize.width,
+                                     badge.maxY - RecentPanel.thumbnailSize.height)
+                            + " 点（稿子：右上角各 \(Int(RecentPanel.copyBadgeOffset))）")
+        }
+        return lines
+    }
+
+    private static func rect(_ r: CGRect) -> String {
+        String(format: "(%.0f,%.0f,%.0f×%.0f)", r.minX, r.minY, r.width, r.height)
+    }
+
+    private static func allSubviews(of view: NSView) -> [NSView] {
+        var out: [NSView] = []
+        for child in view.subviews {
+            out.append(child)
+            out.append(contentsOf: allSubviews(of: child))
+        }
+        return out
+    }
+
+    /// 造一张纯色小图（不依赖屏幕采集 —— 冒烟不该要求屏幕录制权限）。
+    private static func smokeImage(_ index: Int) -> CGImage {
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        let width = 400 + index * 40
+        let context = CGContext(data: nil, width: width, height: 300,
+                                bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let shade = 0.2 + Double(index) * 0.2
+        context.setFillColor(CGColor(colorSpace: colorSpace,
+                                     components: [shade, shade, 0.8, 1])!)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: 300))
+        return context.makeImage()!
+    }
+
+    /// 有模糊布局的视图 —— 它意味着"位置由引擎随手定"，而看起来往往是"差不多对"。
+    private static func ambiguousViews(in view: NSView) -> String {
+        let found = allSubviews(of: view).filter(\.hasAmbiguousLayout).map { "\(type(of: $0))" }
+        return found.isEmpty ? "无" : found.joined(separator: ", ")
+    }
+    // L10N-EXEMPT-END
 
     /// 把历史里的图放回剪贴板。
     ///

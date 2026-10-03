@@ -110,6 +110,20 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
                 NSApplication.shared.terminate(nil)
             }
         }
+        // 最近截图面板的冒烟：`Marquee -marqueeSmokeRecent`
+        //
+        // 存在的理由：这个面板是**约束拼出来的**（面板总高 / 列表高度 / 底部那三段的宽度），
+        // 而约束冲突与模糊布局都不会崩、也不会在开发机上被一眼看到 ——
+        // 表现只是"某一块位置不对"。Core 那一半已经单测钉住了数字，
+        // 但"把数字摆成真的视图"这一步只能在运行期验。
+        // 报告（含每个子视图的矩形与模糊布局清单）落在 `<数据根>/reports/recent-panel-smoke.txt`。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeRecent") {
+            let report = coordinator.recentPanelSmokeReport()
+            print(report)
+            Self.writeProbeReport(report, name: "recent-panel-smoke.txt")
+            NSApplication.shared.terminate(nil)
+        }
+
         // 长截图覆盖层的空状态：满屏蒙层 + 光标旁的提示框。
         // 这条路径不需要权限（还没开始抓帧），但它是新写的绘制分支，
         // 崩了同样是"一进长截图就废"。

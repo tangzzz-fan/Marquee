@@ -70,4 +70,22 @@ struct FileNameTemplateTests {
                                            windowTitle: "")
         #expect(name == "Notes- Draft")
     }
+
+    @Test("界面上摆出来的每个变量，render 都真的认 —— 摆一个不认的等于骗用户")
+    func availableTokensAreAllReal() {
+        // ⚠️ 这条是拿真实存在的一个错写的：`PAGE-LOGIC.md` 里那份清单写的是 `{n}`，
+        // 而实现里的序号变量叫 `{index}`。用户点一下 `{n}`，文件名会真的叫
+        // `Marquee-{n}.png` —— 而它看起来像"模板功能坏了"，不像"清单写错了"。
+        for token in FileNameTemplate.availableTokens {
+            let rendered = FileNameTemplate.render(token,
+                                                   date: Date(timeIntervalSince1970: 0),
+                                                   sequence: 1,
+                                                   applicationName: "App",
+                                                   windowTitle: "T")
+            #expect(!rendered.contains("{"),
+                    "\(token) 没有被替换（渲染成了 \(rendered)）—— render 不认它")
+        }
+        // 反向：认得的那张表里也不该有"没人会用到"的漏网之鱼
+        #expect(!FileNameTemplate.variables.isEmpty)
+    }
 }

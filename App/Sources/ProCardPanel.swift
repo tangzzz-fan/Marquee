@@ -52,7 +52,7 @@ final class ProCardPanel: NSPanel {
         effect.layer?.cornerRadius = OverlayToolbar.cornerRadius
         effect.layer?.masksToBounds = true
 
-        let card = ProCardHitView(content: content) { [weak self] action in
+        let card = ProCardCanvasView(content: content) { [weak self] action in
             self?.perform(action)
         }
         card.frame = effect.bounds
@@ -104,8 +104,13 @@ final class ProCardPanel: NSPanel {
 ///
 /// 画法用的是**覆盖层里那张同一份** `ProCardRenderer` —— 两处各写一遍的话，
 /// 改一个错别字就会让同一张卡片长得不一样，而用户只会觉得哪里不对劲。
+///
+/// ⚠️ 它是 internal 而**不是 private**：最近截图面板里那处「就地升起」的卡片
+/// 用的是同一块视图（见 `RecentCapturesPanelController`）。
+/// 那张卡片不进独立窗口（它压在列表下沿、面板不变高），所以只能复用这一块，
+/// 不能复用包着它的那个 `NSPanel`。
 @MainActor
-private final class ProCardHitView: NSView {
+final class ProCardCanvasView: NSView {
 
     private let cardContent: ProCardContent
     private let onClick: (ProCardAction) -> Void
@@ -116,7 +121,7 @@ private final class ProCardHitView: NSView {
         super.init(frame: CGRect(origin: .zero, size: ProCardLayout.size))
     }
 
-    required init?(coder: NSCoder) { fatalError("ProCardHitView 只支持代码创建") }
+    required init?(coder: NSCoder) { fatalError("ProCardCanvasView 只支持代码创建") }
 
     override func draw(_ dirtyRect: NSRect) {
         ProCardRenderer.draw(cardContent, in: bounds)

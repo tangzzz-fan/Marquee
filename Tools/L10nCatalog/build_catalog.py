@@ -25,8 +25,18 @@ sys.path.insert(0, str(_HERE))
 CJK = re.compile(r"[\u4e00-\u9fff]")
 
 # 「像字符串」的表达式 → %@，其余按整数 %lld
+#
+# ⚠️ 这里认的是**表达式文本**，不是类型 —— 猜错的后果很特别：
+# `LocalizationScanTests` 把源码的 `\(…)` 与 catalog 的 `%lld`/`%@` **都**归一成 `{X}`，
+# 所以 specifier 猜错**不会**让那条测试红，只会在真机上印出一串数字/乱码。
+# 所以加一个后缀时要想清楚：这个表达式在任何情况下都只会是字符串吗？
+#
+# `.displayName` 是 2026-10-03 加的（格式名 `JPEG` / `HEIC` 要嵌进说明句里）。
 STRINGY = ("localizedDescription", ".path", "displayString", "reason", "detail",
-           "title", "text", "conflict", "uppercased()", "String(")
+           "title", "text", "conflict", "uppercased()", "String(",
+           "displayName",
+           # RecentPanel: dimensions 是拼好的 String（"1234×768"）→ %@
+           "dimensions")
 
 
 # 这几个是**读过声明**定下来的，不是猜的（探测结果见 ticket 17b 的实现记录）：
@@ -117,13 +127,21 @@ def collect():
     for f in files:
         for line_no, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
             for start, end, content in literals(line):
-                if not CJK.search(content):
-                    continue
                 if not line[:start].rstrip().endswith("L10n.t("):
                     continue
                 if any(m in line for m in ("logger.", "os_log(", "print(", "assert")):
                     continue
-                keys.setdefault(key_of(content), []).append(f"{f.relative_to(ROOT)}:{line_no}")
+                key = key_of(content)
+                # ⚠️ 判据是「有中文」**或**「带格式符」，不是只看中文。
+                #
+                # 只看中文的话，`L10n.t("\(dimensions) px")` 这种**全 ASCII** 的用户文案
+                # 会被静默跳过 —— 而 `LocalizationScanTests` 那条
+                # 「源码用到的每个 key 都在 catalog 里」**不会**跳（它按 `L10n.t` 找），
+                # 于是两边对不上：生成器说"没有这条"，测试说"缺这条"。
+                # 而它最先暴露出来的地方是测试，不是生成器 —— 很容易被当成生成器的 bug 去"绕开"。
+                if not (CJK.search(content) or "%" in key):
+                    continue
+                keys.setdefault(key, []).append(f"{f.relative_to(ROOT)}:{line_no}")
     return keys
 
 

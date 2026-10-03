@@ -231,4 +231,40 @@ struct ChromePaletteTests {
         #expect(ChromePalette.Overlay.done != l.success,
                 "覆盖层的完成绿与浅色窗口里的绿是两处不同的量，别顺手合并")
     }
+
+    // MARK: - 窗口类面板上的两枚洗底
+
+    @Test("两枚洗底在两套外观下都压得住 —— 而稿子那个浅色值过不了这一条")
+    func hoverWashesAreVisibleOnThePanel() {
+        // 「洗底」= 悬停时铺在**面板**上的那层半透明（最近截图面板的行、行里那两个动作）。
+        //
+        // 判据**不是** 4.5 那条线（它们不是字），而是「合成之后与面板分得开」：
+        // 悬停反馈的全部意义就是"这块跟旁边不一样"，而那个差别小到某个量以下就等于没有。
+        //
+        // ⚠️ 用什么尺子量这件事本身有个坑：**相对亮度的差**在两套外观下不可比。
+        // 深色面板本来就暗，7% 的白洗上去，亮度只动 0.02；浅色面板接近白，
+        // 同样的 5.5% 黑能差出 0.12 —— 同一个设计意图，两个差了一个数量级。
+        // 所以尺子取**对比度**（比值），它在两端都是线性的。
+        for theme in [ChromePalette.dark, ChromePalette.light] {
+            for (name, wash) in [("rowHover", theme.rowHover), ("actionHover", theme.actionHover)] {
+                let composite = wash.over(theme.panel)
+                let ratio = contrastRatio(composite, theme.panel)
+                #expect(ratio >= 1.10,
+                        "\(name) 压在面板上只有 \(ratio) —— 那等于没有反馈")
+            }
+            // 动作那枚必须比整行那枚强一档：动作是**浮在行上的东西**，
+            // 与行同色的话它那一块的边界就消失了（看起来像整行只是一条色带）。
+            // 稿子的两枚（--c-soft 7% / --c-ghost 10%）正是这个关系。
+            #expect(theme.actionHover.alpha > theme.rowHover.alpha,
+                    "动作那枚没有比整行那枚强 —— 悬停行里那两个按钮的边界会消失")
+        }
+
+        // ⚠️ **留档**：稿子在浅色下给行悬停写的是 `--c-soft` = `rgba(255,255,255,.92)`。
+        // 那枚 token 的本意是「描边按钮压在**窗底** #E7E7E7 上的底」—— 白 92% 压在那里看得见。
+        // 但行悬停压在**面板** #FCFCFC 上，白 92% 与面板只差 1%，肉眼是看不见的。
+        // 「同一个 token 用在它本来不是为了它准备的那层底上」正是这条要防的。
+        let asSpecified = RGB(hex: 0xFFFFFF, alpha: 0.92).over(ChromePalette.light.panel)
+        #expect(contrastRatio(asSpecified, ChromePalette.light.panel) < 1.10,
+                "前提变了：稿子那个浅色值现在压得住面板了 —— 那这一处的替代就可以撤掉")
+    }
 }

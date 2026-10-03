@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import MarqueeCore
+import os
 
 /// 一条历史记录（ticket 16）。
 ///
@@ -86,17 +87,28 @@ public final class CaptureHistoryStore: CaptureHistoryWriting, @unchecked Sendab
     /// 再走一次带锁的 `limit` 会死锁（`NSLock` 不可重入）。
     private var _limit: Int?
 
+    /// 把一份文件**放进废纸篓**。做成接缝是为了能测 —— 真的 `trashItem` 会把测试
+    /// 造出来的文件丢进跑测试那个人的废纸篓里（跑一次多几条，没人会注意到，
+    /// 但那是"测试污染用户的环境"）。
+    public typealias FileTrasher = (URL) throws -> Void
+
     private let directory: URL
     private let fileManager: FileManager
+    private let trash: FileTrasher
+    private let logger = Logger(subsystem: AppIdentity().logSubsystem, category: "history")
     /// 索引与文件的读写都在这一把锁里。历史可能被采集路径（后台）与面板（主线程）同时碰。
     private let lock = NSLock()
 
     public init(directory: URL? = nil,
                 limit: Int = CaptureHistoryStore.defaultLimit,
-                fileManager: FileManager = .default) {
+                fileManager: FileManager = .default,
+                trash: FileTrasher? = nil) {
         self.fileManager = fileManager
         self._limit = max(1, limit)
         self.directory = directory ?? Self.defaultDirectory(fileManager: fileManager)
+        self.trash = trash ?? { url in
+            try fileManager.trashItem(at: url, resultingItemURL: nil)
+        }
     }
 
     /// 默认目录 = `AppIdentity` 给的那个。
@@ -180,22 +192,32 @@ public final class CaptureHistoryStore: CaptureHistoryWriting, @unchecked Sendab
         return entry.id
     }
 
-    /// 删一条，并把它的文件一起清掉。
+    /// 删一条 —— **用户按的那一下**，所以它的文件进**废纸篓**。
+    ///
+    /// ## 为什么是废纸篓，而不是直接抹掉
+    ///
+    /// 设计稿 §02 给的理由是它替掉了确认弹窗：「硬约束禁止新弹窗，而『删了就没』配
+    /// 『不可撤销』在一个高频面板里是危险的。废纸篓把撤销权交给系统
+    /// （Finder 里随时捞回来），我们一步不加 —— 这比弹一个『确定删除吗』更体面，也更符合 macOS。」
+    ///
+    /// ⚠️ 与「自动淘汰」（`evict`）的区别是**刻意的**：那一条不是用户按的，
+    /// 他既没要求删那几张、也不知道是哪几张。把淘汰也塞进废纸篓，等于我们每次截图
+    /// 都往他的废纸篓里丢东西 —— 那是借系统的回收站来掩盖我们自己的决定。
     public func delete(_ id: UUID) {
         lock.lock()
         defer { lock.unlock() }
         var list = loadIndex()
         guard let index = list.firstIndex(where: { $0.id == id }) else { return }
         let entry = list.remove(at: index)
-        removeFiles(of: entry)
+        removeFiles(of: entry, via: .trash)
         saveIndex(list)
     }
 
-    /// 全清（连同文件）。
+    /// 全清（连同文件）。同样不是"用户按了删除那一下"，所以永久删。
     public func removeAll() {
         lock.lock()
         defer { lock.unlock() }
-        for entry in loadIndex() { removeFiles(of: entry) }
+        for entry in loadIndex() { removeFiles(of: entry, via: .erase) }
         saveIndex([])
     }
 
@@ -213,13 +235,53 @@ public final class CaptureHistoryStore: CaptureHistoryWriting, @unchecked Sendab
         guard let cap = _limit else { return }
         while list.count > cap {
             let dropped = list.removeLast()
-            removeFiles(of: dropped)
+            removeFiles(of: dropped, via: .erase)
         }
     }
 
-    private func removeFiles(of entry: CaptureHistoryEntry) {
+    /// 一份文件该怎么处置。
+    private enum Disposal {
+        /// 进废纸篓（用户按的删除）
+        case trash
+        /// 直接抹掉（自动淘汰 / 全清）
+        case erase
+    }
+
+    private func removeFiles(of entry: CaptureHistoryEntry, via disposal: Disposal) {
         for name in [entry.originalFileName, entry.annotationsFileName].compactMap({ $0 }) {
-            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
+            let url = directory.appendingPathComponent(name)
+            switch disposal {
+            case .erase:
+                try? fileManager.removeItem(at: url)
+            case .trash:
+                disposeToTrash(url)
+            }
+        }
+    }
+
+    /// 把一份文件放进废纸篓，**放不进去就抹掉**。
+    ///
+    /// ## 为什么失败时要退回"抹掉"，而不是留着它
+    ///
+    /// 走到这里说明用户已经按了删除，那条记录**一定**会离开索引（这是"删除"的定义）。
+    /// 于是只剩两种结果：
+    ///
+    /// | 废纸篓失败时的做法 | 后果 |
+    /// | --- | --- |
+    /// | 留着文件 | 历史目录里多一个**谁都看不见**的孤儿文件 —— 用户既回收不了它，也永远不知道它占着空间 |
+    /// | 抹掉 | 少了一次"还能捞回来"的机会，但磁盘与界面是一致的 |
+    ///
+    /// 第二种更可取：孤儿文件是唯一那种**既看不见又永久**的坏结果。
+    ///
+    /// ⚠️ 文件本来就不在时**不去惹废纸篓** —— `trashItem` 对不存在的路径会抛错，
+    /// 而那会把上面这条退路误触发一次（日志里会多一条"回收失败"，其实什么都没发生）。
+    private func disposeToTrash(_ url: URL) {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        do {
+            try trash(url)
+        } catch {
+            logger.warning("回收站不可用，改为永久删除：\(error.localizedDescription, privacy: .public)")
+            try? fileManager.removeItem(at: url)
         }
     }
 

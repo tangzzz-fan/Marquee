@@ -4,7 +4,7 @@
 > 远端 `git@github.com:tangzzz-fan/Marquee.git`；开发机 **macOS 27**。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（154 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
+> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（165 条实测陷阱，多为"不崩溃、不报错、只悄悄错"）。
 > 本文件只记**决策**与**索引**；理由与实现细节在 `docs/` 与 ticket 里。
 
 ## 身份 · 分发 · 收费
@@ -43,13 +43,14 @@
 | 覆盖层工具条（24） | **15 格 / 545×40 点**：`[矩形][椭圆][表情][箭头][画笔][马赛克][文字] │ [样式] │ [识别文字] │ [撤销][重做][保存][钉图][✗][✓]`。**✗ 珊瑚红 / ✓ 绿**（WCAG ≥4.5:1）。**「选择」不再是工具位**（没选工具时按标注＝选中拖动）；**「模糊」不再占格**但 `AnnotationKind.blur` 未动。色板×6 + 尺寸×3 收进「样式」弹层；`Esc` 四级。**硬约束：整条放得进 1024 点的屏** |
 | **颜色与读数（本批）** | **`ChromePalette` 是唯一颜色来源**（`RGB` 带 alpha + `over(_:)` 合成 + `contrastRatio`），稿子那些"4.66:1""9.30:1"全变成断言。**「白芯黑边」**（白 1 点芯 + 黑 45% 边）用于**画在别人内容之上**的四样：选区描边 / 吸附线 / 控制点（7×7 = 芯 5 + 边 1×2）/ 放大镜准心。**读数框**用 `ReadoutLine(text, role)` 数组，三个角色 `primary / secondary / caution`；**底是不透明材质**（半透明会让对比度随屏幕内容失效 —— 压纯黑时次要行只剩 2.52）。行阶 13/11 点、最小 132×44。**置灰只有撤销/重做**（`OverlayToolbarHighlight.isEnabled`，Pro 两格永远可点）。**悬停**＝白 9% 底 + 图标 100%，`hoveredSlot` 由 Core 从全局点算出 |
 | **提示行（本批）** | 工具条外侧那 **22 点 / 11 点字**的一行（稿子 §03/§10）。**与工具条共材质、零间隙** ⇒ 并集就是一个圆角矩形，材质只铺一次。**必须整体摆位**（`OverlayToolbar.panelFrames`：先摆工具条再往下挂一行，在贴屏底/翻面两种情况下都会错）。圆角跟面板高度收（`min(10, 高/3)`：40 与 62 都是 10，只有 22 要收）。读数框常量只有两行、贴选区**右上外侧**；例外提示（打码预览不可用/OCR/正在输入）走提示行，告警**取代**它不叠行。⚠️ **③ 长截图期间不显示工具条**（面板鼠标穿透 ⇒ 按钮点不动 = 假入口），**已定**。文案宽度有断言（`LocalizationScanTests.hintLineTextsFitOnOneLine`，中英一起量真字体）|
+| 菜单栏（15） | 下拉**5 项**（截屏/滚动截屏/最近截图/设置…/─/退出），**全菜单只有一把锁**（滚动的 Pro 锁）：9×9 模板图（跟着菜单高亮变白）、**只换图标绝不禁用**（禁用了就永远看不到解释卡片）；解锁时给**同尺寸空占位**，否则买断那一刻所有标题会往左跳。⚠️ **锁在前置而非稿子的右列** —— AppKit 没有把图形放进"快捷键列"的 API，自绘 `NSMenuItem.view` 会拿掉原生高亮与无障碍（已记档的背离） |
 | 图标（28） | **SF Symbol 会自动本地化**（`textformat` 中文下变**「格式」两个字**）⇒ 用 `t.square` 这类语言无关的；多色符号在 `paletteColors` 下**第一层被整片填充** ⇒ `drawSymbol` 必须 `.preferringMonochrome()`。点亮判据＝`OverlayToolbarHighlight.isLit`（**只认自己那个弹层**） |
 | 尺寸档的画法（27） | `MarqueeCore/SizeSwatchGeometry`：形状（线宽圆点 / 打码方块 / 字号字母 A）+ 大小**按档位序号均分**，覆盖层与编辑器共用。⚠️ **不许按数值线性映射**（打码 4/8/16 会画成 9.6/15.2/16，后两档看不出区别）。编辑器工具栏已无汉字按钮 |
 | 鼠标光标（26） | 规则在 Core `OverlayCursor.kind(at:in:)`，**按点分派、不用 cursor rect**（命中比矩形细时它会骗人）。视图在**三处**问一次：`mouseMoved`、**`mouseDragged`**、presentation 变化时用 `mouseLocation` 补。多屏只由**包含该点**的视图设，同一值不重复 `set()` |
 | 标注 | 只在 Core 一份：`AnnotationPalette` · `AnnotationDrawing`（覆盖层与导出**共用**）· `OverlayToolbar.layout()` · `OverlayAnnotationSession`。坐标存**选区局部点**（原点＝视觉左上角、y 向下 ⇒ 取 Cocoa 的 `maxY`），只在栅格化那一刻换算，**线宽/字号/打码强度跟位置一起缩放**。标注＝对象，导出时才栅格化 |
 | 覆盖层输入框 | 用真 `NSTextField`（中文输入法白拿）。**编辑期间键盘整条让行**（只拦 `Esc`）。**「结算」≠「丢弃」**：点别处/`⏎` 结算，只 `Esc` 丢 |
 | 偏好设置（15） | 四页（通用/截屏/输出/快捷键），**改一下立刻生效、立刻落盘**（无「应用」）。延时＝覆盖层出现**之前**那几秒。**刻意没做"是否自动复制到剪贴板"** |
-| 最近截图（16） | `MarqueeHistory`：`index.json` + 原图 PNG + 标注 JSON（**分开存**，否则重编辑退化成在成品上再画）。复制＝重新栅格化。上限 20 / 面板 12；**只删自己写的文件** |
+| 最近截图（16） | `MarqueeHistory`：`index.json` + 原图 PNG + 标注 JSON（**分开存**，否则重编辑退化成在成品上再画）。复制＝重新栅格化。上限 20 / 面板 12；**只删自己写的文件**。几何与文案在 Core `RecentPanel`（340 宽 / 行 46 / 缩略图 48×34 / 底 30 / 空态 120，满 12 行 **618**）。⚠️ **用户按的删除进废纸篓**（`CaptureHistoryStore.delete`），**自动淘汰仍永久删** —— 淘汰不是用户按的那一下 |
 | 钉图（14） | 钉在最顶层、**钉在原位**。**两个窗口**：本体 + 控制条（穿透 `ignoresMouseEvents` 后本体点不到自己）。滚轮缩放（**锚点左上角**）、四档不透明度、多张共存；`canBecomeKey = false` |
 | 悬浮面板材质（17a） | 决策点＝`ChromeMaterial.resolved(glassAvailable:)`（入参化 ⇒ 可脱机单测）；参数在 `ChromeStyle`，两分支**同源**。15.x 退 `NSVisualEffectView(.hudWindow)`。**工具条＝两个兄弟子视图**（材质底 + 前景）；读数框留平深色 |
 | 本地化（17b） | **单一 catalog**：`App/Resources/Localizable.xcstrings`（显式 `buildPhase: resources`）+ `developmentLanguage: zh-Hans`。**key ＝中文原句**；`L10n.t` 收 `String.LocalizationValue`（**插值必须写在字面量里**，拼好再传会静默失效）。**说明符按类型**（`Int`→`%lld`、`Int32`/`OSStatus`→`%d`、`UInt32`→`%u`、`String`→`%@`、`Double`/`CGFloat`→`%lf`）。不翻的用 `// L10N-EXEMPT[-START/-END]: 理由`。**不要用 Xcode 的 Extract Strings** |
@@ -113,7 +114,7 @@ CONFIGURATION=Release ./scripts/build.sh   # 发版 / 内购真实沙盒验证
 
 | 路径 | 内容 |
 | --- | --- |
-| **`docs/PITFALLS.md`** | **154 条实现陷阱**（写代码前必扫） |
+| **`docs/PITFALLS.md`** | **165 条实现陷阱**（写代码前必扫） |
 | **`docs/MAS-AND-MONETIZATION.md`** | **收费与上架方案（决策已定）**：买断 ¥36 · 路线 B · Pro 边界与**「被挡住时」的界面行为** · ticket 29–33 施工图 |
 | **`docs/DEV-VS-PROD.md`** | **开发版与正式版怎么区分**（两个 id · 三个配置 · 改名时间窗 · 波及面） |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**（A–Z 分组 + SPIKE 对应 + 排障速查）。验收与汇报从这份起 |

@@ -454,10 +454,14 @@ struct LocalizationScanTests {
             .replacingOccurrences(of: "%@", with: "xxxxxxxx")
     }
 
+    static func textWidth(_ s: String, font: NSFont) -> CGFloat {
+        (s as NSString).size(withAttributes: [.font: font]).width
+    }
+
     static func textWidth(_ s: String) -> CGFloat {
         // 与视图里同一条路径：11pt、500 字重（`OverlayToolbar.hintLineFontSize`）
-        let font = NSFont.systemFont(ofSize: OverlayToolbar.hintLineFontSize, weight: .medium)
-        return (s as NSString).size(withAttributes: [.font: font]).width
+        textWidth(s, font: NSFont.systemFont(ofSize: OverlayToolbar.hintLineFontSize,
+                                             weight: .medium))
     }
 
     /// 稿子 §10 给了这条约束的物理前提：
@@ -502,6 +506,134 @@ struct LocalizationScanTests {
                         + overflows.joined(separator: "\n")))
     }
 
+    // MARK: - 最近截图面板：每一行字都要放得进它自己那块宽度
+
+    /// 面板上要受宽度约束的文案（key = 中文原句）。
+    ///
+    /// ⚠️ 加一条面板文案就要加到这里 —— 这份清单就是"哪些字要受 340 点约束"的声明。
+    static let recentPanelKeys = [
+        // 标题带（左标题 + 右小字，两者共用一条 320 点的带子）
+        "点缩略图 = 复制",
+        // 空态
+        "还没有截图",
+        "按 %@ 截第一张",
+        // 行里那两行（共用 174 点，见下面第二条断言的算式）
+        "%@ px",
+        "%@ · %lld 个标注",
+        // 行里那两个动作（它们占的是行宽里固定的两块）
+        "编辑",
+        "删除",
+        // 底部那三段 + 中间那枚可点的词
+        "免费版只保留最近 %lld 张",
+        "升级到 Pro",
+        "可保留全部",
+    ]
+
+    /// 底部那一行是**三段 + 一枚按钮**拼出来的，而它自己只有 320 点。
+    ///
+    /// ⚠️ 这条约束**只有英文会撞上**：中文三段加起来 254 点，
+    /// 而最初那版英文（"The free version keeps the last …"）实测 **370 点** ——
+    /// 溢出 49 点，会把最后那段整个挤掉。
+    /// 稿子那张图上量的是中文，所以这个错在中文环境下**永远不会被发现**。
+    @Test("最近截图面板：底部那一句（三段 + 按钮）放得进面板宽，中英一起量")
+    func recentPanelFooterFits() throws {
+        let catalog = try Self.loadCatalog()
+        let available = RecentPanel.width - RecentPanel.footerPadding * 2
+        let bodyFont = NSFont.systemFont(ofSize: 11)
+        // 中间那枚按钮的字是 500 字重（`ChromeTextButton`），比正文宽一点，不能拿正文字体量。
+        let actionFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+
+        // 配额数字取**最坏情况**：两位（当前上限最多到 20）。
+        let materialize: (String) -> String = { $0.replacingOccurrences(of: "%lld", with: "20") }
+
+        var overflows: [String] = []
+        for (tag, catalogKey, english) in [("中", "免费版只保留最近 %lld 张",
+                                            "免费版只保留最近 %lld 张"),
+                                           ("英", "免费版只保留最近 %lld 张",
+                                            (catalog.keys["免费版只保留最近 %lld 张"] ?? nil) ?? "")] {
+            #expect(!english.isEmpty, "底部那句在 catalog 里没有英文")
+            let actionKey = "升级到 Pro"
+            let actionEnglish = (catalog.keys[actionKey] ?? nil) ?? ""
+            let suffixKey = "可保留全部"
+            let suffixEnglish = (catalog.keys[suffixKey] ?? nil) ?? ""
+
+            let prefix = materialize(tag == "中" ? catalogKey : english)
+            let action = tag == "中" ? actionKey : actionEnglish
+            let suffix = tag == "中" ? suffixKey : suffixEnglish
+            let total = Self.textWidth(prefix, font: bodyFont)
+                + Self.textWidth(RecentPanel.footerSeparator, font: bodyFont)
+                + RecentPanel.actionWidth(textWidth: Self.textWidth(action, font: actionFont))
+                + Self.textWidth(suffix, font: bodyFont)
+                + RecentPanel.footerGap * 3
+            if total > available {
+                overflows.append(String(format: "%@ %.0fpt（上限 %.0f）%@ · %@ %@",
+                                        tag, total, available, prefix, action, suffix))
+            }
+        }
+        #expect(overflows.isEmpty,
+                Comment(rawValue: "底部那一句放不下 —— 最后那段会被挤掉：\n"
+                        + overflows.joined(separator: "\n")))
+    }
+
+    /// 行里那两行字（时间 12pt / 尺寸 mono 11pt）共用**同一块宽度**：
+    /// 列表宽 − 行内缩 ×2 − 缩略图 − 两处间隙 − 两个动作。
+    ///
+    /// 这一块靠算而不是靠看：四个加数里任何一个变了（缩略图宽一点、动作字长一点），
+    /// 留给人读的那块就窄一点 —— 而它的表现只是"尺寸那行被截断了个尾巴"。
+    @Test("最近截图面板：行里那两行字放得进行里文字那一块，中英一起量")
+    func recentPanelRowTextFits() throws {
+        let catalog = try Self.loadCatalog()
+        let actionFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+
+        // 两个动作的实际占宽：本地化之后**取宽的那个**（编辑 22 / Edit 20 → 22）。
+        let actionWidths = ["编辑", "删除"].map { key -> CGFloat in
+            let zh = Self.textWidth(key, font: actionFont)
+            let en = Self.textWidth((catalog.keys[key] ?? nil) ?? "", font: actionFont)
+            return RecentPanel.actionWidth(textWidth: max(zh, en))
+        }
+        let actionsTotal = actionWidths.reduce(0, +)
+            + CGFloat(actionWidths.count - 1) * RecentPanel.actionGap
+        let available = RecentPanel.listWidth
+            - RecentPanel.rowPadding * 2
+            - RecentPanel.thumbnailSize.width
+            - RecentPanel.rowGap * 2
+            - actionsTotal
+        #expect(available > 120, "行里留给文字的只有 \(available) 点，先看缩略图或动作是不是变大了")
+
+        // 最坏情况：5K 屏 + 两位数标注。
+        let size = CGSize(width: 5120, height: 2880)
+        let detailKey = "%@ · %lld 个标注"
+        let detailEnglish = (catalog.keys[detailKey] ?? nil)
+            ?? ""
+        let date = Date(timeIntervalSince1970: 1_791_024_420)
+        let zone = TimeZone(identifier: "Asia/Shanghai")!
+        let mono = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        let timeFont = NSFont.systemFont(ofSize: 12)
+
+        var overflows: [String] = []
+        // 第一行：时间（它不是 catalog 里的文案，是按语言排出来的，所以直接用真函数要两种）
+        for (tag, locale) in [("中", "zh_CN"), ("英", "en_US")] {
+            let text = RecentPanel.rowDate(date, locale: Locale(identifier: locale), timeZone: zone)
+            let width = Self.textWidth(text, font: timeFont)
+            if width > available {
+                overflows.append(String(format: "%@ 时间 %.0fpt（上限 %.0f）%@", tag, width, available, text))
+            }
+        }
+        // 第二行：尺寸 + 标注数
+        for (tag, materialized) in [("中", RecentPanel.rowDetail(pixelSize: size, annotationCount: 12)),
+                                    ("英", detailEnglish
+                                        .replacingOccurrences(of: "%@", with: "5120×2880 px")
+                                        .replacingOccurrences(of: "%lld", with: "12"))] {
+            let width = Self.textWidth(materialized, font: mono)
+            if width > available {
+                overflows.append(String(format: "%@ 尺寸 %.0fpt（上限 %.0f）%@", tag, width, available, materialized))
+            }
+        }
+        #expect(overflows.isEmpty,
+                Comment(rawValue: "行里这些字放不下，会被截断尾巴：\n"
+                        + overflows.joined(separator: "\n")))
+    }
+
     /// 反向：清单里不许有**源码里已经不用**的 key。
     ///
     /// 少了这条，改了文案之后旧句子会一直留在这份清单里 ——
@@ -509,7 +641,10 @@ struct LocalizationScanTests {
     @Test("提示行清单里没有源码找不到的孤儿")
     func hintLineKeysHaveNoOrphans() throws {
         let used = Set(try Self.scan().keys)
-        let orphans = Self.hintLineKeys.filter { !used.contains(Self.normalized($0)) }
+        // 两份清单一起查：它们都是"这些字受某个宽度约束"的声明，
+        // 而一条不再被源码使用的声明**看起来仍在被检查**，其实只是在检查一句没人用的话。
+        let declared = Self.hintLineKeys + Self.recentPanelKeys
+        let orphans = declared.filter { !used.contains(Self.normalized($0)) }
         #expect(orphans.isEmpty,
                 Comment(rawValue: "这些提示行文案已经没人用了：\n"
                         + orphans.joined(separator: "\n")))

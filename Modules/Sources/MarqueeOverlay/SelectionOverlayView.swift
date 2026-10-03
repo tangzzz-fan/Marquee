@@ -354,22 +354,9 @@ enum ReadoutStyle {
     static let caution = color(.caution)
 }
 
-/// `RGB`（Core 的 sRGB 值）→ `NSColor`。**两条都不能省**：
-///
-/// · **alpha 要带上** —— 调色板里一半的颜色是半透明的（暗幕 32%、次要文字 64%、
-///   格图标 82%、置灰 30%、小锁 55%…）。曾经这里写死 `alpha: 1`，
-///   等于把「半透明」这个信息**在最后一步丢掉了** —— 画出来全是实心，
-///   而画错的颜色不会报错，只会「看着差点意思」。
-/// · **用 `srgbRed:` 而不是 `red:`** —— 后者是 deviceRGB，
-///   而设计稿给的十六进制是 sRGB。
-///
-/// 放在 `RGB` 上而不是视图里，是因为**不止视图要用它**：
-/// `ReadoutStyle` 那三个 `static let` 是全局初始化，走不了实例上的方法。
-extension RGB {
-    var nsColor: NSColor {
-        NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
-    }
-}
+/// ⚠️ `RGB` → `NSColor` 的**实现已经搬到 Core**（`MarqueeCore/AppKitBridging.swift`），
+/// 因为 App 那几个窗口也要用它，而模块之间不许互相依赖。
+/// 那一段"alpha 与 sRGB 两条都不能省"的说理也一起搬过去了 —— **只留一份**。
 
 /// 单块屏上的蒙层视图。
 ///
@@ -1348,50 +1335,21 @@ final class SelectionOverlayView: NSView {
     /// `NSImage(systemSymbolName:)` + `withSymbolConfiguration` **每次调用都会新建一个图像**，
     /// 而工具条一帧要画 15 个 —— 鼠标一动就重建 15 个图像。
     ///
-    /// 键里带上**外观**：动态色（`controlAccentColor`）解析出来的位图随外观变，
-    /// 不区分就会在切换深浅色之后继续用旧位图（而那种错只在切完外观后才看得出来）。
-    private static var symbolCache: [String: NSImage] = [:]
-
+    /// **实现已经搬到 Core**（`ChromeSymbol`）—— App 那几个窗口也要画图标，
+    /// 而模块之间不许互相依赖。那三条容易写漏的规则（单调渲染 / 缓存键带外观 /
+    /// 颜色要进 `SymbolConfiguration`）现在只有一份。
     private func drawSymbol(_ symbol: String,
                             in rect: CGRect,
                             tint: NSColor,
                             dimmed: Bool = false) {
-        // ⚠️ 模板图直接 `draw(in:)` **不会**用"当前颜色"着色 —— 必须把颜色放进配置里。
-        // 否则图标全是黑的，在深色底上等于没画（而且不报错，只会让人以为图标名写错了）。
         // 置灰走调色板那枚（白 30% / 2.58:1）—— 禁用态本来就是「不活跃」的样子，
         // 所以在正文级之下是**刻意的**，不是没调好。
         let color = dimmed ? Self.nsColor(Self.theme.disabled) : tint
-        // `usingColorSpace` 而不是 `.redComponent`：后者对动态色（强调色）会**抛异常**。
-        let resolved = color.usingColorSpace(.sRGB) ?? .white
-        let key = "\(symbol)|\(dimmed)|\(effectiveAppearance.name.rawValue)|"
-            + "\(resolved.redComponent),\(resolved.greenComponent),\(resolved.blueComponent),\(resolved.alphaComponent)"
-
-        let image: NSImage
-        if let cached = Self.symbolCache[key] {
-            image = cached
-        } else {
-            let configuration = NSImage.SymbolConfiguration(paletteColors: [color])
-                // ⚠️ `.preferringMonochrome()` **不能省**。
-                //
-                // 不写它的时候，符号会按自己的**首选渲染模式**画：多色符号的第一层
-                // 会被整片填满。表情那一格（`face.smiling`）因此变成一个**实心圆点** ——
-                // 而它看起来只是"这个图标长得怪"，完全想不到是着色方式的问题。
-                //
-                // 我们本来就要"整格一种颜色"，所以单调渲染才是**意图**，
-                // 不是降级。十个图标逐一对比过：除了 `face.smiling`，其余完全一样。
-                .applying(.preferringMonochrome())
-                .applying(NSImage.SymbolConfiguration(pointSize: 14, weight: .medium))
-            guard let made = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(configuration) else { return }
-            Self.symbolCache[key] = made
-            image = made
-        }
-
-        let size = image.size
-        image.draw(in: CGRect(x: rect.midX - size.width / 2,
-                              y: rect.midY - size.height / 2,
-                              width: size.width,
-                              height: size.height))
+        ChromeSymbol.draw(symbol, in: rect,
+                          pointSize: 14,
+                          weight: .medium,
+                          color: color,
+                          appearance: effectiveAppearance)
     }
 
     // MARK: - 就地标注（ticket 21）
