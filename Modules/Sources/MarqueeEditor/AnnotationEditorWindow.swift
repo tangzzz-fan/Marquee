@@ -508,18 +508,24 @@ private struct AnnotationEditorView: View {
                 beginEditingText(at: value.location)
             })
             .background {
-                EditorEventMonitor(onEscape: copyAndClose,
-                                  onSave: saveAndClose,
-                                  onDelete: { session.deleteSelection() },
-                                  onUndo: { session.undo() },
-                                  onRedo: { session.redo() },
-                                  onPan: { dx, dy in viewport.pan(by: CGPoint(x: dx, y: dy)) },
-                                  onZoom: { factor, point in viewport.zoom(by: factor, around: point) },
-                                  isEditingText: editingID != nil,
-                                  onCancelTextEditing: { cancelTextEditing() },
-                                  isCropping: session.isCropping,
-                                  onCommitCrop: { _ = session.commitCrop() },
-                                  onCancelCrop: { session.cancelCrop() })
+                EditorEventMonitor(
+                    // `Esc` 要退哪一层所需的**全部**状态，一次给全。
+                    // 层级顺序**不在这里** —— 判据在 Core 的 `EditorEscapeState.escapeStep()`。
+                    // 顺序若写在视图里，就一定会和覆盖层那份分叉，
+                    // 而分叉的表现只有用户按下去才知道："退掉的东西不对"。
+                    escapeState: EditorEscapeState(isEditingText: editingID != nil,
+                                                   isCropping: session.isCropping,
+                                                   tool: session.tool,
+                                                   selection: session.selection),
+                    onEscapeStep: { handleEscapeStep($0) },
+                    onConfirm: copyAndClose,
+                    onSave: saveAndClose,
+                    onDelete: { session.deleteSelection() },
+                    onUndo: { session.undo() },
+                    onRedo: { session.redo() },
+                    onPan: { dx, dy in viewport.pan(by: CGPoint(x: dx, y: dy)) },
+                    onZoom: { factor, point in viewport.zoom(by: factor, around: point) },
+                    onCommitCrop: { _ = session.commitCrop() })
                     .allowsHitTesting(false)
             }
             .overlay(alignment: .topLeading) { textEditor }
@@ -941,6 +947,35 @@ private struct AnnotationEditorView: View {
         didFit = true
     }
 
+    /// 执行 Core 的梯子算出来的那一步。
+    ///
+    /// 这里**只执行、不判断** —— "该退哪一层"是 `EditorEscapeState.escapeStep()` 的事，
+    /// 五条分支的顺序在那边（有测试钉着）。
+    private func handleEscapeStep(_ step: EscapeStep) {
+        switch step {
+        case .cancelTextEditing:
+            cancelTextEditing()
+        case .cancelGesture:
+            session.cancelCrop()
+        case .leaveTool:
+            // 退回"选择"，**不动已画的标注**。
+            // 少了这一档，用户画完几个箭头想退出标注模式，
+            // 一下 `Esc` 就把窗口收了 —— 而这张图可能已经很难再复现。
+            session.tool = .select
+        case .clearSelection:
+            session.selection = []
+        case .dismiss:
+            // 到底 = 取消，与 `✗` 同一个动作。
+            //
+            // ⚠️ **`Esc` 绝不产出**。这里曾经接的是 `copyAndClose`（完成并复制并关闭）——
+            // 于是"退出键"干了"确认"的活，而且**写剪贴板不可逆**：
+            // 用户在覆盖层里养成"`Esc` = 我反悔了"的肌肉记忆，
+            // 进编辑器按同一个键，却把一张带标注的图写进了剪贴板。
+            // 想保住成果的人有 `⏎` / `✓`，那才是"确认"。
+            onClose()
+        }
+    }
+
     private func copyAndClose() {
         if let rendered = AnnotationRasterizer.image(document: session.document, source: image),
            let png = ImageEncoding.pngData(from: rendered) {
@@ -975,21 +1010,26 @@ private struct AnnotationEditorView: View {
 
 /// 键盘与滚轮不走 SwiftUI 的焦点链：菜单栏应用的窗口经常拿不到第一响应者。
 private struct EditorEventMonitor: NSViewRepresentable {
-    var onEscape: () -> Void
+    /// `Esc` 要退哪一层所需的**全部**状态。
+    ///
+    /// 判据在 Core 的 `EditorEscapeState.escapeStep()` —— 这里只负责把状态递进去、
+    /// 把算出来的那一步回调出去。层级顺序若写在这个视图里，就会与覆盖层那份分叉。
+    var escapeState: EditorEscapeState
+    /// 梯子算好的那一步，交给视图执行。
+    var onEscapeStep: (EscapeStep) -> Void
+    /// `⏎` = 确认（与工具栏上那颗 `✓` 同一个动作）。
+    ///
+    /// macOS 的约定是 `⏎` 走默认按钮、`Esc` 走取消按钮 —— 两个界面都照这个来，
+    /// 用户按下之前就知道会发生什么。
+    var onConfirm: () -> Void
     var onSave: () -> Void
     var onDelete: () -> Void
     var onUndo: () -> Void
     var onRedo: () -> Void
     var onPan: (CGFloat, CGFloat) -> Void
     var onZoom: (CGFloat, CGPoint) -> Void
-    /// 正在输入文字。此时**除了 Esc，其余按键一律放行** ——
-    /// 否则退格会被当成"删除标注"，输入法候选也会被吞掉。
-    var isEditingText: Bool
-    var onCancelTextEditing: () -> Void
-    /// 正在调整裁切框：回车应用、Esc 取消（覆盖层的 Esc 是"复制并关闭"，语义不同）
-    var isCropping: Bool
+    /// 正在调整裁切框：此时 `⏎` = 应用裁切（**不是**"确认整张图"）。
     var onCommitCrop: () -> Void
-    var onCancelCrop: () -> Void
 
     func makeNSView(context: Context) -> EditorEventMonitorView {
         let view = EditorEventMonitorView()
@@ -1002,41 +1042,38 @@ private struct EditorEventMonitor: NSViewRepresentable {
     }
 
     private var actions: EditorEventMonitorView.Actions {
-        EditorEventMonitorView.Actions(onEscape: onEscape,
+        EditorEventMonitorView.Actions(escapeState: escapeState,
+                                       onEscapeStep: onEscapeStep,
+                                       onConfirm: onConfirm,
                                        onSave: onSave,
                                        onDelete: onDelete,
                                        onUndo: onUndo,
                                        onRedo: onRedo,
                                        onPan: onPan,
                                        onZoom: onZoom,
-                                       isEditingText: isEditingText,
-                                       onCancelTextEditing: onCancelTextEditing,
-                                       isCropping: isCropping,
-                                       onCommitCrop: onCommitCrop,
-                                       onCancelCrop: onCancelCrop)
+                                       onCommitCrop: onCommitCrop)
     }
 }
 
 private final class EditorEventMonitorView: NSView {
     struct Actions {
-        var onEscape: () -> Void
+        var escapeState: EditorEscapeState
+        var onEscapeStep: (EscapeStep) -> Void
+        var onConfirm: () -> Void
         var onSave: () -> Void
         var onDelete: () -> Void
         var onUndo: () -> Void
         var onRedo: () -> Void
         var onPan: (CGFloat, CGFloat) -> Void
         var onZoom: (CGFloat, CGPoint) -> Void
-        var isEditingText: Bool
-        var onCancelTextEditing: () -> Void
-        var isCropping: Bool
         var onCommitCrop: () -> Void
-        var onCancelCrop: () -> Void
     }
 
-    var actions = Actions(onEscape: {}, onSave: {}, onDelete: {}, onUndo: {}, onRedo: {},
+    var actions = Actions(escapeState: EditorEscapeState(),
+                          onEscapeStep: { _ in },
+                          onConfirm: {}, onSave: {}, onDelete: {}, onUndo: {}, onRedo: {},
                           onPan: { _, _ in }, onZoom: { _, _ in },
-                          isEditingText: false, onCancelTextEditing: {},
-                          isCropping: false, onCommitCrop: {}, onCancelCrop: {})
+                          onCommitCrop: {})
     private var monitor: Any?
 
     override var isFlipped: Bool { true }
@@ -1078,31 +1115,33 @@ private final class EditorEventMonitorView: NSView {
     }
 
     private func handleKey(_ event: NSEvent) -> NSEvent? {
-        // 输入文字时让按键照常送到输入框（退格、回车、⌘Z 都是编辑文本用的）
-        if actions.isEditingText {
-            if event.keyCode == 53 {
-                actions.onCancelTextEditing()
-                return nil
-            }
+        let state = actions.escapeState
+
+        // 输入文字时让按键照常送到输入框（退格、回车、⌘Z 都是编辑文本用的）。
+        // `Esc` 例外 —— 它要退出输入，而那一步由梯子给出。
+        if state.isEditingText, event.keyCode != 53 {
             return event
         }
-        // 裁切模式：回车应用、Esc 取消；⌘Z 仍可撤销（裁切前可能刚画了东西）
-        if actions.isCropping {
-            switch event.keyCode {
-            case 53:
-                actions.onCancelCrop()
-                return nil
-            case 0x24, 0x4C:
-                actions.onCommitCrop()
-                return nil
-            default:
-                break
-            }
-            guard event.modifierFlags.contains(.command) else { return event }
+        // 裁切进行中：`⏎` = 应用裁切（**不是**"确认整张图"）。
+        if state.isCropping, event.keyCode == 0x24 || event.keyCode == 0x4C {
+            actions.onCommitCrop()
+            return nil
+        }
+        // 裁切进行中的其它按键只放行 ⌘ 组合（⌘Z 仍可撤销 —— 裁切前可能刚画了东西）。
+        if state.isCropping, !event.modifierFlags.contains(.command) {
+            return event
         }
         switch event.keyCode {
         case 53:
-            actions.onEscape()
+            // 「退哪一层」**不在这里判断** —— 判据是 Core 的 `EditorEscapeState.escapeStep()`。
+            // 覆盖层那边的层级表更长（自动滚动、卡片、弹层），两边层数不同是有意的；
+            // 统一的是**性格**：`Esc` 只退、`⏎` 才确认。
+            actions.onEscapeStep(state.escapeStep())
+            return nil
+        case 0x24, 0x4C:
+            // `⏎` = 确认。它以前**什么都没绑** —— 于是"退出键"被当成了确认键，
+            // 而真正的默认按钮键是空的。现在两者各就各位。
+            actions.onConfirm()
             return nil
         case 51, 117:
             actions.onDelete()
