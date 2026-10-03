@@ -2,7 +2,7 @@
 
 > 用途：一份可照着跑的**桌面验收清单**（ticket 06 的交付物），同时回答"现在到哪了、卡在哪"。
 > 日期：2026-10-01 ｜ 分支：`main`
-> 自动化现状：`./scripts/test.sh` → **564 测试全绿**（Core 539 + 商店配置 7 + 历史仓库 12 + 真实 Vision 装置自检 6）
+> 自动化现状：`./scripts/test.sh` → **588 测试全绿**（Core 561 + 商店配置 7 + 历史仓库 14 + 真实 Vision 装置自检 6；2026-10-03 复跑）
 
 ---
 
@@ -45,7 +45,7 @@
 
 **关键路径**：`01 → 02 → 03 → 07 → 11 → 12` —— 代码**全部走通**。
 **并行可开**：`31`（StoreKit，依赖已满足）与 `32`（沙盒化，独立一条线）。
-`01`–`30` 与 `31` 的两批代码全部落地；`01`–`28` 里大量条目仍是**已实现、待人工验收**（§3 A–Z 组）。
+`01`–`31` 与 `34` 的代码全部落地；`01`–`28` 里大量条目仍是**已实现、待人工验收**（§3 A–Z 组）。
 
 > ⚠️ **从 ticket 21 起，普通截图不再打开编辑器窗口** —— 标注在覆盖层里就地完成（§L）。
 > 编辑器保留但只服务**长截图**（长图放不进一屏，在覆盖层里没法标注它），
@@ -86,8 +86,9 @@
 | **开发版与正式版的区分**（不是 ticket，是 31 的第 0 步） | ✅ **已完成**（分支 `feat/iap`）：正式 `com.tango.Marquee` / 开发 `com.tango.Marquee.dev`；三个配置 `Debug` / `Dev` / `Release`；数据、偏好、TCC 授权从此自动隔离。见 `docs/DEV-VS-PROD.md` |
 | 29 App 图标与上架元数据 | ✅ 已完成（十档图标 + `NSScreenCaptureUsageDescription` + 分类 + 出口合规） |
 | 30 权益状态机（Core） | ✅ 已完成（18 条测试 + 5 个变异） |
-| 31 StoreKit 2 接入 | 🟡 **两批都已完成**，待真机沙盒验证 | 第一批：商品目录 / 交易事实 / 纯映射 / 权益缓存（22 条）。第二批：Core 接缝 + **启动编排** + `MarqueeStore` 适配器 + `Products.storekit` + `-marqueeEntitlement` 自检入口（27 条）。**剩界面**（锁标记 / 升级卡片 / 偏好状态区） |
-| 32 沙盒化改造 | ⏳ 独立一条线（`entitlements` + 默认目录改 `~/Pictures/Marquee` + 数据迁移） |
+| 31 StoreKit 2 接入 | 🟡 **代码全部完成**，待真机沙盒验证 | 第一批：商品目录 / 交易事实 / 纯映射 / 权益缓存（22 条）。第二批：Core 接缝 + **启动编排** + `MarqueeStore` 适配器 + `Products.storekit` + `-marqueeEntitlement` 自检入口（27 条）。**界面已收口**：三个入口的锁与升级卡片 · 偏好状态区 · 免费版历史配额（§Z 的 Z9–Z16）。真机沙盒验证前需先在 ASC 建 `com.tango.Marquee.pro` |
+| 34 首次启动引导 | ✅ **已完成**（后加的，未进原台账）| 三步、每步可跳过：它是什么 / 挑一个键 / 屏幕录制权限。判据在 Core：**带 `-marquee` 前缀的自检运行一律不弹**。改键复用 `ShortcutRecorderView`，与偏好页同一套逻辑。验收 Z17–Z21 |
+| 32 沙盒化改造 | 🟡 **进行中**（2026-10-03 起）| 已落：第四个配置 **`MAS`（只有它带沙盒）** + `App/Marquee.entitlements`（`app-sandbox` / `files.user-selected.read-write` / `assets.pictures.read-write` 三项）+ hardened runtime + 沙盒判据 `AppIdentity.isSandboxed` + **默认落盘改 `~/Pictures/Marquee`** + 自动滚动降级（`AutoScrollGate`）。**剩**：沙盒构建下重跑 §3 清单（要你人工过）；数据/偏好迁移**已查明在沙盒内做不到**，见 §6 |
 | 33 MAS 打包与提审 | ⏳ 依赖 32 |
 
 ⚠️ **路线 B 的代价**：**自动滚动必须砍掉**（沙盒禁止向其它 app 投递输入事件），
@@ -305,7 +306,7 @@ cd /Users/tango/Developments/Marquee
 | I1 | C7 的日志 | 落点 → 剪贴板 ≤ 150 ms |
 | I2 | 编辑器里放 100 个标注 | 拖拽/重绘不掉帧（预算 4 ms，见 `docs/RENDER-BENCH.md`） |
 | I3 | 在编辑器里载入 1200×9000 级别的长图 | 缩放平移不掉帧（**B4 风险项**，可能是编辑器真正的瓶颈） |
-| I4 | `./scripts/test.sh` | 564 测试全绿（Core 539 + 商店配置 7 + 历史仓库 12 + Vision 自检 6） |
+| I4 | `./scripts/test.sh` | 588 测试全绿（Core 561 + 商店配置 7 + 历史仓库 14 + Vision 自检 6） |
 
 ### J. 放大镜与像素取色（ticket 10）
 
@@ -662,7 +663,11 @@ cd /Users/tango/Developments/Marquee
 > open -a Marquee.app --args -marqueeEntitlement restore    # 恢复购买
 > ```
 >
-> 报告同时写到 `~/Library/Logs/Marquee/entitlement-probe.txt`（用 `open` 启动时 stdout 不回终端）。
+> 报告同时写到 `<数据根>/reports/entitlement-probe.txt` —— 即
+> `~/Library/Application Support/com.tango.Marquee.dev/reports/`（开发版）
+> 或 `com.tango.Marquee/reports/`（正式版与 MAS 版；**沙盒下它在容器里**，
+> 路径就是 `~/Library/Containers/com.tango.Marquee/Data/Library/Application Support/com.tango.Marquee/reports/`）。
+> 用 `open` 启动时 stdout 不回终端，而**沙盒构建只能走 `open`** ⇒ 报告必须落文件。
 >
 > ⚠️ 本机跑构建时如果报 `swift-plugin-server ... malformed response`（宏插件），
 > 那是**嵌套沙箱**：加 `MARQUEE_DISABLE_COMPILER_SANDBOX=1` 再跑（见 `docs/DEV-NOTES.md` §4.1）。

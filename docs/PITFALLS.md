@@ -1011,3 +1011,73 @@
     > 这次的灯是 `LocalizationScanTests` 亮的（它校验"源码用到的 key 都在 catalog 里"）——
     > 那条测试之所以存在，正是因为生成器**只能校验、不能判断对不对**：
     > key 生成了、catalog 里也有、测试全绿，可它就是错的。
+
+143. **在沙盒进程之下再起一个沙盒 app —— 连 `main` 都进不去，而且一行输出都没有。**
+    第一次跑 MAS 产物自检：
+
+    ```bash
+    DerivedData/Build/Products/MAS/Marquee.app/Contents/MacOS/Marquee -marqueeDiagnostics
+    # 退出码 133
+    ```
+
+    **屏幕上什么都没有** —— 不是报错，是**寂静**。崩溃报告里才看得到真相：
+
+    ```
+    EXC_BREAKPOINT / SIGTRAP
+    0. libsystem_secinit.dylib  _libsecinit_appsandbox.cold.9
+    1. libsystem_secinit.dylib  _libsecinit_appsandbox
+    2. libsystem_dylib          libSystem_initializer
+    ```
+
+    `libsecinit` 是 dyld 初始化阶段装 App Sandbox 的那个初始化器；它在**别人的沙盒里**
+    装不上自己的沙盒，于是走 `__cold` 错误路径直接 trap。**崩在 `main` 之前**，
+    所以任何 `print` 都不会执行 —— "一行都没有"这个现象本身就是判据。
+
+    **判别三步**（顺序别换，第一步最容易被跳过）：
+
+    1. `open -a <绝对路径>.app --args …` —— 经 launchd 启动，不在你的沙盒进程之下。
+       **换一条路就好了 ⇒ 是嵌套，不是产物坏了。**
+    2. 看有没有新崩溃报告（`~/Library/Logs/DiagnosticReports/`）——
+       **连一条日志都没有**正是"崩在 main 之前"的特征。
+    3. 只有前两步都排除了，才去看代码。
+
+    ⚠️ `open` 的路径**必须是绝对的**：给相对路径它只会说
+    `Unable to find application named '…'`，那是个与根因毫无关系的提示。
+
+    > 判据：**同一个"什么都看不到"，在终端里和在 `open` 下含义完全不同。**
+    > 与编译那条（`sandbox_apply: Operation not permitted` → 宏 `malformed response`）同源：
+    > **症状在最外层，根因在最里层**；顺着症状去查，方向一定反。
+
+144. **沙盒里 `NSHomeDirectory()` 是容器 —— 于是"默认目录"会落进用户永远找不到的地方。**
+    沙盒进程的 `NSHomeDirectory()` 是 `~/Library/Containers/<id>/Data`。
+    而 `FileManager.urls(for: .picturesDirectory, in: .userDomainMask)`
+    是由它推出来的 ⇒ 沙盒下它指向**容器里的** Pictures。
+
+    后果正好是本文件最忌讳的那一类：`⌘S` **成功**、剪贴板也**正常**、
+    屏幕上没有任何提示 —— 图却存在
+    `~/Library/Containers/com.tango.Marquee/Data/Pictures/Marquee/`，
+    用户翻遍桌面和访达都找不到。他不会认为"存到别处了"，他会认为**这 app 丢了东西**。
+
+    **正解：默认落盘用真实家目录拼**，别问 `FileManager`：
+
+    ```swift
+    getpwuid(getuid())?.pointee.pw_dir   // passwd 条目，沙盒不会改它
+    ```
+
+    配 `com.apple.security.assets.pictures.read-write` 就能真写进用户的 Pictures。
+    非沙盒构建下两者本来就相等 ⇒ **一条代码路径同时服务两种构建**，不用分支。
+
+    ⚠️ **别在这个问题上押注**（我自己差点押错）。探针报告目录一度写成
+    `<家目录>/Library/Logs/Marquee/`，理由是"`homeDirectoryForCurrentUser`
+    在沙盒下应该是容器"。**这个假设我没能证实** —— 而在沙盒进程里，
+    `~` 到底指哪儿、写不写得进去，都不是能从文档推出来的东西。
+    押错的代价是：探针里写文件用 `try?`，失败被**静静吞掉**，
+    表现出来与"这个入口没触发"一模一样。
+
+    现在改成走 `.applicationSupportDirectory`（`.applicationSupportDirectory`
+    在沙盒下**确定**是容器，这是沙盒的定义本身）⇒ **不需要任何关于家目录的假设**。
+
+    > 判据：**凡是"沙盒下这个 API 会指向哪"的问题，不要推理，改走不依赖它的那条路。**
+    > 能用 `.applicationSupportDirectory` 就别自己拿家目录拼 ——
+    > 前者由系统按沙盒规则给，后者要你**知道**规则；而你一旦猜错，
+    > 症状是"什么都没发生"，不是报错。

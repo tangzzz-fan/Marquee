@@ -12,12 +12,12 @@
 | 项 | 值 |
 | --- | --- |
 | 产品 / 最低系统 | **Marquee**，**macOS 15.0**；26/27 专属能力走 `if #available` + 降级 |
-| **两个 bundle id** | 正式 `com.tango.Marquee` / 开发 `.dev`。**是不是开发版由后缀推导**（`MarqueeCore/AppIdentity`＝唯一来源）⇒ 偏好、数据、TCC 各一份。**只有 Release 拿正式 id**（"误发开发构建"配置上就不可能，`package.sh` 再核验）。**改名有时间窗**：ASC 上传过构建就不能再改，我们没上传过。见 `docs/DEV-VS-PROD.md` |
-| 三个构建配置 | `Dev`＝**Run（默认）**，与 Release **同优化**（性能数字才可比）/ `Debug`＝只要"能用的断点"时用（**别拿它测性能**；断言只在它与 `swift test` 下生效）/ `Release`＝发版 + **内购真实沙盒验证** |
-| **分支** | IAP 相关工作在 **`feat/iap`**（2026-10-03 起）；`main` 尚未合并改名 |
+| **两个 bundle id** | 正式 `com.tango.Marquee` / 开发 `.dev`。**是不是开发版由后缀推导**（`MarqueeCore/AppIdentity`＝唯一来源）⇒ 偏好、数据、TCC 各一份。**只有 `Release` 与 `MAS` 拿正式 id**（"误发开发构建"配置上就不可能，`package.sh` 再核验）。**改名有时间窗**：ASC 上传过构建就不能再改，我们没上传过。见 `docs/DEV-VS-PROD.md` |
+| 四个构建配置 | `Dev`＝**Run（默认）**，与 Release **同优化**（性能数字才可比）/ `Debug`＝只要"能用的断点"时用（**别拿它测性能**）/ `Release`＝**Developer ID** 打包，**不带沙盒**（那条后路的价值就是保住自动滚动）/ **`MAS`＝唯一带沙盒的那个**（`App/Marquee.entitlements` + hardened runtime）。⚠️「在不在沙盒里」**按运行期判据分派**（`AppIdentity.isSandboxed`），**不许**用编译期开关 —— 没编进去的那条分支只有发版那天才跑得到 |
+| **分支** | `feat/iap` 与 `feat/onboarding` 均已合并进 `main`（2026-10-03）。**合并一律 `--no-ff`**（保留那条线的边界） |
 | **收费（已定：买断 ¥36）** | 非消耗型 IAP `com.tango.Marquee.pro`（¥36 是合法价格点，CNY ¥10–200 步长 ¥1）。**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）；其余全部免费。⚠️ **不许把没做的功能写成"锁着的"**。试用＝**0 价非消耗型 IAP**（3.1.1 官方路径），7 天、一次 |
 | **权益（30 + 31）** | 判定在 Core `LicenseResolver`（纯函数）；**头号判据：`unknown` 必须放行**（否则付费用户启动先看到锁；历史也不许按免费裁剪）。31 两批已完成：`Storefront`（商品/交易/纯映射）· `EntitlementCache`（缓存**输入**而非结果）· `StorefrontSeams`（读取/购买接缝）· `EntitlementCoordinator`（启动编排）· `MarqueeStore`（StoreKit 适配器）。⚠️ 五条硬规则：**未校验的交易不算数** · **撤销可以被撤销** · **「商店里没有」只有真的问过才算证据**（查询失败时 `records` 也为空 ⇒ 断网锁死付费用户）· **启动不等网络** · **核实失败不改动判定** |
-| **分发（已定：路线 B，上 MAS）** | **代价已接受：自动滚动砍掉、只留手动长截图**；Developer ID 那条路**并存**作后路。依据（已核实原文）：Apple 文档明文「用 `CGEventPost` 向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API」⇒ **自动滚动与 MAS 互斥**（Snip 的 App Store 版同样"滚动截屏不可用"）。另：**桌面没有 entitlement** ⇒ `32` 要改 `~/Pictures/Marquee` + 数据迁移 |
+| **分发（已定：路线 B，上 MAS）** | **代价已接受：自动滚动砍掉、只留手动长截图**；Developer ID 那条路**并存**作后路。依据（已核实原文）：Apple 文档明文「用 `CGEventPost` 向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API」⇒ **自动滚动与 MAS 互斥**（Snip 的 App Store 版同样"滚动截屏不可用"）。**桌面没有 entitlement** ⇒ 默认落盘已改 `~/Pictures/Marquee`。⚠️ **但迁移在沙盒内做不到**（读不到容器外的 Application Support）⇒ 沙盒版是首发的话本来就没有老数据；若 Developer ID 版先发过再迁 MAS，只能由那个**非沙盒**构建代劳。见 `docs/PITFALLS.md` 143 / 144 |
 
 ## 工程与架构
 
