@@ -76,13 +76,17 @@ struct EscapeLadderTests {
 
     // MARK: - 头号规则：到底 = 取消，不是产出
 
-    @Test("到底这一步是 dismiss —— `Esc` 绝不产出")
-    func bottomIsDismissNotProduce() {
+    @Test("到底这一步是 dismiss —— 至于做什么，交给调用方（两个底是反的）")
+    func bottomIsDismiss() {
         let state = EditorEscapeState()
         let step = state.escapeStep()
-        // 这条断言写的是**意图**：`Esc` 到底只能是收掉界面。
-        // 曾经编辑器把这一层接成了「完成并复制」—— 于是"退出键"干了"确认"的活，
-        // 而且写剪贴板是不可逆的。任何把这里改成"产出类动作"的改动都该被这条挡住。
+        // 梯子只回答"退到哪一层"，**不回答那一层做什么** —— 后者由「底」决定：
+        //   覆盖层的底是"还没有东西" ⇒ 退到底＝取消（不留痕）
+        //   编辑器的底是"已经有东西" ⇒ 退到底＝带走
+        // 硬统一字面会让一边变危险（编辑器的 `Esc` 变成"取消"＝按一下丢掉几分钟的活）。
+        //
+        // 这条挡住的是"跳过所有层直接退出"那类错：一旦 `Esc` 不再先退最里面那一层，
+        // 用户画到一半按一下就连人带活一起没了。
         #expect(step == .dismiss)
         #expect(step != .cancelTextEditing)
         #expect(step != .cancelGesture)
