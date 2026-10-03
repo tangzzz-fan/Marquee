@@ -56,12 +56,12 @@ public enum ProCardRenderer {
     private static func drawButton(_ action: ProCardAction, in rect: CGRect, prominent: Bool) {
         let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
         if prominent {
-            // 用项目自己那一支**验过对比度**的绿（`OverlayAccent.confirm`），
+            // 用项目自己那一支**验过对比度**的绿（`ChromePalette.Overlay.done`），
             // 而不是 `controlAccentColor`：后者的实际色值由用户的强调色设置决定，
             // 遇到浅黄时白字会糊成一片 —— 而"看不清按钮上的字"最容易被当成"这个 app 很糙"。
-            NSColor(red: OverlayAccent.confirm.red,
-                    green: OverlayAccent.confirm.green,
-                    blue: OverlayAccent.confirm.blue,
+            NSColor(red: ChromePalette.Overlay.done.red,
+                    green: ChromePalette.Overlay.done.green,
+                    blue: ChromePalette.Overlay.done.blue,
                     alpha: 1).setFill()
         } else {
             NSColor.white.withAlphaComponent(0.14).setFill()

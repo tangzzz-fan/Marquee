@@ -314,34 +314,11 @@ struct OverlayToolbarTests {
         }
     }
 
-    // MARK: - 配色（ticket 24）
-
-    @Test("取消是红的、完成是绿的，且对比度算得过")
-    func accentColorsReadCorrectly() {
-        // 参考工具条里 ✗ 是红的、✓ 是绿的 —— 这两个是"结束这次截图"的两种结果，
-        // 一眼分得出才有意义。初版我们两个都是白的。
-        #expect(OverlayAccent.cancel.red > OverlayAccent.cancel.green, "取消得是红的")
-        #expect(OverlayAccent.cancel.green < 0.5 && OverlayAccent.cancel.blue < 0.5,
-                "得真的读得出是红，不是一块偏暖的白")
-        #expect(OverlayAccent.confirm.green > OverlayAccent.confirm.red, "完成得是绿的")
-
-        // "有对比度"是**可以算的**：WCAG 的 4.5:1 是正文的及格线。
-        // 拿最坏情况的底色算 —— 验收项写的正是"压在白底网页上也可读"。
-        let backdrop = OverlayAccent.chromeBackdrop
-        for (name, color) in [("取消", OverlayAccent.cancel), ("完成", OverlayAccent.confirm)] {
-            let ratio = color.contrast(against: backdrop)
-            #expect(ratio >= 4.5, "\(name)色在面板底色上的对比度只有 \(ratio)，低于 4.5:1")
-        }
-    }
-
-    @Test("对比度算法本身是对的 —— 先证明尺子能用，再用它量")
-    func contrastFormulaSelfCheck() {
-        let white = OverlayAccent.RGB(red: 1, green: 1, blue: 1)
-        let black = OverlayAccent.RGB(red: 0, green: 0, blue: 0)
-        // 黑白是 21:1，这是 WCAG 定义的极值
-        #expect(abs(white.contrast(against: black) - 21) < 0.01)
-        #expect(abs(white.contrast(against: white) - 1) < 0.001)
-    }
+    // 配色那两条在 2026-10-03 并入了 `ChromePaletteTests`：
+    //   · `OverlayAccent` 的两个强调色已归 `ChromePalette.Overlay`（`cancel` / `done`）；
+    //   · 一并订正的是**对比度的尺子** —— 原来对 `chromeBackdrop`（`#1C1C1C`）算，
+    //     而那块颜色实际坐在**工具条材质** `#313131` 上。
+    //     尺子选错，结论就跟着错：对比度只有 3.98 的那枚红当时被判成"合格"。
 
     // MARK: - 弹层（ticket 24）
 

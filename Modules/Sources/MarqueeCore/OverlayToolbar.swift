@@ -109,53 +109,20 @@ public enum OverlaySizeMeaning: String, CaseIterable, Sendable {
     }
 }
 
-/// 工具条上的两个「确认 / 取消」强调色。
-///
-/// 放 Core 是为了**能单测**：这两条颜色承担的是"一眼看出哪个是完成、哪个是取消"，
-/// 而"对比度够不够"是可以算的（相对亮度 + 对比度比），不必靠眼睛。
-///
-/// ⚠️ 参考工具条里 ✗ 是红的、✓ 是绿的 —— 初版我们两个都是白的，
-/// 用户的原话是"取消按钮使用红色，有对比度"。
-public enum OverlayAccent {
-
-    public struct RGB: Equatable, Sendable {
-        public let red: Double
-        public let green: Double
-        public let blue: Double
-
-        public init(red: Double, green: Double, blue: Double) {
-            self.red = red
-            self.green = green
-            self.blue = blue
-        }
-
-        /// WCAG 相对亮度（sRGB → 线性 → 加权）。
-        public var relativeLuminance: Double {
-            func linear(_ channel: Double) -> Double {
-                channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
-            }
-            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
-        }
-
-        /// 与另一个颜色的对比度比（WCAG，1:1 ~ 21:1）。`4.5` 是正文的及格线。
-        public func contrast(against other: RGB) -> Double {
-            let a = relativeLuminance
-            let b = other.relativeLuminance
-            return (max(a, b) + 0.05) / (min(a, b) + 0.05)
-        }
-    }
-
-    /// 完成：绿。
-    public static let confirm = RGB(red: 0.24, green: 0.82, blue: 0.42)
-
-    /// 取消：红（偏珊瑚，在深色底上比纯红亮一档，才够对比度）。
-    public static let cancel = RGB(red: 0.98, green: 0.33, blue: 0.28)
-
-    /// 悬浮面板的**最坏情况**底色：玻璃/材质之上垫的深衬底（见 `ChromeStyle`）。
-    ///
-    /// 用最坏情况而不是"看起来的平均值"：验收项写的是"压在白底网页上也可读"。
-    public static let chromeBackdrop = RGB(red: 0.11, green: 0.11, blue: 0.11)
-}
+// 工具条上的「确认 / 取消」两个强调色原先定义在这里（`OverlayAccent`），
+// 2026-10-03 并入 `ChromePalette.Overlay` 的 `done` / `cancel`。
+//
+// ⚠️ 合并的理由不是"代码整洁"，而是**两个值本来就不一样**：
+//
+//   · 原来 `cancel` = `#FA5447`，对**工具条材质** `#313131` 只有 **3.98** —— 达不到正文级；
+//   · 设计稿量出来的是 `#FF6B60`（**4.66:1**）。
+//
+// 而原来那条对比度测试用的是更暗的 `chromeBackdrop`（`#1C1C1C`，5.21:1）所以它过了。
+// **尺子选错，结论就跟着错** —— 而"这块颜色到底坐在什么底上"本来是有确切答案的：
+// 它就坐在工具条材质上。现在对比度一律对它实际所在的材质算（`ChromePalette.dark.panel`）。
+//
+// 一并消失的还有 `OverlayAccent.RGB` 与它自带的 `relativeLuminance` / `contrast`
+// —— 那是**第二套颜色类型 + 第二把尺子**。两套并存时，改了其中一套的另一半不会跟着变。
 
 /// 工具条上的一格。
 public enum OverlayToolbarSlot: Hashable, Sendable {

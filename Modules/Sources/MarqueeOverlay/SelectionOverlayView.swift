@@ -636,7 +636,9 @@ final class SelectionOverlayView: NSView {
         let localSelection = presentation.globalRect.map { globalToLocal($0) }
         let localHover = presentation.hoverRect.map { globalToLocal($0) }
 
-        NSColor.black.withAlphaComponent(0.42).setFill()
+        // 暗幕：稿子给的是 **32%**（原来这里是 42%）。
+        // 压低一档换来的是「选区外仍然看得见内容」—— 用户要一边看底下的页面一边框它。
+        Self.nsColor(ChromePalette.Overlay.veil).setFill()
 
         if let localSelection, localSelection.width >= 1, localSelection.height >= 1 {
             fillMask(punching: localSelection, cornerRadius: 0)
@@ -800,7 +802,7 @@ final class SelectionOverlayView: NSView {
 
         let outline = Self.roundedPath(box.insetBy(dx: 0.5, dy: 0.5), radius: OverlayToolbar.cornerRadius)
         outline.lineWidth = 1
-        NSColor.white.withAlphaComponent(0.12).setStroke()
+        Self.nsColor(Self.theme.hairline).setStroke()
         outline.stroke()
 
         NSColor.white.withAlphaComponent(0.14).setFill()
@@ -832,42 +834,68 @@ final class SelectionOverlayView: NSView {
         let lit = OverlayToolbarHighlight.isLit(slot,
                                                 activeTool: state.activeTool,
                                                 openPalette: state.palette?.kind)
-        if lit { highlight(rect) }
+        if lit {
+            // ⚠️ **两种「亮」是两件事，谁也不冒充谁**（稿子 §07）：
+            //   · `fill`（填充蓝）= 当前生效的工具，全条只许一个；
+            //   · `pressedFill`（底白 16%）= 这个弹层正开着，属于「按下未复位」。
+            // 样式格是**入口** —— 它亮只说明「我自己的弹层开着」，
+            // 而不是「我是当前工具」（工具是「待用」，不是「在用」）。
+            if case .style = slot {
+                highlight(rect, fill: ChromePalette.Overlay.pressedFill)
+            } else {
+                highlight(rect, fill: Self.theme.fill)
+            }
+        }
 
         switch slot {
         case .tool(let tool):
+            // 默认 **82%**、亮起时 **100%**（稿子 §07）——
+            // 一排 15 个纯白图标会糊成一片亮，压低一档之后「亮起来」才有地方可亮。
             drawSymbol(Self.symbol(for: tool),
                        in: rect,
-                       tint: lit ? .controlAccentColor : .white)
+                       tint: Self.nsColor(lit ? Self.theme.label : Self.theme.icon))
         case .style:
             // 展开时点亮：面板开着却看不出"是它开的"，用户会以为点空了
-            drawSymbol("paintpalette", in: rect, tint: lit ? .controlAccentColor : .white)
+            drawSymbol("paintpalette", in: rect, tint: Self.nsColor(lit ? Self.theme.label : Self.theme.icon))
         case .ocr:
             drawSymbol(state.isRecognizing ? "hourglass" : "text.viewfinder",
                        in: rect,
-                       tint: .white,
+                       tint: Self.nsColor(Self.theme.icon),
                        dimmed: state.isRecognizing)
         case .pin:
-            drawSymbol("pin", in: rect, tint: .white)
+            drawSymbol("pin", in: rect, tint: Self.nsColor(Self.theme.icon))
         case .undo:
-            drawSymbol("arrow.uturn.backward", in: rect, tint: .white, dimmed: !state.canUndo)
+            drawSymbol("arrow.uturn.backward", in: rect, tint: Self.nsColor(Self.theme.icon), dimmed: !state.canUndo)
         case .redo:
-            drawSymbol("arrow.uturn.forward", in: rect, tint: .white, dimmed: !state.canRedo)
+            drawSymbol("arrow.uturn.forward", in: rect, tint: Self.nsColor(Self.theme.icon), dimmed: !state.canRedo)
         case .save:
-            drawSymbol("square.and.arrow.down", in: rect, tint: .white)
+            drawSymbol("square.and.arrow.down", in: rect, tint: Self.nsColor(Self.theme.icon))
         case .cancel:
             // ⚠️ **红**，不是白。参考工具条里 ✗ 是红的、✓ 是绿的 ——
             // 这两个是"结束这次截图"的两种结果，一眼分得出才有意义。
-            // 对比度是算过的（`OverlayAccent` + 单测），不是挑个好看的颜色。
-            drawSymbol("xmark", in: rect, tint: Self.nsColor(OverlayAccent.cancel))
+            // 对比度是算过的（`ChromePalette` + 单测），不是挑个好看的颜色。
+            drawSymbol("xmark", in: rect, tint: Self.nsColor(ChromePalette.Overlay.cancel))
         case .confirm:
-            drawSymbol("checkmark", in: rect, tint: Self.nsColor(OverlayAccent.confirm))
+            drawSymbol("checkmark", in: rect, tint: Self.nsColor(ChromePalette.Overlay.done))
         }
     }
 
-    static func nsColor(_ rgb: OverlayAccent.RGB) -> NSColor {
-        NSColor(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+    /// `RGB` → `NSColor`。**两条都不能省。**
+    ///
+    /// · **alpha 要带上** —— 调色板里一半的颜色是半透明的（暗幕 32%、次要文字 64%、
+    ///   格图标 82%、置灰 30%、小锁 55%…）。原来这里写死 `alpha: 1`，
+    ///   等于把「半透明」这个信息**在最后一步丢掉了** —— 画出来全是实心，
+    ///   而画错的颜色不会报错，只会「看着差点意思」。
+    /// · **用 `srgbRed:` 而不是 `red:`** —— 后者是 deviceRGB，
+    ///   而设计稿给的十六进制是 sRGB。
+    static func nsColor(_ rgb: RGB) -> NSColor {
+        NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: rgb.alpha)
     }
+
+    /// 覆盖层的调色板。**它永远深色** —— 它压在别人的内容上，
+    /// 底下是什么颜色不由我们决定（这与编辑器「深色台面」的理由还不一样）。
+    /// 所以这里不需要 `ChromePalette.resolved(isDark:)` —— 那个是给常规窗口用的。
+    static var theme: ChromePalette.Theme { ChromePalette.dark }
 
     /// 图标名与编辑器**保持一致** —— 同一个功能在两处用不同图标，
     /// 用户会以为是两个不同的东西。
@@ -938,7 +966,9 @@ final class SelectionOverlayView: NSView {
     /// 表情用字符串直接画（系统自带 emoji 字体），不找图片资源。
     private func drawEmoji(_ emoji: String, in rect: CGRect, selected: Bool) {
         if selected {
-            NSColor.white.withAlphaComponent(0.18).setFill()
+            // ⚠️ 稿子**没给**「弹层里选中的那一枚表情」的规格 —— 保守用按下底（白 16%），
+            // 不填蓝：填充蓝在稿子里被限定为「当前生效的工具」，而表情是**内容**不是工具。
+            Self.nsColor(ChromePalette.Overlay.pressedFill).setFill()
             Self.roundedPath(rect.insetBy(dx: -1, dy: -1), radius: 6).fill()
         }
         let size = rect.height * 0.86
@@ -952,9 +982,13 @@ final class SelectionOverlayView: NSView {
                   withAttributes: attributes)
     }
 
-    /// 选中态的底：一个比格子略小的圆角块。
-    private func highlight(_ rect: CGRect) {
-        NSColor.white.withAlphaComponent(0.18).setFill()
+    /// 格子亮起来时的底：一个比格子略大的圆角块。
+    ///
+    /// 底色由调用方给 —— 因为**「亮」有两种**（见调用处）：
+    /// 填充蓝是「我正拿着这支笔」，底白 16% 是「那个面板开着」。
+    /// 原先两者都画成「白 18%」，于是这两件事在颜色上分不开。
+    private func highlight(_ rect: CGRect, fill: RGB) {
+        Self.nsColor(fill).setFill()
         Self.roundedPath(rect.insetBy(dx: -1, dy: -1), radius: 6).fill()
     }
 
@@ -968,7 +1002,10 @@ final class SelectionOverlayView: NSView {
     private func drawLockBadge(in rect: CGRect) {
         let side = rect.width * 0.44
         let badge = CGRect(x: rect.maxX - side, y: rect.minY, width: side, height: side)
-        drawSymbol("lock.fill", in: badge, tint: .white)
+        // 小锁是 **白 55%**（对材质 5.10:1）—— 比次要文字还暗一档：
+        // 它是附加信息，不该跟图标抢注意力，但它必须读得出来，
+        // 因为它是「这一格点下去会弹卡片」的**唯一预告**。
+        drawSymbol("lock.fill", in: badge, tint: Self.nsColor(ChromePalette.Overlay.lock))
     }
 
     private func drawColorSwatch(_ color: AnnotationColor, in rect: CGRect, selected: Bool) {
@@ -997,7 +1034,9 @@ final class SelectionOverlayView: NSView {
                                 meaning: OverlaySizeMeaning,
                                 in rect: CGRect,
                                 selected: Bool) {
-        if selected { highlight(rect) }
+        // 与弹层里选中的表情同一处理：**弹层内的选中**用按下底，不填蓝 ——
+        // 填充蓝在稿子里被限定为「当前生效的工具」，而尺寸档是**参数**不是工具。
+        if selected { highlight(rect, fill: ChromePalette.Overlay.pressedFill) }
 
         let side = min(rect.width, rect.height)
             * SizeSwatchGeometry.relativeSide(index: index, of: count)
@@ -1039,7 +1078,9 @@ final class SelectionOverlayView: NSView {
                             dimmed: Bool = false) {
         // ⚠️ 模板图直接 `draw(in:)` **不会**用"当前颜色"着色 —— 必须把颜色放进配置里。
         // 否则图标全是黑的，在深色底上等于没画（而且不报错，只会让人以为图标名写错了）。
-        let color = dimmed ? tint.withAlphaComponent(0.28) : tint
+        // 置灰走调色板那枚（白 30% / 2.58:1）—— 禁用态本来就是「不活跃」的样子，
+        // 所以在正文级之下是**刻意的**，不是没调好。
+        let color = dimmed ? Self.nsColor(Self.theme.disabled) : tint
         // `usingColorSpace` 而不是 `.redComponent`：后者对动态色（强调色）会**抛异常**。
         let resolved = color.usingColorSpace(.sRGB) ?? .white
         let key = "\(symbol)|\(dimmed)|\(effectiveAppearance.name.rawValue)|"

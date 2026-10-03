@@ -113,6 +113,19 @@ public enum ChromePalette {
         public let label: RGB
         /// 次要文字：每一行下面那句说明就是它。
         public let label2: RGB
+        /// 工具条 / 弹层里那个**图标** —— ⚠️ **不是纯白，是白 82%**。
+        ///
+        /// 稿子量的是 **9.31:1**（对材质）。压低一档是刻意的：
+        /// 一排 15 个纯白图标会**糊成一片亮**，而压低之后，
+        /// 「选中态」那份纯白才有地方可亮 —— 否则选中与未选中只差一个底色块。
+        public let icon: RGB
+        /// 禁用：**"暂时没有内容可操作"**（撤销 / 重做没得撤时）。
+        ///
+        /// **2.58:1** —— 对比度**无下限**，因为它本来就该看起来"不活跃"。
+        /// ⚠️ 稿子限定它**只能**用在这两种格上：那是真的没内容可操作，
+        /// 而不是"没权限"或"没买"。后两种必须保持可读 ——
+        /// 用户得先看见入口，才可能去点它、才可能知道为什么被挡住。
+        public let disabled: RGB
 
         // ── 强调 ─────────────────────────────────────────────────
         /// 强调填充：开关「开」、滑块已选、主按钮。
@@ -178,6 +191,7 @@ public enum ChromePalette {
              // 强调按钮上的字是白的（稿子：「强调填充，白字 4.93:1」）
              (name: "white on fill", foreground: RGB(hex: 0xFFFFFF), against: fill),
              (name: "glyph / panel", foreground: glyph, against: panel),
+             (name: "icon / panel", foreground: icon, against: panel),
              (name: "caution", foreground: caution, against: background),
              (name: "danger", foreground: danger, against: background)]
         }
@@ -205,6 +219,8 @@ public enum ChromePalette {
         borderHover: RGB(hex: 0x636363),
         label: RGB(hex: 0xFFFFFF),
         label2: RGB(hex: 0xFFFFFF, alpha: 0.64),
+        icon: RGB(hex: 0xFFFFFF, alpha: 0.82),
+        disabled: RGB(hex: 0xFFFFFF, alpha: 0.30),
         fill: RGB(hex: 0x006FDC),
         fillHover: RGB(hex: 0x0072DF),
         fillPressed: RGB(hex: 0x0059C4),
@@ -234,6 +250,11 @@ public enum ChromePalette {
         borderHover: RGB(hex: 0xA4A4A4),
         label: RGB(hex: 0x000000, alpha: 0.85),
         label2: RGB(hex: 0x000000, alpha: 0.58),
+        // ⚠️ 浅色这两枚是**补出来的**：稿子里的"格图标 82% / 置灰 30%"只在覆盖层
+        // 出现过（覆盖层深色唯一）。浅色窗口里目前没有"一排 15 个图标"那种场景，
+        // 所以取与主文字同一档；真用到时（比如偏好页的图标行）再校。
+        icon: RGB(hex: 0x000000, alpha: 0.85),
+        disabled: RGB(hex: 0x000000, alpha: 0.35),
         fill: RGB(hex: 0x0065D2),
         fillHover: RGB(hex: 0x0072DF),
         fillPressed: RGB(hex: 0x004FBA),
@@ -289,6 +310,27 @@ public enum ChromePalette {
         /// 比"挑一个够亮的颜色"可靠。
         public static let strokeCore = RGB(hex: 0xFFFFFF)
         public static let strokeEdge = RGB(hex: 0x000000, alpha: 0.45)
+
+        /// Pro 小锁（**白 55%**，对材质 5.10:1）。
+        ///
+        /// 它是"格子右下角那颗 9pt 的锁"。比次要文字（64%）暗一档：
+        /// 它是**附加信息**，不该跟图标抢注意力 —— 但它必须读得出来，
+        /// 因为它是"这一格点下去会弹卡片"的**唯一预告**。
+        public static let lock = RGB(hex: 0xFFFFFF, alpha: 0.55)
+
+        /// 格子**悬停**时的底（白 9%）。
+        ///
+        /// 与按下态（16%）分开是刻意的：悬停是"你的手在这"，按下是"你按了" ——
+        /// 两者差 7 个百分点，正好是"看得出来但不会误认"的量。
+        public static let hoverFill = RGB(hex: 0xFFFFFF, alpha: 0.09)
+
+        /// 格子**按下**时 / 弹层正开着时的底（白 16%）。
+        ///
+        /// ⚠️ 这一档与「选中」（填充蓝）**是两种不同的亮**，不能混：
+        /// **填充蓝 = 当前生效的工具**；**按下外观 = 这个弹层正开着**。
+        /// 曾经把"有弹层开着就点亮样式格"写成一条规则，于是打开表情面板时
+        /// 样式格也亮了（用户当场指出不对）。**谁也不冒充谁。**
+        public static let pressedFill = RGB(hex: 0xFFFFFF, alpha: 0.16)
 
         /// 白芯那条线的宽度（点）。
         public static let strokeCoreWidth: Double = 1

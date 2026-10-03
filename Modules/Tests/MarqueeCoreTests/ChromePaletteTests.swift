@@ -96,6 +96,48 @@ struct ChromePaletteTests {
         #expect(contrastRatio(l.caution, l.background) >= 4.5, "而文字版必须够")
     }
 
+    @Test("取消是红的、完成是绿的 —— 方向与对比度都要对")
+    func overlayAccentsReadCorrectly() {
+        // 参考工具条里 ✗ 是红的、✓ 是绿的 —— 这两个是"结束这次截图"的两种结果，
+        // 一眼分得出才有意义。初版我们两个都是白的（用户的原话是"取消按钮使用红色，有对比度"）。
+        let cancel = ChromePalette.Overlay.cancel
+        let done = ChromePalette.Overlay.done
+
+        #expect(cancel.red > cancel.green, "取消得是红的")
+        #expect(cancel.green < 0.5 && cancel.blue < 0.5,
+                "得真的读得出是红，不是一块偏暖的白")
+        #expect(done.green > done.red, "完成得是绿的")
+
+        // ⚠️ 尺子必须对准**它们实际坐着的那个底** —— 工具条材质。
+        // 这里原来量的是更暗的 `#1C1C1C`，于是那枚只有 3.98 的红被判成了"合格"。
+        // 尺子选错，结论就跟着错；而"这块颜色坐在哪"本来是有确切答案的。
+        let material = ChromePalette.dark.panel
+        #expect(contrastRatio(cancel, material) >= 4.5,
+                "取消红对工具条材质只有 \(contrastRatio(cancel, material))")
+        #expect(contrastRatio(done, material) >= 4.5,
+                "完成绿对工具条材质只有 \(contrastRatio(done, material))")
+    }
+
+    @Test("格图标 82% 与置灰 30% —— 稿子量过的两个数")
+    func iconAndDisabledMatchSpec() {
+        let t = ChromePalette.dark
+
+        // 图标压低一档是刻意的：一排 15 个纯白图标会**糊成一片亮**，
+        // 而压低之后，「选中态」那份纯白才有地方可亮。
+        let icon = contrastRatio(t.icon.over(t.panel), t.panel)
+        #expect(abs(icon - 9.31) < 0.05, "格图标对材质稿子写 9.31，实算 \(icon)")
+        #expect(contrastRatio(t.label, t.panel) > icon,
+                "主文字（纯白）必须比格图标更亮 —— 否则'图标压低一档'就没有意义了")
+
+        // 置灰**无下限**（它本来就该看起来不活跃），但也不能低到看不见：
+        // 用户得知道"那里有个格子，只是现在没得撤"。
+        // 2.58 是稿子量的 —— 这条钉的是"它是个量出来的中间值"，不是随手调的数。
+        let dim = contrastRatio(t.disabled.over(t.panel), t.panel)
+        #expect(abs(dim - 2.58) < 0.05, "置灰对材质稿子写 2.58，实算 \(dim)")
+        #expect(dim < 3, "禁用态本来就不该到图形级")
+        #expect(dim > 1.5, "但也不能低到看不见")
+    }
+
     @Test("覆盖层那两枚承担判断的颜色：替换掉系统色是**必要**的")
     func overlaySemanticColorsEarnTheirValues() {
         // 这条不是在测常量，是在钉住「为什么不能用系统红/绿」。
