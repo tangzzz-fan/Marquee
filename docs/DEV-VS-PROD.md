@@ -114,11 +114,22 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 
 ## 4. 方案（已定）
 
-| 配置 | 用途 | bundle id | 数据根 | 优化 |
+| 配置 | 用途 | bundle id | 沙盒 | 优化 |
 | --- | --- | --- | --- | --- |
-| `Debug` | 只用于跑测试 | 正式 id | 测试临时目录 | 不优化 |
-| **`Dev`** | **本地运行（scheme 的 Run）** | **`<正式 id>.dev`** | 自动（按 id） | **照抄 `Release`** |
-| `Release` | 发版 / 打包 / **沙盒验证** | 正式 id | 自动（按 id） | 优化 |
+| `Debug` | 要"能用的断点"时临时把 Run 切过来 | `<正式 id>.dev` | 无 | `-Onone` |
+| **`Dev`** | **本地运行（scheme 的 Run）** | **`<正式 id>.dev`** | 无 | **照抄 `Release`** |
+| `Release` | **Developer ID** 打包（`scripts/package.sh`） | 正式 id | **无** | 优化 |
+| **`MAS`** | **上架 App Store**（2026-10-03 加） | 正式 id | **有** | 优化 |
+
+> ⚠️ **「沙盒」那一列是 2026-10-03 才有的第四档**（ticket 32）。三件事要看清：
+>
+> 1. **只有 `MAS` 带 `CODE_SIGN_ENTITLEMENTS` + hardened runtime。**
+>    `Release` 不带是刻意的 —— 它是 **Developer ID** 那条路，而那条路存在的
+>    **全部价值就是保住自动滚动**（沙盒禁止向其它 app 投递输入事件）。
+> 2. **`Debug` 的身份与数据根早已不是"正式 id / 临时目录"**（这张表原先写错了）：
+>    它和 `Dev` 一样是 `com.tango.Marquee.dev`，**从 Debug 切到 Dev 不会多出一个身份**。
+> 3. **bundle id 靠继承**：`settings.base` 里是正式 id，只有 `Debug` / `Dev` 覆盖成 `.dev`。
+>    所以"只有 `Release` 与 `MAS` 拿生产 id"这条约束由**继承关系**保证，不靠人记得。
 
 ### 4.1 `Dev` 与 `Debug` 的区别（逐项对比过）
 
@@ -167,6 +178,35 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 > 但本项目**全仓 0 处 `#if DEBUG`** —— 也就是说这个编译条件目前一点用都没有。
 > **不要**用它来区分开发/正式行为；要区分就用 `AppIdentity.isDevelopmentBuild`
 > （见 §4 的"关键简化"）—— 那是能脱机单测的。
+
+### 4.3 沙盒改掉了哪几处行为（ticket 32）
+
+沙盒不是"多了一个限制"，是**改了几处行为**。四处，每处都有对应判据：
+
+| 行为 | 非沙盒 | 沙盒 | 判据 |
+| --- | --- | --- | --- |
+| 自动滚动 | 可用（按需申请辅助功能） | **做不到**，且**不许去申请** | `AutoScrollGate.evaluate(isSandboxed:permissionGranted:)` |
+| 默认落盘 | `~/Pictures/Marquee` | **同一个路径**（`getpwuid` 的真实家目录拼出来） | `OutputSettings.defaultOutputDirectory()` |
+| 历史仓库 | `~/Library/Application Support/<id>/history/` | 容器内的同名位置 | `AppIdentity.supportDirectory()` |
+| 探针报告 | `<数据根>/reports/` | 同上（容器内） | `AppIdentity.logDirectory()` |
+
+**四条硬规则**：
+
+1. **判据按运行期分派，不按配置。** 编译期开关（`#if` / 配置名）会让同一份代码
+   在两个构建里行为不同，而**没编进去的那条分支只有发版那天才跑得到**。
+   唯一入口是 `AppIdentity.isSandboxed`（读 `APP_SANDBOX_CONTAINER_ID`，可注入 ⇒ 能脱机单测）。
+2. **别问 `FileManager` 要"家目录"。** 沙盒下 `NSHomeDirectory()` 是容器，
+   `.picturesDirectory` 由它推出来 ⇒ 也指向容器里的 Pictures。图会存进
+   `~/Library/Containers/<id>/Data/Pictures/` —— **保存"成功"、用户翻遍访达找不到**，
+   而这正是本项目最忌讳的那类错（不崩、不报错、只悄悄错）。
+   给用户看的东西走真实家目录（`getpwuid`）；给排障看的走
+   `.applicationSupportDirectory`（沙盒下**确定**是容器）。见 `docs/PITFALLS.md` 144。
+3. **沙盒构建只能在 `open` 下启动，不能在终端里直接跑。** 开发会话自身就在沙盒里，
+   `libsecinit` 装不上自己的沙盒 → **SIGTRAP 崩在 `main` 之前，一行输出都没有**。
+   所以自检报告必须落文件（stdout 在 `open` 下是拿不到的）。见 `docs/PITFALLS.md` 143。
+4. **不要在沙盒内做数据迁移。** 沙盒进程读不到容器**外**的 Application Support。
+   这件事只能由**非沙盒**构建代劳 —— 或者干脆不做：路线 B 下 MAS 版是首发，
+   用户本来就没有"沙盒外的老数据"。（偏好还根本不在 Application Support。）
 
 ### 关键简化：「是不是开发版」由 bundle id 推导，不用编译期开关
 

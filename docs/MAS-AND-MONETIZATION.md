@@ -262,8 +262,8 @@ App Review 原文（3.1.1）明确允许：
 | --- | --- | --- |
 | **自动滚动**（滚动截屏的后半，ticket 12） | ❌ **做不了**：它靠代用户发滚轮事件，而那正是被禁的那一条 | ① MAS 版**只保留手动滚动**长截图（能力还在，只是要用户自己滚 —— 与"手动版 MVP"完全同构）；② 或者不发 MAS 版，保住这个差异点 |
 | 默认保存到**桌面** | ❌ **写不进去**：文件访问只有 user-selected / Downloads / **Pictures** / Music / Movies 这几类，**桌面对应的 entitlement 根本不存在** | 默认目录改成 `~/Pictures/Marquee`（加 `assets.pictures.read-write`）；或首次让用户选一次目录，存 **security-scoped bookmark** |
-| 最近截图仓库 | ⚠️ 路径会从 `~/Library/Application Support/…` 变成容器内 | 写一次**一次性迁移**（把老目录的文件搬进容器），否则老用户"历史全没了" |
-| 偏好设置（`com.tango.Marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上，迁移或接受重设 |
+| 最近截图仓库 | ⚠️ 路径会从 `~/Library/Application Support/…` 变成容器内 | ❌ **「搬一次」这件事在沙盒内做不到** —— 沙盒进程读不到容器**外**的 Application Support。只能由**非沙盒**构建代劳，或干脆不做：路线 B 下 MAS 版是首发，用户本来就没有"沙盒外的老数据"。（2026-10-03 核实） |
+| 偏好设置（`com.tango.Marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上。另：**偏好根本不在 Application Support**（在 `~/Library/Preferences/`），原文这句是错的。v1 首发无需迁移 |
 | 全局快捷键（Carbon 热键） | ✅ 不受影响 | 不用改 |
 | 截图 / 覆盖层 / 标注 / 导出 / 钉图 / OCR | ✅ 都不碰受限能力 | 不用改 |
 | 鼠标穿透的钉图窗口 | ✅ | 不用改 |
@@ -271,20 +271,21 @@ App Review 原文（3.1.1）明确允许：
 
 ### 2.3 工程改动清单（可勾）
 
-- [ ] **App 图标**：做 1024×1024 → `Assets.xcassets/AppIcon` →
-      `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon`（现在是空串，等于没图标）
-- [ ] **新增 `App/Marquee.entitlements`**：`app-sandbox` + `files.user-selected.read-write`
-      + `assets.pictures.read-write`（默认存 Pictures 的话）；**不勾**用不到的项（多勾会被审核问）
-- [ ] `project.yml` 加 `CODE_SIGN_ENTITLEMENTS`；MAS 构建要 `ENABLE_HARDENED_RUNTIME: YES`
-      （现在是 NO —— 非 MAS 也建议开，但**开了要重新验一遍所有能力**）
-- [ ] **`Info.plist` 补 `NSScreenCaptureUsageDescription`**（见 §2.4）
-- [ ] 默认输出目录改 Pictures（或加"首次选目录"流程 + bookmark）
-- [ ] 数据迁移（Application Support → 容器）
-- [ ] 打包脚本加一条 MAS 路线：`xcodebuild archive` → `-exportArchive`（`app-store` 方法）→ 上传
-- [ ] StoreKit：本地 `Products.storekit` 配置文件（开发期能买）+ App Store Connect 里建商品
-- [ ] `Entitlement` 状态机（Core，可脱机单测）+ 偏好设置里的 Pro 页 + 四个触发点
+- [x] **App 图标**：做 1024×1024 → `Assets.xcassets/AppIcon` → `ASSETCATALOG_COMPILER_APPICON_NAME`（ticket 29）
+- [x] **`App/Marquee.entitlements`**：`app-sandbox` + `files.user-selected.read-write`
+      + `assets.pictures.read-write`；**不勾**用不到的项（ticket 32）
+- [x] `project.yml`：`CODE_SIGN_ENTITLEMENTS` + `ENABLE_HARDENED_RUNTIME: YES`
+      —— **只加在新的第四个配置 `MAS` 上**，`Release`（Developer ID）保持不带沙盒
+- [x] **`Info.plist` 补 `NSScreenCaptureUsageDescription`**（ticket 29）
+- [x] 默认输出目录改 `~/Pictures/Marquee`（ticket 32）。**`bookmark` 那条路没走** ——
+      默认目录本身就在 `Pictures` 里，不需要用户再选一次
+- [ ] ~~数据迁移（Application Support → 容器）~~ ⇒ **撤销**：沙盒内做不到，见 §2.2
+- [ ] **打包脚本加一条 MAS 路线**（ticket 33）：`xcodebuild archive` → `-exportArchive`（`app-store`）→ 上传
+- [x] StoreKit：本地 `Products.storekit` 配置文件（ticket 31）
+- [ ] **App Store Connect 里建商品**（`com.tango.Marquee.pro` ¥36 非消耗型）—— 真实沙盒交易与提审都卡在这一步
+- [x] `Entitlement` 状态机（Core，可脱机单测）+ 偏好通用页的状态区 + 三个触发点的锁与卡片（ticket 30 / 31）
 - [ ] 上架材料：隐私标签（**可以答"不采集任何数据"** —— 这是我们相对竞品的优势）、
-      审核备注（一条一句解释为什么需要屏幕录制）、截图、描述、关键词、年龄分级
+      审核备注（一句解释为什么需要屏幕录制、一句说明**自动滚动的缺席是刻意的**）、截图、描述、关键词、年龄分级
 
 ### 2.4 ⚠️ 一个**现在就该补**的小缺陷：屏幕录制用途描述
 

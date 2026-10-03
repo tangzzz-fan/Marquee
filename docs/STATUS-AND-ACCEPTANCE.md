@@ -720,6 +720,33 @@ defaults delete com.tango.Marquee.dev onboarding.completed
 | Z20 | 走完（或直接点红叉）→ 重启应用 | **不再弹**。两种退出方式都算走过 —— "我明明关过它"是最容易让人起反感的一类细节 |
 | Z21 | 从终端跑 `-marqueeEntitlement`（先重置引导状态） | **不弹引导、命令正常退出**。带 `-marquee` 前缀的自检入口一律豁免，否则那些命令会挂在一个等人点的窗口上 |
 
+#### 沙盒构建下的自查（ticket 32）
+
+> ⚠️ **沙盒构建（`MAS` 配置）只能在 `open` 下启动，不能在终端里直接跑。**
+> 开发会话自身就在沙盒里，`libsecinit` 装不上自己的沙盒 → **SIGTRAP 崩在 `main` 之前，
+> 一行输出都没有**（`docs/PITFALLS.md` 143）。所以自检报告一律**落文件**。
+
+```bash
+CONFIGURATION=MAS ./scripts/build.sh      # 产物在 DerivedData/Build/Products/MAS/
+# 经 launchd 启动。⚠️ 路径**必须绝对** —— 相对路径只会说 "Unable to find application named"，
+# 那是个与根因毫无关系的提示。
+open -a "$PWD/DerivedData/Build/Products/MAS/Marquee.app" --args -marqueeDiagnostics
+cat ~/Library/Containers/com.tango.Marquee/Data/Library/Application\ Support/com.tango.Marquee/reports/diagnostics.txt
+```
+
+| # | 步骤 | 预期 |
+| --- | --- | --- |
+| AA1 | 跑上面那条 `-marqueeDiagnostics` | 报告里 **沙盒 = 是**；**进程家目录**是 `~/Library/Containers/com.tango.Marquee/Data`，而**真实家目录**是 `/Users/<你>` —— 两者不同才说明沙盒真生效了 |
+| AA2 | 看报告里的「默认落盘」 | `~/Pictures/Marquee`。**不是桌面**（写不进去），**也不是容器里的 Pictures**（那会让图存到用户永远找不到的地方） |
+| AA3 | 看报告里的「历史仓库」 | 落在**容器内**（路径里有 `Library/Containers/`）—— 这是对的 |
+| AA4 | 压 `⌃Q` 截一张 → `⌘S` 落盘 | 图出现在 **`~/Pictures/Marquee/`**，访达里看得见。**这是本票最容易悄悄错的一条** |
+| AA5 | 长截图里按 `空格` | **不去申请辅助功能**；提示行说的是"这个版本不提供自动滚动"。⚠️ **那句话里不许出现「辅助功能」四个字** —— 出现了就是把用户支去干一件注定没用的事 |
+| AA6 | 手动滚一段再 `⏎` | 长截图**照旧可用**（砍掉的只有自动滚动的"手"） |
+| AA7 | 跑 `-marqueeDemoEditor` | 编辑器在沙盒下起得来、八类标注都画得出 |
+| AA8 | 逐项过一遍 §3 的 A–Z | 在**沙盒构建**下重跑 —— **本票的正式验收就是这一条** |
+
+> ⚠️ 沙盒构建**会重新问一遍屏幕录制授权**（身份与沙盒状态都变了）—— 预期行为，不是缺陷。
+
 > ⚠️ **真实沙盒**（不是本地模拟）要在**正式 id 的 Release 构建**上用沙盒测试账号跑：
 > `CONFIGURATION=Release ./scripts/build.sh` → 用沙盒账号登录 → `-marqueeEntitlement purchase`。
 > 那一步之前需要先在 App Store Connect 建好 `com.tango.Marquee.pro`（¥36 非消耗型）。
