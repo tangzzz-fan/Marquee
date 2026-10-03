@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marquee · ③ 后续 onboarding · 首次使用的原地教学 · 高保真稿</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   0. 方向种子 —— modern-minimal（Linear / Vercel），逐字绑定（仅文档层）
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
+  --accent:  oklch(58% 0.18 255);
+
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+:root{
+  --stage: oklch(96.6% 0.003 260);
+  --ink:   oklch(32% 0.01 260);
+  --ink2:  oklch(52% 0.008 260);
+  --ink3:  oklch(84% 0.006 260);
+  --dim:   oklch(53% 0.16 32);
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   1. 宿主 token —— 与 first-run-onboarding.html / pro-upgrade-card.html 逐项相同
+   ══════════════════════════════════════════════════════════════════ */
+.host-dark{
+  --c-bg:      oklch(26.5% 0 0);      /* #252525 */
+  --c-panel:   oklch(31.5% 0 0);      /* #313131 提示材质 */
+  --c-inset:   oklch(22.5% 0 0);      /* #1c1c1c */
+  --c-cap:     oklch(38% 0 0);        /* #424242 键帽 */
+  --c-capbd:   oklch(46% 0 0);        /* #585858 */
+  --c-border:  oklch(43% 0 0);
+  --c-borderh: oklch(50% 0 0);
+  --c-hair:    rgba(255,255,255,.10);
+  --c-label:   #ffffff;
+  --c-label2:  rgba(255,255,255,.64); /* 窗底 7.10:1 / 提示材质 6.30:1 */
+  --c-fill:    oklch(55% 0.19 254);   /* #006fdc 白字 4.93:1 */
+  --c-fill-h:  oklch(56% 0.19 254);
+  --c-fill-p:  oklch(48% 0.19 254);
+  --c-glyph:   oklch(72% 0.14 254);
+  --c-warn:    oklch(84% 0.17 88);
+  --c-ring:    oklch(62% 0.17 254);
+  --c-soft:    rgba(255,255,255,.07);
+  --c-soft-h:  rgba(255,255,255,.11);
+  --c-soft-p:  rgba(255,255,255,.15);
+  --c-ghost:   rgba(255,255,255,.10);
+  --c-ghost-p: rgba(255,255,255,.16);
+  --c-menubar: oklch(28.5% 0 0);
+  --c-mbartx:  rgba(255,255,255,.82);
+}
+.host-light{
+  --c-bg:      oklch(92.8% 0 0);      /* #e7e7e7 */
+  --c-panel:   oklch(99% 0 0);        /* #fcfcfc */
+  --c-inset:   #ffffff;
+  --c-cap:     oklch(96.5% 0 0);
+  --c-capbd:   oklch(80% 0 0);
+  --c-border:  oklch(80% 0 0);
+  --c-borderh: oklch(72% 0 0);
+  --c-hair:    rgba(0,0,0,.10);
+  --c-label:   rgba(0,0,0,.85);
+  --c-label2:  rgba(0,0,0,.58);       /* 窗底 5.01:1 / 面板 5.28:1 */
+  --c-fill:    oklch(52% 0.19 254);   /* #0065d2 白字 5.62:1 */
+  --c-fill-h:  oklch(56% 0.19 254);
+  --c-fill-p:  oklch(45% 0.19 254);
+  --c-glyph:   oklch(52% 0.19 254);
+  --c-warn:    oklch(56% 0.13 62);
+  --c-ring:    oklch(60% 0.18 254);
+  --c-soft:    rgba(255,255,255,.92);
+  --c-soft-h:  #ffffff;
+  --c-soft-p:  oklch(95% 0 0);
+  --c-ghost:   rgba(0,0,0,.06);
+  --c-ghost-p: rgba(0,0,0,.10);
+  --c-menubar: oklch(96.5% 0 0);
+  --c-mbartx:  rgba(0,0,0,.78);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2. 文档层
+   ══════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:400 14px/1.75 var(--font-body);-webkit-text-size-adjust:100%}
+.wrap{max-width:1248px;margin:0 auto;padding:56px 24px 120px}
+.doc__n{font:600 12px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+h1{margin:12px 0 0;font:600 30px/1.25 var(--font-display);letter-spacing:-.02em;color:var(--fg)}
+.doc__lede{margin:14px 0 0;max-width:76ch;color:var(--ink2);font-size:14px}
+.doc__lede strong{color:var(--ink);font-weight:600}
+.doc__meta{margin:18px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.tag{font:500 11px/1 var(--mono);color:var(--ink2);background:var(--stage);border:1px solid var(--border);
+     border-radius:999px;padding:6px 10px}
+
+section{margin-top:72px;border-top:1px solid var(--border);padding-top:32px}
+h2{margin:0;font:600 19px/1.3 var(--font-display);letter-spacing:-.01em;color:var(--fg);display:flex;align-items:baseline;gap:12px}
+h2 .n{font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.08em}
+h3{margin:32px 0 0;font:600 14px/1.4 var(--font-display);color:var(--fg)}
+p{margin:12px 0 0;max-width:78ch;color:var(--ink2)}
+.lead{margin-top:14px;color:var(--ink)}
+ul.rules{margin:14px 0 0;padding:0;list-style:none;max-width:84ch}
+ul.rules li{position:relative;padding:8px 0 8px 22px;color:var(--ink2);border-top:1px dashed var(--border)}
+ul.rules li:first-child{border-top:0}
+ul.rules li::before{content:'';position:absolute;left:2px;top:18px;width:7px;height:7px;background:var(--dim);border-radius:1px}
+ul.rules b{color:var(--ink);font-weight:600}
+code{font:500 12px/1 var(--mono);background:var(--stage);border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:var(--ink)}
+
+table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px 10px 0;border-bottom:1px solid var(--border)}
+th{font:600 11px/1.4 var(--mono);color:var(--ink2);letter-spacing:.04em;white-space:nowrap}
+td{color:var(--ink2)} td b{font-weight:600;color:var(--ink)}
+td .mono{font:500 11.5px/1.6 var(--mono);color:var(--ink2)}
+.k{display:inline-block;font:600 11px/1 var(--mono);color:var(--dim);margin-right:2px}
+/* ══════════════════════════════════════════════════════════════════
+   3. 控件层 —— 只读 --c-*（与 ①② 同一层）
+   ══════════════════════════════════════════════════════════════════ */
+.sc{position:relative;width:calc(var(--w)*2px);height:calc(var(--h)*2px)}
+.sc>*{position:absolute;left:0;top:0;transform:scale(2);transform-origin:0 0}
+
+.coach{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;background:var(--c-panel);
+      color:var(--c-label);border:1px solid rgba(255,255,255,.12);font-family:var(--font-body);
+      -webkit-font-smoothing:antialiased}
+.pill{height:28px;padding:0 12px;border-radius:14px;font-size:12px;line-height:1;
+      box-shadow:0 10px 24px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28)}
+.bubble{position:relative;display:inline-flex;align-items:center;gap:5px;padding:10px 12px;border-radius:10px;
+      font-size:12px;line-height:16px;box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32)}
+.bubble::after{content:'';position:absolute;top:-6px;left:22px;width:10px;height:10px;background:var(--c-panel);
+      border-left:1px solid rgba(255,255,255,.12);border-top:1px solid rgba(255,255,255,.12);transform:rotate(45deg)}
+.kbd--x{min-width:16px;height:15px;padding:0 4px;border-radius:3.5px;background:var(--c-cap);
+      border:1px solid var(--c-capbd);display:inline-flex;align-items:center;justify-content:center;
+      font:500 10px/1 var(--font-body);color:var(--c-label)}
+.host-dark .kbd--x{box-shadow:0 1px 0 rgba(0,0,0,.3)}
+
+.mbar{width:460px;height:24px;display:flex;align-items:center;gap:13px;padding:0 10px;
+      background:var(--c-menubar);color:var(--c-mbartx);border-bottom:1px solid var(--c-hair);
+      font:400 11px/1 var(--font-body)}
+.mbar__sp{flex:1}
+.mbar__mb{width:24px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+      background:var(--c-ghost)}
+.mbar em{font:500 10px/1 var(--mono);font-style:normal;opacity:.75;margin-left:4px}
+
+.mbnote{position:relative;width:280px;padding:10px 12px;border-radius:8px;background:var(--c-panel);
+      border:1px solid rgba(255,255,255,.12);font-family:var(--font-body);-webkit-font-smoothing:antialiased;
+      box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32)}
+.mbnote::after{content:'';position:absolute;top:-6px;left:263px;width:10px;height:10px;background:var(--c-panel);
+      border-left:1px solid rgba(255,255,255,.12);border-top:1px solid rgba(255,255,255,.12);transform:rotate(45deg)}
+.mbnote b{display:block;font:600 12px/18px var(--font-body);color:var(--c-label)}
+.mbnote span{display:block;margin-top:2px;font:400 11px/14px var(--font-body);color:var(--c-label2)}
+.host-light .mbnote{border-color:rgba(0,0,0,.10);box-shadow:0 12px 28px rgba(16,18,22,.16),0 1px 4px rgba(16,18,22,.10)}
+.host-light .mbnote::after{border-color:rgba(0,0,0,.10);border-right:0;border-bottom:0;
+      border-left:1px solid rgba(0,0,0,.10);border-top:1px solid rgba(0,0,0,.10)}
+
+.menu{width:260px;padding:5px;border-radius:10px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);
+      box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32);font-family:var(--font-body);
+      -webkit-font-smoothing:antialiased}
+.mi{display:flex;align-items:center;height:22px;padding:0 8px;border-radius:4px;
+      font:400 13px/1 var(--font-body);color:var(--c-label)}
+.mi i{margin-left:auto;font:500 10.5px/1 var(--mono);font-style:normal;color:var(--c-label2)}
+.mi.is-hover,.mi:hover{background:var(--c-fill);color:#fff}
+.mi.is-hover i,.mi:hover i{color:#fff}
+.msep{height:1px;margin:4px 8px;background:var(--c-hair)}
+
+/* 覆盖层语境（示意） */
+.mat{position:relative;width:460px;height:228px;font-family:var(--font-body);overflow:hidden}
+.mat--dark{background:oklch(22% 0 0);color:rgba(255,255,255,.55)}
+.mat__lb{position:absolute;left:16px;top:13px;font:500 10.5px/1.5 var(--mono)}
+.sel{position:absolute;border:1px dashed rgba(255,255,255,.9);border-radius:1px}
+.anno{position:absolute;border:3px solid var(--c-fill);border-radius:2px}
+.ghost{position:absolute;border:1px dashed rgba(255,255,255,.4);border-radius:6px;display:flex;align-items:center;
+      justify-content:center;text-align:center;font:500 10px/1.4 var(--mono);color:rgba(255,255,255,.5)}
+.cur{position:absolute;transform:translate(-50%,-50%)}
+.mark-x{position:absolute;left:16px;top:14px;font:600 11px/1 var(--mono);color:oklch(70% 0.17 25)}
+
+/* ══════════════════════════════════════════════════════════════════
+   4. 稿面与红样
+   ══════════════════════════════════════════════════════════════════ */
+.plan{position:relative;width:1222px}
+.plan .sc{position:absolute;left:var(--ox);top:var(--oy)}
+.plan--s1{height:612px;--ox:132px;--oy:96px}
+.plan--s1b{height:440px;--ox:132px;--oy:96px}
+.plan--s2{height:724px;--ox:132px;--oy:96px}
+.plan--s3{height:440px;--ox:132px;--oy:96px}
+.plan--s4{height:600px;--ox:132px;--oy:96px}
+figure{margin:0}
+figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin:0 0 10px;letter-spacing:.02em}
+.dim--v{position:absolute;width:1px;background:var(--dim)}
+.dim--v::before,.dim--v::after{content:'';position:absolute;left:-3px;width:7px;height:1px;background:var(--dim)}
+.dim--v::before{top:0}.dim--v::after{bottom:0}
+.dim--v span{position:absolute;left:12px;top:50%;transform:translateY(-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v span.l{left:auto;right:12px}
+.planfoot{margin-top:22px;font:500 11px/1.9 var(--mono);color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="wrap" data-od-id="doc-head">
+
+  <div class="doc__n">③ / ③　MARQUEE DESIGN SPEC</div>
+  <h1>后续 onboarding — 首次使用的原地教学</h1>
+  <p class="doc__lede">第 ① 块（<code>first-run-onboarding.html</code>）回答「这是什么、按哪个键」；
+     第 ② 块（<code>pro-upgrade-card.html</code>）回答「这个能力为什么用不了」；
+     这一块回答中间剩下的三个问题：<b>屏幕怎么不动了、然后呢、成了吗、以后去哪找</b>。</p>
+  <p class="doc__lede"><strong>结构结论先讲：</strong>后续 onboarding <b>不在窗口里</b>，而是分散进"使用的四个第一次"。
+     窗口不能分页（硬约束 1），所以教学必须搬到使用现场 —— 每一刻只出现一条、做对了就消失、
+     不点"我知道了"、关掉就不再回来。它没有"下一步"，因此它不是流程。</p>
+  <div class="doc__meta">
+    <span class="tag">四个"第一次" + 一个常驻地</span>
+    <span class="tag">一次最多一条提示</span>
+    <span class="tag">无"下一步"按钮</span>
+    <span class="tag">提示不可点（唯一例外见 06）</span>
+    <span class="tag">稿面 2× · 单位 pt</span>
+    <span class="tag">文案为示意</span>
+  </div>
+
+  <!-- ══════════ 01 共用语言 ══════════ -->
+  <section data-od-id="shared-language">
+    <h2><span class="n">01</span>共用语言：这一块新增的三个形态</h2>
+    <p class="lead">提示不是新组件，是 <code>.card</code> 家族的三个轻量成员：同一块 <code>--c-panel</code> 材质、
+     同一条 1px 白色 12% 描边、同一套投影、同一套字阶。颜色表不做第二遍 —— 见 ①② 两个文件的 01 节，
+     控件层只读 <code>--c-*</code>，本文件一个色值都没有新写。</p>
+    <table>
+      <thead><tr><th>形态</th><th>用在</th><th>尺寸</th><th>圆角 / 尖角</th><th>字阶</th></tr></thead>
+      <tbody>
+        <tr><td><b>胶囊 pill</b></td><td>时刻 1 · 冻结瞬间</td>
+          <td class="mono">高 28 · 宽随文案（示意 210）</td><td class="mono">14（全圆）· 无尖角</td>
+          <td class="mono">12 / 1 + esc 键帽</td></tr>
+        <tr><td><b>气泡 bubble</b></td><td>时刻 2 / 3 · 指向工具条</td>
+          <td class="mono">内边距 10 / 12 · 宽随文案（示意 132 / 150）</td><td class="mono">10 · 上方 10×10 菱形尖</td>
+          <td class="mono">12 / 16 + ⏎ 键帽</td></tr>
+        <tr><td><b>轻提示 mbnote</b></td><td>时刻 4 · 菜单栏下方</td>
+          <td class="mono">280 × 54</td><td class="mono">8 · 上方菱形尖指向图标</td>
+          <td class="mono">12 / 18（主）+ 11 / 14（次）</td></tr>
+        <tr><td><b>菜单 menu</b></td><td>时刻 5 · 常驻地</td>
+          <td class="mono">260 宽 · 行高 22 · 内边距 5</td><td class="mono">10 · 行 4</td>
+          <td class="mono">13 · 右列 10.5</td></tr>
+      </tbody>
+    </table>
+    <p class="planfoot">三个提示形态都<b>不是按钮</b>：不取焦点、没有 :focus-visible 环、没有悬停态、点它没有反应。
+      唯一的例外是菜单高亮行（06 节），它复用 ② 里已验证过的那一对：强调填充 + 白字 = 4.93:1。</p>
+  </section>
+
+  <!-- ══════════ 02 结构 ══════════ -->
+  <section data-od-id="structure">
+    <h2><span class="n">02</span>结构：四个"第一次" + 一个常驻地</h2>
+    <p class="lead">教学不是一段流程，是四个已经发生在他手上的瞬间。每个瞬间只回答一个问题，
+     答案只停留到他会做为止 —— 然后永久退场。</p>
+    <table>
+      <thead><tr><th>时刻</th><th>触发（仅首次）</th><th>要回答的问题</th><th>形态</th><th>消失条件</th></tr></thead>
+      <tbody>
+        <tr><td><span class="k">M1</span>第一次冻结</td><td>第一次按下 ⌃Q、画面刚冻住</td>
+          <td><b>屏幕怎么不动了？</b>——"已冻结"必须比"拖拽框选"先说出口</td>
+          <td>顶部中央胶囊</td><td>鼠标一按下（开始拖拽）即消失</td></tr>
+        <tr><td><span class="k">M2</span>框选完成</td><td>松开鼠标、工具条刚出现</td>
+          <td><b>然后呢？</b>——标注在哪</td>
+          <td>气泡，尖角指向工具条</td><td>鼠标移向工具条 / 落下第一笔标注</td></tr>
+        <tr><td><span class="k">M3</span>画完第一笔</td><td>第一笔标注刚落下</td>
+          <td><b>怎么结束？</b>——⏎ 进剪贴板</td>
+          <td><b>同一条气泡、同一位置，只换文案</b>（第二句）</td><td>按下 ⏎ / 松开鼠标后自行退场</td></tr>
+        <tr><td><span class="k">M4</span>第一次成功</td><td>图片刚进剪贴板</td>
+          <td><b>成了吗、东西去哪了？</b></td>
+          <td>菜单栏下方轻提示（尖角指图标）</td><td>自行退场（约 3 秒）</td></tr>
+        <tr><td><span class="k">M5</span>之后</td><td>永远</td>
+          <td><b>以后去哪找？</b>——名字、快捷键、哪些是 Pro</td>
+          <td>菜单（常驻，不消失）</td><td>—</td></tr>
+      </tbody>
+    </table>
+
+    <h3>五条规则（这就是"不是流程"的机械保证）</h3>
+    <ul class="rules">
+      <li><b>一次只教一件事。</b>所以 M2 与 M3 不是两条提示，而是同一句话的下一句：锚点不动、形态不动、只换文案。用户感觉是"它接着说了一句"，而不是"又来了一条"。</li>
+      <li><b>只在"这个动作第一次可行"的那一瞬出现。</b>早一秒他看不懂（还没框选，教标注没有意义），晚一秒他已经自己乱试过了 —— 教学的价值全在这个窗口里。</li>
+      <li><b>出现不挡路。</b>M1 放在屏幕顶部中央而不是光标旁：光标旁边正是他马上要框的地方，而"屏幕冻住了"是屏幕级信息，不属于光标。</li>
+      <li><b>做对了就消失，没有"我知道了"。</b>一旦出现"下一步 / 我知道了"，它立刻变成向导流程 —— 那正是硬约束 1 要防的东西。M1 在他按下鼠标的瞬间走，就是这条规则的样子。</li>
+      <li><b>关掉就不再回来。</b>Esc 或点别处立即关闭该条，并且该条永久关闭，不惩罚、不重播、不追问。教学状态每台机器一份（全新安装才走，升级不重放）。</li>
+    </ul>
+
+    <h3>刻意不做的事（反例清单）</h3>
+    <ul class="rules">
+      <li><b>不做"时刻 0"：</b>关掉引导页之后不追一条"记得按 ⌃Q"。他刚在窗口里亲手录过这个键，再提醒就是纠缠。</li>
+      <li><b>不做欢迎动画 / 引导蒙层：</b>屏幕已经冻住了，此刻再叠一层动效只会更慌。</li>
+      <li><b>不做"5 步教程"：</b>那等于把三步合并的成果再拆回去。</li>
+      <li><b>不教 Pro 三项（滚动截屏 / 识别文字 / 钉图）：</b>它们的"教学"就是 ② 那张卡片 —— 用户第一次点它们时，卡片在原位解释这是什么能力。教学只教免费的核心循环，卡片只回答付费闸门，两件事不在同一刻发生。</li>
+      <li><b>不用系统通知做 M4：</b>那要一个新权限，而且读起来像"别的 app 在说话"；原位轻提示不需要权限，视线也不用离开屏幕。</li>
+    </ul>
+  </section>
+
+  <!-- ══════════ 03 时刻 1 ══════════ -->
+  <section data-od-id="moment-1">
+    <h2><span class="n">03</span>时刻 1 · 第一次冻结（胶囊）</h2>
+    <p class="lead">画面刚冻住的那半秒，用户心里的问题是"我的屏幕怎么了"，不是"怎么截图"。
+     所以文案的第一句是状态陈述，第二句才是动作 —— 顺序反过来，这条提示就成了惊吓的放大器。</p>
+
+    <figure data-od-id="plan-m1">
+      <figcaption>M1 · 深色（覆盖层恒深色）· 稿面 2×</figcaption>
+      <div class="plan plan--s1">
+        <div class="sc" style="--w:460;--h:228">
+          <div class="mat mat--dark host-dark">
+            <span class="mat__lb">被冻结的画面（示意）</span>
+            <span class="coach pill" style="position:absolute;left:230px;top:24px;transform:translateX(-50%)">
+              屏幕已冻结 · 拖拽框选<span class="kbd--x">esc</span>取消</span>
+            <svg class="cur" style="left:250px;top:132px" width="26" height="26" viewBox="0 0 26 26">
+              <path d="M13 2v8M13 16v8M2 13h8M16 13h8" stroke="#000" stroke-width="3.4" stroke-linecap="round" opacity=".55"/>
+              <path d="M13 2v8M13 16v8M2 13h8M16 13h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </div>
+        </div>
+        <div class="dim--v" style="left:132px;top:96px;height:48px"><span class="l">24</span></div>
+      </div>
+    </figure>
+    <p class="planfoot">胶囊：高 28 / 圆角 14 / 内边距 0 12 / 文字与键帽间距 8；距屏幕顶边 24 pt（示意宽度 246）。
+      垂直位置固定，不跟光标 —— 光标周围是他马上要框的地方。<br>
+      键帽照旧是 15 高、10pt 字号：它与 ① 的录制框、② 的微行是同一颗键帽，用户在这一刻认得出它。</p>
+
+    <h3>它消失的那一刻（同一时刻的反面）</h3>
+    <figure data-od-id="plan-m1b">
+      <figcaption>M1 · 鼠标已按下：此刻屏幕上不应有任何提示</figcaption>
+      <div class="plan plan--s1b">
+        <div class="sc" style="--w:460;--h:140">
+          <div class="mat mat--dark host-dark" style="height:140px">
+            <span class="mark-x">✗ 提示已退场</span>
+            <span class="mat__lb" style="left:auto;right:16px">拖拽中（示意）</span>
+            <span class="sel" style="left:90px;top:44px;width:200px;height:72px"></span>
+            <svg class="cur" style="left:290px;top:116px" width="26" height="26" viewBox="0 0 26 26">
+              <path d="M13 2v8M13 16v8M2 13h8M16 13h8" stroke="#000" stroke-width="3.4" stroke-linecap="round" opacity=".55"/>
+              <path d="M13 2v8M13 16v8M2 13h8M16 13h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="planfoot">"做对了就消失"不是氛围描述，是一条可以验收的规则：鼠标按下的那一刻，M1 必须已经不在。</p>
+  </section>
+
+  <!-- ══════════ 04 时刻 2 / 3 ══════════ -->
+  <section data-od-id="moment-2-3">
+    <h2><span class="n">04</span>时刻 2 / 3 · 同一条气泡的两句话</h2>
+    <p class="lead">框选一松手，工具条出现 —— 这是全流程最容易迷路的点：选区已经好了，但用户不知道接下来能做什么。
+     一条气泡回答"哪里可以标注"；等他落下第一笔，同一条气泡在原地换第二句"怎么结束"。
+     两张稿的几何完全一致，这就是"一次只教一件事"的样子。</p>
+
+    <figure data-od-id="plan-m2">
+      <figcaption>M2 · 第一句：哪里可以标注</figcaption>
+      <div class="plan plan--s2">
+        <div class="sc" style="--w:460;--h:268">
+          <div class="mat mat--dark host-dark" style="height:268px">
+            <span class="mat__lb">被冻结的画面 · 已框选（示意）</span>
+            <span class="sel" style="left:60px;top:40px;width:340px;height:110px"></span>
+            <span class="ghost" style="left:60px;top:158px;width:180px;height:28px">工具条（本文件不画）</span>
+            <span class="coach bubble" style="position:absolute;left:60px;top:194px">标注工具都在这一排</span>
+          </div>
+        </div>
+        <div class="dim--v" style="left:252px;top:468px;height:16px"><span>8</span></div>
+      </div>
+    </figure>
+
+    <figure data-od-id="plan-m3" style="margin-top:46px">
+      <figcaption>M3 · 第二句：怎么结束（同位置、同形态，只换文案）</figcaption>
+      <div class="plan plan--s2">
+        <div class="sc" style="--w:460;--h:268">
+          <div class="mat mat--dark host-dark" style="height:268px">
+            <span class="mat__lb">被冻结的画面 · 已有一笔标注（示意）</span>
+            <span class="sel" style="left:60px;top:40px;width:340px;height:110px"></span>
+            <span class="anno" style="left:120px;top:66px;width:180px;height:44px"></span>
+            <span class="ghost" style="left:60px;top:158px;width:180px;height:28px">工具条（本文件不画）</span>
+            <span class="coach bubble" style="position:absolute;left:60px;top:194px">画好之后<span class="kbd--x">⏎</span>进剪贴板</span>
+          </div>
+        </div>
+        <div class="dim--v" style="left:252px;top:468px;height:16px"><span>8</span></div>
+      </div>
+    </figure>
+    <p class="planfoot">气泡：内边距 10 / 12、圆角 10、尖角 10×10 菱形，尖角左偏 22 pt —— 指向工具条左端（第一个工具）。
+      气泡顶边 = 工具条底边 + 8 pt；左缘与工具条左缘对齐（同一条对齐线，所以第二句"在原地换文案"成立）。<br>
+      蓝色矩形是用户画下的那一笔标注（示意；标注色属于编辑器稿，不在本文件定义）。<br>
+      工具条只给了一条虚线轮廓和锚点位置 —— 工具条本体不在本次交付范围内。</p>
+  </section>
+
+  <!-- ══════════ 05 时刻 4 ══════════ -->
+  <section data-od-id="moment-4">
+    <h2><span class="n">05</span>时刻 4 · 第一次成功（菜单栏轻提示）</h2>
+    <p class="lead">截图成功是唯一一次"用户情绪最高的时刻"，也是最该回答"以后去哪找我"的时刻。
+     提示不可点、不抢焦点，只把两件事说一次：成功了、我在菜单栏。</p>
+
+    <figure data-od-id="plan-m4-dark">
+      <figcaption>M4 · 深色系统外观（菜单栏跟随系统）</figcaption>
+      <div class="plan plan--s3">
+        <div class="sc" style="--w:460;--h:140">
+          <div class="host-dark" style="position:relative;width:460px;height:140px">
+            <div class="mbar">
+              <span>访达</span><span>文件</span><span>编辑</span><span>显示</span>
+              <span class="mbar__sp"></span><em>（其余状态项从略）</em>
+              <span class="mbar__mb">
+                <svg width="14" height="12" viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2"
+                  fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.4 2"/></svg>
+              </span>
+            </div>
+            <div class="mbnote" style="position:absolute;left:170px;top:30px">
+              <b>已复制到剪贴板</b><span>Marquee 就在菜单栏</span>
+            </div>
+          </div>
+        </div>
+        <div class="dim--v" style="left:1020px;top:144px;height:12px"><span>6</span></div>
+      </div>
+    </figure>
+
+    <figure data-od-id="plan-m4-light" style="margin-top:46px">
+      <figcaption>M4 · 浅色系统外观（同一个提示，只换宿主 token）</figcaption>
+      <div class="plan plan--s3">
+        <div class="sc" style="--w:460;--h:140">
+          <div class="host-light" style="position:relative;width:460px;height:140px">
+            <div class="mbar">
+              <span>访达</span><span>文件</span><span>编辑</span><span>显示</span>
+              <span class="mbar__sp"></span><em>（其余状态项从略）</em>
+              <span class="mbar__mb">
+                <svg width="14" height="12" viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2"
+                  fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.4 2"/></svg>
+              </span>
+            </div>
+            <div class="mbnote" style="position:absolute;left:170px;top:30px">
+              <b>已复制到剪贴板</b><span>Marquee 就在菜单栏</span>
+            </div>
+          </div>
+        </div>
+        <div class="dim--v" style="left:1020px;top:144px;height:12px"><span>6</span></div>
+      </div>
+    </figure>
+    <p class="planfoot">轻提示 280 × 54（内边距 10 / 12，主行 12/18，次行 11/14，行间距 2）；
+      顶边 = 菜单栏底边 + 6 pt（与 ② 的载体 B 同一条锚定规则）；右缘与菜单栏图标右缘对齐，尖角对准图标中心（提示内左偏 263）。<br>
+      为什么是两行：第一行是"成了"（情绪），第二行是"我在哪"（知识）。这一条是全流程唯一把 app 的<b>位置</b>教给用户的时刻 ——
+      对菜单栏工具来说，这比任何功能介绍都重要。</p>
+  </section>
+
+  <!-- ══════════ 06 时刻 5 ══════════ -->
+  <section data-od-id="moment-5">
+    <h2><span class="n">06</span>时刻 5 · 常驻地：菜单</h2>
+    <p class="lead">教学结束的落点不是一句"完成"，而是"以后都在这儿"。菜单是 onboarding 的出口，
+     所以它必须承担三件事：能力的名字、快捷键、哪些是 Pro。</p>
+
+    <figure data-od-id="plan-m5">
+      <figcaption>M5 · 菜单（高亮行 = 悬停）· 深色 · 稿面 2×</figcaption>
+      <div class="plan plan--s4">
+        <div class="sc" style="--w:460;--h:210">
+          <div class="host-dark" style="position:relative;width:460px;height:210px">
+            <div class="mbar">
+              <span>访达</span><span>文件</span><span>编辑</span><span>显示</span>
+              <span class="mbar__sp"></span><em>（其余状态项从略）</em>
+              <span class="mbar__mb" style="background:rgba(255,255,255,.22)">
+                <svg width="14" height="12" viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2"
+                  fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.4 2"/></svg>
+              </span>
+            </div>
+            <div class="menu" style="position:absolute;left:164px;top:30px" data-od-id="menu">
+              <div class="mi"><span>截图</span><i>⌃Q</i></div>
+              <div class="mi"><span>滚动截屏</span><i>Pro</i></div>
+              <div class="mi is-hover"><span>识别文字</span><i>Pro</i></div>
+              <div class="mi"><span>钉图</span><i>Pro</i></div>
+              <div class="msep"></div>
+              <div class="mi"><span>偏好设置…</span><i></i></div>
+              <div class="mi"><span>退出 Marquee</span><i>⌘Q</i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="planfoot">菜单：宽 260（随内容）· 行高 22 · 行圆角 4 · 面板圆角 10 · 内边距 5；文字 13 pt，右列 10.5 pt 等宽。<br>
+      三条规则：<b>①</b> 免费项在前，Pro 三项紧跟 —— 能力的顺序按"用户会用的顺序"，不按"想卖的优先级"；
+      <b>②</b> 右列只有一类内容：有快捷键就写快捷键，没有就写 Pro，两样不并排；
+      <b>③</b> Pro 用灰字标记，不用锁图标 —— 锁是惩罚感，而这里应该是"分类"感。</p>
+
+    <h3>与升级卡片的接缝</h3>
+    <ul class="rules">
+      <li><b>教学不碰 Pro。</b>M1–M4 只教免费的核心循环（冻结 → 框选 → 标注 → ⏎ 进剪贴板）。用户第一次点 Pro 工具时，② 的卡片在原位出现并解释 —— 那才是它们的"教学时刻"。</li>
+      <li><b>同一刻只出现一个东西。</b>卡片出现时，任何教学提示都不在场；反过来，教学进行中不会被卡片打断。</li>
+      <li><b>菜单是两者的共同出口。</b>用户在任何时候忘了某个能力在哪，菜单都有名字；忘了为什么用不了，卡片会再说一次。</li>
+    </ul>
+  </section>
+
+  <!-- ══════════ 07 备注 ══════════ -->
+  <section data-od-id="notes">
+    <h2><span class="n">07</span>备注与未覆盖项</h2>
+    <ul class="rules">
+      <li><b>教学状态（已定）：</b>每台机器一份。全新安装才走 M1–M4；升级版本、重装同一台机器都不重放。偏好设置里留一个"重放使用提示"的入口（该界面本次不画）。</li>
+      <li><b>Esc 与点别处的语义：</b>提示本身不是焦点对象，Esc 只作用于它该作用的东西（M1/M2 时收覆盖层，卡片在场时收卡片）；"点别处"关闭提示而不触发其它动作。</li>
+      <li><b>M3 的"8 秒自行退场"：</b>具体时长属于动效/时序，本文件只定"按下 ⏎ 立即消失"与"无人操作时自行退场"两条边界，时长你定。</li>
+      <li><b>文案上限（单行 nowrap，超限加宽不加行）：</b>胶囊 ≤ 20 字（示意 13 字 + 键帽）；气泡 ≤ 14 字（示意 9 / 8 字 + 键帽）；轻提示主行 ≤ 14 字、次行 ≤ 18 字；菜单标签 ≤ 6 字。想要两行就换形态，不要挤同一个形态。</li>
+      <li><b>对比度：</b>直接复用 ② 的实测结果 —— 提示材质上次要文字 6.30:1、主文字 12.9:1、键帽白字 10.0:1、菜单高亮行白字 4.93:1（浅色面板 5.28 / 12.8 / 5.62）。全部 ≥ 4.5:1。</li>
+      <li><b>本文件只做深色稿</b>（M1–M3 发生在覆盖层，恒深色）；M4 的菜单栏跟随系统，所以给了深 / 浅两套；菜单面板跟随系统外观，深色稿一件代表。</li>
+      <li><b>未画（按范围锁定）：</b>偏好设置（重放提示的入口）、覆盖层工具条本体、编辑器的标注色板、菜单的其余状态（禁用项、滚动、子菜单）。</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>

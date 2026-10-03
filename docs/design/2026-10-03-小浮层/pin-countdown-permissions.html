@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Marquee · ⑨ 三块小浮层 —— 钉图 / 延时倒计时 / 权限与错误提示 · 高保真稿</title>
+<style>
+:root{--bg:oklch(99% .002 240);--surface:oklch(100% 0 0);--fg:oklch(18% .012 250);--muted:oklch(54% .012 250);--border:oklch(92% .005 250);--accent:oklch(58% .18 255);--font-display:-apple-system,BlinkMacSystemFont,'SF Pro Display',system-ui,sans-serif;--font-body:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}
+:root{--stage:oklch(96.6% .003 260);--ink:oklch(32% .01 260);--ink2:oklch(52% .008 260);--ink3:oklch(84% .006 260);--dim:oklch(53% .16 32);--mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 13.5px/1.75 var(--font-body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1248px;margin:0 auto;padding:56px 24px 120px}
+.doc__n{font:600 12px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+h1{margin:12px 0 0;font:600 30px/1.25 var(--font-display);letter-spacing:-.02em;color:var(--fg)}
+.doc__lede{margin:14px 0 0;max-width:76ch;color:var(--ink2);font-size:14px}
+.doc__meta{margin:18px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.tag{font:500 11px/1 var(--mono);color:var(--ink2);background:var(--stage);border:1px solid var(--border);border-radius:999px;padding:6px 10px}
+section{margin-top:72px;border-top:1px solid var(--border);padding-top:32px}
+h2{margin:0;font:600 19px/1.3 var(--font-display);letter-spacing:-.01em;color:var(--fg);display:flex;align-items:baseline;gap:12px}
+h2 .n{font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.08em}
+h3{margin:32px 0 0;font:600 14px/1.4 var(--font-display);color:var(--fg)}
+h4{margin:24px 0 0;font:600 12.5px/1.4 var(--font-display);color:var(--fg)}
+p{margin:12px 0 0;max-width:78ch;color:var(--ink2)}
+.lead{margin-top:14px;color:var(--ink)}
+ul.rules{margin:14px 0 0;padding:0;list-style:none;max-width:84ch}
+ul.rules li{position:relative;padding:8px 0 8px 22px;color:var(--ink2);border-top:1px dashed var(--border)}
+ul.rules li::before{content:'';position:absolute;left:2px;top:18px;width:7px;height:7px;background:var(--dim);border-radius:1px}
+b{color:var(--ink);font-weight:600}
+code{font:500 12px/1 var(--mono);background:var(--stage);border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:var(--ink)}
+table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px 10px 0;border-bottom:1px solid var(--border)}
+th{font:600 11px/1.4 var(--mono);color:var(--ink2);letter-spacing:.04em;white-space:nowrap}
+td{color:var(--ink2)}
+td b{font-weight:600;color:var(--ink)}
+td .mono{font:500 11.5px/1.6 var(--mono);color:var(--ink2)}
+.toks{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px;margin-top:18px}
+.tok{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.tok__chip{height:52px;display:flex;align-items:center;justify-content:center}
+.tok__b{padding:10px 12px 12px}
+.tok__n{font:600 12px/1.3 var(--font-body);color:var(--ink)}
+.tok__v{font:500 10.5px/1.6 var(--mono);color:var(--ink2);margin-top:3px}
+/* 宿主深色两套（④ 原值） */
+.host-dark{--c-bg:oklch(26.5% 0 0);--c-panel:oklch(31.5% 0 0);--c-inset:oklch(22.5% 0 0);--c-cap:oklch(38% 0 0);--c-capbd:oklch(46% 0 0);--c-border:oklch(43% 0 0);--c-hair:rgba(255,255,255,.10);--c-label:#fff;--c-label2:rgba(255,255,255,.64);--c-fill:oklch(55% .19 254);--c-fill-h:oklch(56% .19 254);--c-fill-p:oklch(48% .19 254);--c-glyph:oklch(72% .14 254);--c-warn:oklch(84% .17 88);--c-ring:oklch(62% .17 254);--c-soft:rgba(255,255,255,.07);--c-soft-h:rgba(255,255,255,.09);--c-soft-p:rgba(255,255,255,.16);--c-ghost:rgba(255,255,255,.10);--c-err:oklch(72% .15 25);--o-veil:rgba(0,0,0,.32);--o-veil-s:rgba(0,0,0,.45);--o-cancel:#ff6b60;--o-done:#30d158;--o-dim:0 0 0 9999px var(--o-veil)}
+/* 控制层（④ 原值） */
+.sc{position:relative;width:calc(var(--w)*2px);height:calc(var(--h)*2px)}
+.sc>*{position:absolute;left:0;top:0;transform:scale(2);transform-origin:0 0}
+.ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.ic--s{width:12px;height:12px}
+.cell{position:relative;flex:none;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.82)}
+.cell.is-hover{background:var(--c-soft-h);color:#fff}
+.cell.is-press{background:var(--c-soft-p);color:#fff}
+.cell.is-on{background:var(--c-fill);color:#fff}
+.cell.is-on.is-hover{background:var(--c-fill-h)}
+.bar{display:flex;align-items:center;gap:2px;padding:5px;border-radius:10px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32)}
+.tip{position:absolute;height:26px;padding:0 10px;border-radius:13px;display:flex;align-items:center;gap:6px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);color:var(--c-label);font:400 12px/1 var(--font-body);white-space:nowrap;box-shadow:0 10px 24px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28);-webkit-font-smoothing:antialiased}
+.tip em{font:500 11px/1 var(--mono);font-style:normal;color:var(--c-label2)}
+/* 图注层（②④⑧ 原值） */
+.dia{position:relative;width:300px;height:190px;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden}
+.dia i{position:absolute;display:block;font-style:normal;border-radius:4px}
+.dbox{background:var(--stage);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font:500 10px/1 var(--mono);color:var(--ink2)}
+.dpop{background:oklch(31.5% 0 0);font:500 10px/1.5 var(--mono);color:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;text-align:center}
+.dbar{background:oklch(31.5% 0 0);border-radius:4px}
+.duo{display:flex;gap:28px;align-items:flex-start}
+.lbl{font:500 10.5px/1.7 var(--mono);color:var(--ink2)}
+figure{margin:0}
+figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin:0 0 10px;letter-spacing:.02em}
+.dim{position:absolute;height:1px;background:var(--dim)}
+.dim::before,.dim::after{content:'';position:absolute;top:-3px;width:1px;height:7px;background:var(--dim)}
+.dim::before{left:0}.dim::after{right:0}
+.dim span{position:absolute;left:50%;top:-9px;transform:translate(-50%,-50%);font:600 10.5px/1 var(--mono);color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v{position:absolute;width:1px;background:var(--dim)}
+.dim--v::before,.dim--v::after{content:'';position:absolute;left:-3px;width:7px;height:1px;background:var(--dim)}
+.dim--v::before{top:0}.dim--v::after{bottom:0}
+.dim--v span{position:absolute;left:12px;top:50%;transform:translateY(-50%);font:600 10.5px/1 var(--mono);color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.grid{display:grid;gap:18px;margin-top:20px}
+.grid--2{grid-template-columns:repeat(2,560px)}
+.stage{border-radius:10px;display:flex;align-items:center;justify-content:center;padding:24px;border:1px solid var(--border)}
+.stg{margin:18px 0 0}
+.stg figcaption{font:600 10.5px/1.4 var(--mono);color:var(--ink2);margin:8px 0 0;letter-spacing:.04em}
+.call{position:absolute;font:600 10.5px/1 var(--mono);color:var(--dim);background:rgba(255,255,255,.94);border:1px solid rgba(0,0,0,.06);padding:3px 6px;border-radius:4px;white-space:nowrap}
+.planfoot{margin-top:22px;font:500 11px/1.9 var(--mono);color:var(--ink2)}
+.grps{position:absolute;display:flex;font:500 10.5px/1 var(--mono)}
+.grps span{flex:none;border-top:1px solid rgba(255,255,255,.35);padding-top:8px;text-align:center;color:rgba(255,255,255,.64)}
+/* ⑨ 新增件 */
+.cell--s{width:24px;height:24px;border-radius:5px}
+.ocell{width:56px;justify-content:flex-start;gap:3px;padding:0 5px}
+.ocell b{font:500 11px/1 var(--mono);color:var(--c-label)}
+.bar--s{padding:4px;border-radius:8px}
+.hz{flex:none;width:34px;height:24px}
+.stage--c{background:var(--c-bg);border-color:transparent}
+.stage--white{background:#fff;border-color:transparent}
+.stage--black{background:#000;border-color:transparent}
+.stage--desk{background:linear-gradient(160deg,oklch(30% .02 260),oklch(23% .015 260));border-color:transparent}
+.stage--deskl{background:linear-gradient(160deg,#e9e9ee,#d3d3d9);border-color:transparent}
+.pin{position:absolute;background:#fff;box-shadow:0 0 0 1px #fff,0 0 0 2px var(--o-veil-s),0 14px 34px rgba(0,0,0,.38)}
+.pin--d{background:transparent;box-shadow:0 12px 30px rgba(0,0,0,.28)}
+.pimg{position:absolute;inset:0;background:#fff;overflow:hidden}
+.pedge{position:absolute;inset:-1.5px;border:1.5px dashed #fff;filter:drop-shadow(0 0 1.2px rgba(0,0,0,.85));pointer-events:none}
+.pk{position:absolute;background:rgba(0,0,0,.06);border-radius:3px}
+.pk--d{background:rgba(0,0,0,.13)}
+.pk--w{background:rgba(255,255,255,.15)}
+.pk--w2{background:rgba(255,255,255,.08)}
+.wina{position:absolute;background:#fff;border-radius:6px;box-shadow:0 16px 40px rgba(0,0,0,.35);overflow:hidden}
+.chov{position:absolute;background:oklch(88% .05 254);box-shadow:inset 0 0 0 1px oklch(64% .15 254)}
+.cur{position:absolute;width:24px;height:24px;filter:drop-shadow(0 0 1.5px rgba(0,0,0,.8))}
+.click{position:absolute;width:26px;height:26px;border-radius:50%;border:2px solid oklch(64% .17 254);background:oklch(64% .17 254 / .3)}
+.num{font:600 72px/1 var(--font-display);color:#fff;font-variant-numeric:tabular-nums;letter-spacing:-.03em;text-shadow:0 0 1px rgba(0,0,0,.92),0 1px 2px rgba(0,0,0,.55),0 2px 16px rgba(0,0,0,.4)}
+.num--s{font-size:40px}
+.disc{display:flex;align-items:center;justify-content:center;width:104px;height:104px;border-radius:50%;background:rgba(0,0,0,.55);box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.pho{position:absolute;inset:0;background:linear-gradient(135deg,oklch(64% .05 250),oklch(40% .04 255) 55%,oklch(56% .05 30))}
+/* 系统对话框（示意。材质与按钮随系统外观，不属于我们的 token） */
+.sysdlg{position:absolute;padding:20px 20px 16px;border-radius:10px;text-align:center;background:oklch(24.5% 0 0);color:#fff;box-shadow:0 24px 70px rgba(0,0,0,.55),0 4px 14px rgba(0,0,0,.35);-webkit-font-smoothing:antialiased}
+.sysdlg--lt{background:oklch(96.5% 0 0);color:oklch(18% 0 0);box-shadow:0 24px 70px rgba(0,0,0,.35),0 4px 14px rgba(0,0,0,.18)}
+.sd__t{font:600 13px/1.35 var(--font-display)}
+.sd__b{margin:6px auto 0;max-width:52ch;font:400 11.5px/1.55 var(--font-body);color:rgba(255,255,255,.72)}
+.sysdlg--lt .sd__b{color:rgba(0,0,0,.62)}
+.sd__h{margin:10px auto 0;max-width:52ch;font:400 11px/1.5 var(--font-body);color:rgba(255,255,255,.5)}
+.sysdlg--lt .sd__h{color:rgba(0,0,0,.45)}
+.sd__btns{margin-top:16px;display:flex;justify-content:flex-end;gap:10px}
+.sdb{height:30px;padding:0 14px;border-radius:6px;display:inline-flex;align-items:center;font:500 13px/1 var(--font-body);white-space:nowrap}
+.sdb--pri{background:#0a84ff;color:#fff}
+.sdb--sec{background:rgba(255,255,255,.14);color:#fff}
+.sysdlg--lt .sdb--sec{background:#fff;color:#000;box-shadow:0 0 0 1px rgba(0,0,0,.09),0 1px 2px rgba(0,0,0,.08)}
+/* 深底上的标注与图注（⑧ 的教训：默认标注在深底上不可见） */
+.stage--black .dim,.stage--black .dim--v,.stage--desk .dim,.stage--desk .dim--v,.host-dark .dim,.host-dark .dim--v{background:oklch(66% .145 32)}
+.stage--black .dim span,.stage--black .dim--v span,.stage--desk .dim span,.stage--desk .dim--v span,.host-dark .dim span,.host-dark .dim--v span{color:oklch(80% .11 32);background:oklch(24% 0 0)}
+.host-dark .lbl{color:rgba(255,255,255,.64)}
+.stage--black .lbl,.stage--desk .lbl{color:rgba(255,255,255,.64)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header data-od-id="doc-head">
+  <div class="doc__n">⑨ · 第 4 轮 · 三块小浮层</div>
+  <h1>钉图 · 延时倒计时 · 权限与错误提示</h1>
+  <p class="doc__lede">同一个东西的三种时刻：用户在看别的东西，Marquee 在旁边插一句话。都很小、都不抢键盘焦点、都在用户的注意力之外。钉图是 ④ 覆盖层那一类（盖在用户内容上），沿用它的材质与件；倒计时只有一个数字；H 是系统弹的，我们只设计里面的字。</p>
+  <div class="doc__meta"><span class="tag">F 钉图</span><span class="tag">G 倒计时</span><span class="tag">H 系统对话框文案</span><span class="tag">深色优先</span><span class="tag">全部尺寸标注</span></div>
+</header>
+
+<section data-od-id="shared-language">
+  <h2><span class="n">01</span>共用语言 —— 沿用什么、新登记什么</h2>
+  <p class="lead">这三块不新开一套语言。下面 6 张牌是全部外来件；只有第 3 张里的「紧凑档」和两枚图标是本轮新登记的，其余一字不改。</p>
+  <div class="toks">
+    <div class="tok"><div class="tok__chip" style="background:oklch(26.5% 0 0)"><span class="bar bar--s"><span class="hz"></span><span class="cell cell--s" style="color:#fff"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span></span></div><div class="tok__b"><div class="tok__n">④ 控制条材质 · 原值</div><div class="tok__v">--c-panel oklch(31.5%) · 12% 白边 · 双投影<br>在任意内容上都能读</div></div></div>
+    <div class="tok"><div class="tok__chip" style="background:oklch(45% .01 250)"><span style="width:44px;height:30px;background:#fff;box-shadow:0 0 0 1px #fff,0 0 0 2px var(--o-veil-s)"></span></div><div class="tok__b"><div class="tok__n">白芯黑边 · 原值</div><div class="tok__v">#fff 1px + rgba(0,0,0,.45) 1px<br>钉图的本体描边就是它</div></div></div>
+    <div class="tok"><div class="tok__chip" style="background:oklch(26.5% 0 0);gap:12px"><span class="cell" style="color:#fff"><svg class="ic"><use href="#i-pin"/></svg></span><span class="cell cell--s" style="color:#fff"><svg class="ic"><use href="#i-pin"/></svg></span></div><div class="tok__b"><div class="tok__n">.cell 尺寸阶 + 紧凑档（新）</div><div class="tok__v">28（④⑧）→ 24（本稿）· 状态与图标规格不变<br>见 01 登记 1</div></div></div>
+    <div class="tok"><div class="tok__chip" style="background:oklch(26.5% 0 0)"><span class="cell is-on" style="color:#fff"><svg class="ic"><use href="#i-thru"/></svg></span></div><div class="tok__b"><div class="tok__n">填充蓝 = 开着的那个 · 原值</div><div class="tok__v">--c-fill oklch(55% .19 254)<br>穿透开启的高亮沿用它</div></div></div>
+    <div class="tok"><div class="tok__chip" style="background:oklch(26.5% 0 0)"><span class="tip" style="position:static">按住拖动 · 移动这张图</span></div><div class="tok__b"><div class="tok__n">提示胶囊 .tip · 原值</div><div class="tok__v">26 高 · 圆头胶囊<br>钉图上唯一会说话的地方</div></div></div>
+    <div class="tok"><div class="tok__chip" style="background:oklch(45% .01 250)"><span class="sysdlg" style="position:static;width:132px;padding:8px;border-radius:7px"><span class="sd__t" style="font-size:9.5px">需要权限</span><span class="sd__btns" style="margin-top:6px;gap:5px;justify-content:center"><span class="sdb sdb--sec" style="height:16px;padding:0 7px;font-size:8.5px;border-radius:4px">稍后</span><span class="sdb sdb--pri" style="height:16px;padding:0 7px;font-size:8.5px;border-radius:4px">打开</span></span></span></div><div class="tok__b"><div class="tok__n">系统件 · 本稿唯一例外</div><div class="tok__v">H 的材质 / 字体 / 按钮随系统外观<br>我们只设计里面的字 —— 见 08</div></div></div>
+  </div>
+
+  <h3>图标 · 两旧两新（16 格 · 1.5 描边 · 圆头圆角，④ 规格）</h3>
+  <table>
+    <thead><tr><th>图标</th><th>来源</th><th>用在</th><th>要点</th></tr></thead>
+    <tbody>
+      <tr><td><span style="display:inline-flex;width:28px;height:28px;border-radius:6px;background:oklch(26.5% 0 0);align-items:center;justify-content:center;color:#fff"><svg class="ic"><use href="#i-pin"/></svg></span></td><td>④ L305 逐字复用</td><td>本稿章头、钉图说明</td><td>钉图能力的名字就是这个形状</td></tr>
+      <tr><td><span style="display:inline-flex;width:28px;height:28px;border-radius:6px;background:oklch(26.5% 0 0);align-items:center;justify-content:center;color:#fff"><svg class="ic"><use href="#i-x"/></svg></span></td><td>④ / ⑧ 逐字复用</td><td>控制条 · 关闭</td><td>最右是离开，与 ④⑧ 的 ✗ 读法一致</td></tr>
+      <tr><td><span style="display:inline-flex;width:28px;height:28px;border-radius:6px;background:oklch(26.5% 0 0);align-items:center;justify-content:center;color:#fff"><svg class="ic"><use href="#i-check"/></svg></span></td><td>⑧ 逐字复用</td><td>点穿示意里的勾</td><td>证明"点击落到了下面"</td></tr>
+      <tr><td><span style="display:inline-flex;width:28px;height:28px;border-radius:6px;background:oklch(26.5% 0 0);align-items:center;justify-content:center;color:#fff"><svg class="ic"><use href="#i-thru"/></svg></span></td><td><b>新 · i-thru</b></td><td>控制条 · 鼠标穿透</td><td>指针浮在一条虚线上 —— 点不落在这一层（虚线就是"穿透"的意象，也和开启态本体的虚线描边同韵）</td></tr>
+      <tr><td><span style="display:inline-flex;width:28px;height:28px;border-radius:6px;background:oklch(26.5% 0 0);align-items:center;justify-content:center;color:#fff"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="6" height="8" rx="1" fill="currentColor" stroke="none"/></svg></span></td><td><b>新 · 填充方框</b></td><td>控制条 · 不透明度</td><td>填充比例 = 当前档 —— 图标本身就是表盘（无独立 id，四个宽度的内矩形内联画）</td></tr>
+      <tr><td><span class="lbl">无</span></td><td>—</td><td>倒计时 / H</td><td>倒计时数字就是全部；H 是系统件，不带我们的图标</td></tr>
+    </tbody>
+  </table>
+
+  <h3>本轮登记（4 件）</h3>
+  <ul class="rules">
+    <li><b>1 紧凑档 <code>.bar--s</code>：</b>格 24 · 条高 32 · 内边距 4 · 圆角 8 · 格圆角 5 —— ④ .bar 的最小档。为什么：这条要<b>常显</b>在每一张钉图上（Q1），尺寸是它唯一付得起的代价；材质、三态、图标 16 全不动。</li>
+    <li><b>2 加宽格 <code>.ocell</code> 56 宽：</b>全稿唯一一个比标准格宽的按钮 —— brief 要求它「同时是按钮和读数」，读数（11px mono）比格宽还大，只能横向让位。</li>
+    <li><b>3 穿透态的本体描边：实线 → 虚线（白虚线 + 黑晕）。</b>仍是白芯黑边；虚线的意思在图标里已经立过（i-thru），这里让本体也说出来 —— 见 Q4。</li>
+    <li><b>4 H 不戴宿主材质：</b>那四张对话框的材质 / 字体 / 按钮全随系统外观（深浅各示意一张）。这不是偷懒 —— 系统弹模态的时机我们本来也接不上手；我们设计的是标题、说明与按钮。</li>
+  </ul>
+</section>
+
+<section data-od-id="structure">
+  <h2><span class="n">02</span>结构 —— 三种时刻，一套规矩</h2>
+  <p class="lead">三块共享三条规矩：很小、不收键盘（前两块）、在注意力之外。区别只在「活多久」—— 时长决定体量：活几分钟到几小时的要带一条控制条，活 3 秒的只许有一个数字，活到用户读完的交给系统。</p>
+  <table>
+    <thead><tr><th></th><th>是什么</th><th>活多久</th><th>收不收键盘</th><th>出现在哪</th></tr></thead>
+    <tbody>
+      <tr><td><b>F 钉图</b></td><td>一张留在屏幕上的图 + 一条控制条</td><td class="mono">分钟–小时（用户决定）</td><td>不收 —— 硬约束：成为 key window 会吸走焦点</td><td>用户拖到哪就哪；跟 Space；多张共存</td></tr>
+      <tr><td><b>G 倒计时</b></td><td>屏幕中央一个大数字</td><td class="mono">3 / 5 / 10 秒</td><td>不收 —— 不能中止是刻意的取舍（Esc 要挂全局监听，10 秒不值）</td><td>鼠标所在那块屏的中央</td></tr>
+      <tr><td><b>H 提示</b></td><td>系统模态对话框里的文案</td><td class="mono">用户读完为止</td><td>收 —— 系统模态；这一刻我们接不上手，也不该抢</td><td>系统决定</td></tr>
+    </tbody>
+  </table>
+  <div class="duo" style="margin-top:26px">
+    <figure class="stg" style="margin:0"><div class="dia"><i class="dbox" style="inset:0;border:0;border-radius:0"></i><i class="dbox" style="left:70px;top:38px;width:130px;height:84px;background:#fff"></i><i class="dbar" style="left:70px;top:128px;width:62px;height:12px"></i><i style="left:210px;top:100px;font:500 10px/1.5 var(--mono);color:var(--ink2);width:80px">本体（描边）<br>+ 控制条</i></div><figcaption>F · 钉图 —— 盖在用户内容上</figcaption></figure>
+    <figure class="stg" style="margin:0"><div class="dia"><i class="dbox" style="inset:0;border:0;border-radius:0;background:oklch(26% .008 250)"></i><i style="left:0;top:82px;width:300px;text-align:center;font:600 44px/1 var(--font-display);color:#fff;text-shadow:0 0 1px rgba(0,0,0,.9),0 1px 3px rgba(0,0,0,.5)">5</i><i style="left:90px;top:140px;width:120px;text-align:center;font:500 10px/1.4 var(--mono);color:rgba(255,255,255,.64)">屏幕中央 · 一个数字</i></div><figcaption>G · 倒计时 —— 不遮挡判断</figcaption></figure>
+    <figure class="stg" style="margin:0"><div class="dia"><i class="dbox" style="inset:0;border:0;border-radius:0;background:oklch(30% .01 260)"></i><i class="dpop" style="left:60px;top:48px;width:180px;height:92px">标题 13pt<br>说明 11.5pt<br><span style="opacity:.6">［稍后］［打开系统设置］</span></i></div><figcaption>H · 提示 —— 系统弹的，不是我们画的</figcaption></figure>
+  </div>
+  <ul class="rules">
+    <li><b>它们已经是"最少的一层"：</b>本稿不加任何新窗口 / 新弹窗（硬约束 1）。H 的"弹窗"是系统弹的 —— 我们连画都不画它。</li>
+    <li><b>不收键盘是设计的一部分，不是漏做：</b>F 与 G 任何时刻都不出现在 ⌘Tab、Dock、窗口列表里；用户敲字永远敲进他自己那个应用。</li>
+    <li><b>注意力之外 ≠ 看不见：</b>三块各自有一条"存在感"的底线 —— F 是一圈描边（白芯黑边），G 是白芯黑边的数字，H 是系统模态本身。都不靠颜色音量喊人。</li>
+  </ul>
+</section>
+
+<section data-od-id="pin-body">
+  <h2><span class="n">03</span>钉图 · 本体 —— 描边要同时应付纯白底与纯黑底</h2>
+  <ul class="rules">
+    <li><b>无边框、无圆角、无标题栏：</b>它是截图本身，不是窗口。没有红绿灯、不进 Dock、不参与 ⌘Tab。</li>
+    <li><b>不抢键盘焦点（硬约束）：</b>它是参照物，不是工作区 —— 用户切回自己的应用时，焦点必须还在那里。</li>
+    <li><b>跟 Space、可拖动、滚轮缩放锚点左上角：</b>用户把它拖到左上角对齐，缩放时它就不该跑。穿透开着时本体拖不动 —— 用控制条拖（04）。</li>
+    <li><b>一圈细描边 = 白芯黑边（④ 原值）：</b>白线贴图、黑线贴屏。纯白底靠外圈黑线定位；纯黑底靠内圈白线接手。下面两张画的就是这两个极端。</li>
+  </ul>
+  <div class="grid grid--2">
+    <figure class="stg" data-od-id="fig-pin-white"><figcaption>A · 纯白底内容（白图放在白窗口上）</figcaption>
+      <div class="stage stage--white" style="position:relative;width:560px;height:400px;display:block;padding:0">
+        <div class="pin" style="left:60px;top:46px;width:320px;height:200px;overflow:hidden">
+          <i class="pk" style="left:0;top:0;width:320px;height:22px;border-radius:0"></i>
+          <i class="pk" style="left:12px;top:7px;width:64px;height:8px"></i>
+          <i class="pk" style="left:24px;top:44px;width:180px;height:12px"></i>
+          <i class="pk" style="left:24px;top:66px;width:220px;height:8px"></i>
+          <i class="pk" style="left:24px;top:82px;width:150px;height:8px"></i>
+          <i class="pk pk--d" style="left:24px;top:106px;width:120px;height:70px"></i>
+          <i class="pk" style="left:160px;top:110px;width:130px;height:8px"></i>
+          <i class="pk" style="left:160px;top:126px;width:112px;height:8px"></i>
+        </div>
+        <div class="bar bar--s host-dark" style="position:absolute;left:60px;top:252px">
+          <span class="hz"></span>
+          <span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span>
+          <span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span>
+          <span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span>
+        </div>
+        <span class="dim" style="left:60px;top:30px;width:320px"><span>320</span></span>
+        <span class="dim--v" style="left:404px;top:46px;height:200px"><span>200</span></span>
+        <span class="dim" style="left:60px;top:318px;width:152px"><span>152 · 条</span></span>
+        <span class="call" style="left:300px;top:60px">描边 = 白 1 + 黑 1</span>
+        <span class="call" style="left:236px;top:258px">条距图 6 · 左对齐</span>
+      </div>
+      <figcaption>白图贴白窗口：没有外圈那条黑线，"什么都没出现"。黑线在干活。</figcaption>
+    </figure>
+    <figure class="stg" data-od-id="fig-pin-black"><figcaption>B · 纯黑底内容（黑图放在黑窗口上）</figcaption>
+      <div class="stage stage--black" style="position:relative;width:560px;height:400px;display:block;padding:0">
+        <div class="pin" style="left:60px;top:46px;width:320px;height:200px;overflow:hidden;background:oklch(20% .005 250)">
+          <i class="pk pk--w2" style="left:0;top:0;width:320px;height:22px;border-radius:0"></i>
+          <i class="pk pk--w" style="left:12px;top:7px;width:64px;height:8px"></i>
+          <i class="pk pk--w" style="left:24px;top:44px;width:180px;height:12px"></i>
+          <i class="pk pk--w2" style="left:24px;top:66px;width:220px;height:8px"></i>
+          <i class="pk pk--w2" style="left:24px;top:82px;width:150px;height:8px"></i>
+          <i class="pk pk--w" style="left:24px;top:106px;width:120px;height:70px"></i>
+          <i class="pk pk--w2" style="left:160px;top:110px;width:130px;height:8px"></i>
+          <i class="pk pk--w2" style="left:160px;top:126px;width:112px;height:8px"></i>
+        </div>
+        <div class="bar bar--s host-dark" style="position:absolute;left:60px;top:252px">
+          <span class="hz"></span>
+          <span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span>
+          <span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="4" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>50%</b></span>
+          <span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span>
+        </div>
+        <span class="dim" style="left:60px;top:30px;width:320px"><span>320</span></span>
+        <span class="dim--v" style="left:404px;top:46px;height:200px"><span>200</span></span>
+        <span class="call" style="left:300px;top:60px">同一圈描边，白线接手</span>
+      </div>
+      <figcaption>黑图贴黑窗口：同一圈描边，这回是内圈白线在干活。截图内容随图变，描边不随图变。</figcaption>
+    </figure>
+  </div>
+  <p class="planfoot">两图同尺寸（示意 320 × 200）：A 的读数 100%、B 的 50% —— 四档读数在下节放大。条永远挂在图下缘左侧 6 pt 处；图的四边都没有别的东西（F.3：便签，不是窗口）。</p>
+</section>
+
+<section data-od-id="pin-bar">
+  <h2><span class="n">04</span>钉图 · 控制条（整条 2× 放大）—— 三个按钮是"它们干什么"的唯一出口</h2>
+  <p class="lead">一条 152 × 32 的 ④ 材质条，四段：把手（空）/ 穿透 / 不透明度（按钮兼读数）/ 关闭。挂在图下缘外 6 pt，左对齐 —— 它占图外的地方，不压内容。</p>
+  <figure class="stg" data-od-id="fig-bar2x"><figcaption>控制条 · 2×（每一格都标了宽度）</figcaption>
+    <div class="stage host-dark stage--c" style="position:relative;width:1148px;height:250px;display:block;padding:0">
+      <div class="grps" style="left:20px;top:16px">
+        <span style="width:8px"></span>
+        <span style="width:68px">把手 34</span>
+        <span style="width:4px"></span>
+        <span style="width:48px">穿透 24</span>
+        <span style="width:4px"></span>
+        <span style="width:112px">不透明度 56</span>
+        <span style="width:4px"></span>
+        <span style="width:48px">关闭 24</span>
+        <span style="width:8px"></span>
+      </div>
+      <div class="sc" style="--w:152;--h:32;position:absolute;left:20px;top:64px">
+        <div class="bar bar--s host-dark">
+          <span class="hz"></span>
+          <span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span>
+          <span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span>
+          <span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span>
+        </div>
+      </div>
+      <span class="dim--v" style="left:344px;top:64px;height:64px"><span>32</span></span>
+      <span class="dim" style="left:20px;top:152px;width:304px"><span>152 · 整条（2× 画）</span></span>
+      <span class="call" style="left:400px;top:64px">格 24 · 圆角 5 · 图标 16 · 内边距 4 · 格间距 2</span>
+      <span class="call" style="left:400px;top:90px">条圆角 8 · 底 oklch(31.5%) · 描边 12% 白 · 双投影（④ 原值）</span>
+      <span class="call" style="left:400px;top:116px">读数 11px mono · 与图标一起换档（见 05）</span>
+      <span class="call" style="left:400px;top:176px">整条不随本体透明度变淡（登记 4 · 见 10）—— 仪器不属于内容</span>
+    </div>
+    <figcaption>四段从左到右：把手 34（空）/ 穿透 24 / 不透明度 56 / 关闭 24</figcaption>
+  </figure>
+  <ul class="rules">
+    <li><b>把手段（34 × 24，空的）：</b>整条上不落在三个按钮上的像素都能拖 —— 钉图上没有别的可抓的地方（F.2.2）。悬停给「按住拖动 · 移动这张图」。</li>
+    <li><b>穿透（24 × 24）：</b>开关。开 = 填充蓝 + <b>本体描边变虚线</b>（05 · Q4）。穿透只作用于本体 —— 条本身永不穿透（F.2.1）。</li>
+    <li><b>不透明度（56 × 24）：</b>图标填充比例 = 当前档，旁边 11px 读数 —— 不悬停也知道现在几成。点一下换下一档：100 → 75 → 50 → 25 → 回 100。</li>
+    <li><b>关闭（24 × 24，最右）：</b>与 ④⑧ 一样"最右是离开"。不可逆，所以提示句说的是"会发生什么"（这张钉图会从屏幕上移除），不是"不可撤销"四个字。</li>
+  </ul>
+</section>
+
+<section data-od-id="pin-states">
+  <h2><span class="n">05</span>控制条 · 六种状态</h2>
+  <h3>① 默认 / ② 悬停 / ③ 按下 / ④ 穿透开启</h3>
+  <figure class="stg" data-od-id="fig-states-core"><div class="stage host-dark stage--c" style="position:relative;width:1148px;height:250px;display:block;padding:0">
+    <div style="position:absolute;left:20px;top:16px;display:flex;align-items:center;gap:14px"><span class="lbl" style="width:180px;text-align:right">① 默认 —— 三格都静</span><div class="bar bar--s host-dark"><span class="hz"></span><span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div></div>
+    <div style="position:absolute;left:20px;top:64px;display:flex;align-items:center;gap:14px"><span class="lbl" style="width:180px;text-align:right">② 悬停 —— 格底亮一档</span><div class="bar bar--s host-dark"><span class="hz"></span><span class="cell cell--s is-hover"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div></div>
+    <div style="position:absolute;left:20px;top:112px;display:flex;align-items:center;gap:14px"><span class="lbl" style="width:180px;text-align:right">③ 按下 —— 再深一档</span><div class="bar bar--s host-dark"><span class="hz"></span><span class="cell cell--s is-press"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div></div>
+    <div style="position:absolute;left:20px;top:160px;display:flex;align-items:center;gap:14px"><span class="lbl" style="width:180px;text-align:right">④ 穿透开启 —— 高亮 + 本体虚线边</span><div class="bar bar--s host-dark"><span class="hz"></span><span class="cell cell--s is-on"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div></div>
+    <div class="pin pin--d" style="left:560px;top:150px;width:150px;height:92px"><i class="pimg"><i class="pk" style="left:12px;top:12px;width:80px;height:10px"></i><i class="pk" style="left:12px;top:32px;width:110px;height:7px"></i><i class="pk" style="left:12px;top:46px;width:96px;height:7px"></i></i><i class="pedge"></i></div>
+    <span class="lbl" style="position:absolute;left:730px;top:184px">本体：实线 → 虚线</span>
+    <span class="call" style="left:560px;top:46px">"以为鼠标坏了"的那一格：蓝色说开着，虚线说这一层点不中</span>
+  </div><figcaption>四态 1×。①②③ 是按钮的三种脸色（底：7% / 9% / 16% 白）；④ 是唯一一个状态色 —— 填充蓝。</figcaption></figure>
+  <h3>⑤ 不透明度四档的读数（点一下换下一档，至底回满）</h3>
+  <figure class="stg" data-od-id="fig-states-opacity"><div class="stage host-dark stage--c" style="position:relative;width:1148px;height:150px;display:block;padding:0">
+    <div style="position:absolute;left:24px;top:36px"><div class="bar bar--s host-dark"><span class="hz"></span><span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div><div class="lbl" style="margin-top:10px">100% · 满档（默认）</div></div>
+    <div style="position:absolute;left:320px;top:36px"><div class="bar bar--s host-dark"><span class="hz"></span><span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="6" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>75%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div><div class="lbl" style="margin-top:10px">75%</div></div>
+    <div style="position:absolute;left:616px;top:36px"><div class="bar bar--s host-dark"><span class="hz"></span><span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="4" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>50%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div><div class="lbl" style="margin-top:10px">50%</div></div>
+    <div style="position:absolute;left:912px;top:36px"><div class="bar bar--s host-dark"><span class="hz"></span><span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="2" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>25%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div><div class="lbl" style="margin-top:10px">25% · 最淡</div></div>
+    <span class="call" style="left:24px;top:112px">图标填充比例 = 读数 —— 不悬停、不点开也看得见；换档时两者一起换</span>
+  </div><figcaption>四档全用"按钮兼读数"表达（F.2 表格第二行），没有独立滑块 —— 钉图上不多开一件东西。</figcaption></figure>
+  <h3>⑥ 悬停提示 —— 钉图上唯一的说明</h3>
+  <figure class="stg" data-od-id="fig-tips"><div class="stage host-dark stage--c" style="position:relative;width:1148px;height:300px;display:block;padding:0">
+    <div style="position:absolute;left:20px;top:16px;display:flex;align-items:center;gap:16px"><span class="lbl" style="width:200px;text-align:right">空区（整条）</span><span class="tip" style="position:static">按住拖动 · 移动这张图</span></div>
+    <div style="position:absolute;left:20px;top:58px;display:flex;align-items:center;gap:16px"><span class="lbl" style="width:200px;text-align:right">本体（未穿透时）</span><span class="tip" style="position:static">滚轮缩放 · 锚点在左上角</span></div>
+    <div style="position:absolute;left:20px;top:100px;display:flex;align-items:center;gap:16px"><span class="lbl" style="width:200px;text-align:right">穿透 · 关</span><span class="tip" style="position:static">鼠标穿透：点击落到下面的应用</span></div>
+    <div style="position:absolute;left:20px;top:142px;display:flex;align-items:center;gap:16px"><span class="lbl" style="width:200px;text-align:right">穿透 · 开</span><span class="tip" style="position:static">鼠标穿透已开启 · 点一下关掉</span></div>
+    <div style="position:absolute;left:20px;top:184px;display:flex;align-items:center;gap:16px"><span class="lbl" style="width:200px;text-align:right">不透明度</span><span class="tip" style="position:static">不透明度 75% · 点一下换下一档</span></div>
+    <div style="position:absolute;left:20px;top:226px;display:flex;align-items:center;gap:16px"><span class="lbl" style="width:200px;text-align:right">关闭</span><span class="tip" style="position:static">关闭 · 这张钉图会从屏幕上移除</span></div>
+    <span class="call" style="left:580px;top:100px">开启态的句子换成"点一下关掉" —— 唯一出口在最需要时再讲一遍</span>
+    <span class="call" style="left:580px;top:142px">不可逆的两个动作（穿透 / 关闭）都用"会发生什么"说话，不用形容词</span>
+  </div><figcaption>提示是钉图上唯一的文字。"按了才知道"对不可逆的动作来说太晚了 —— 所以悬停必须给完整句子。</figcaption></figure>
+</section>
+
+<section data-od-id="pin-multi">
+  <h2><span class="n">06</span>多张共存 —— 两张同屏，一张在穿透</h2>
+  <figure class="stg" data-od-id="fig-multi"><div class="stage stage--desk" style="position:relative;width:1148px;height:440px;display:block;padding:0">
+    <div class="wina" style="left:70px;top:80px;width:620px;height:290px">
+      <i class="pk" style="left:0;top:0;width:620px;height:26px;border-radius:0"></i>
+      <i class="pk" style="left:16px;top:9px;width:90px;height:8px"></i>
+      <i class="pk" style="left:16px;top:52px;width:260px;height:9px"></i>
+      <i class="pk" style="left:16px;top:88px;width:300px;height:9px"></i>
+      <i class="pk" style="left:16px;top:124px;width:240px;height:9px"></i>
+      <i class="pk" style="left:16px;top:160px;width:320px;height:9px"></i>
+      <i class="pk" style="left:16px;top:196px;width:280px;height:9px"></i>
+      <i class="pk" style="left:16px;top:232px;width:200px;height:9px"></i>
+      <i class="chov" style="left:500px;top:126px;width:100px;height:30px"></i>
+    </div>
+    <div class="pin" style="left:150px;top:34px;width:300px;height:190px;overflow:hidden">
+      <i class="pk" style="left:0;top:0;width:300px;height:20px;border-radius:0"></i>
+      <i class="pk" style="left:20px;top:42px;width:150px;height:11px"></i>
+      <i class="pk" style="left:20px;top:62px;width:190px;height:7px"></i>
+      <i class="pk" style="left:20px;top:76px;width:120px;height:7px"></i>
+      <i class="pk pk--d" style="left:20px;top:98px;width:110px;height:66px"></i>
+      <i class="pk" style="left:150px;top:102px;width:120px;height:7px"></i>
+      <i class="pk" style="left:150px;top:116px;width:96px;height:7px"></i>
+    </div>
+    <div class="bar bar--s host-dark" style="position:absolute;left:150px;top:230px"><span class="hz"></span><span class="cell cell--s"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div>
+    <div class="pin pin--d" style="left:560px;top:170px;width:240px;height:150px"><i class="pimg" style="opacity:.5"><i class="pk" style="left:0;top:0;width:240px;height:18px;border-radius:0"></i><i class="pk" style="left:16px;top:36px;width:120px;height:9px"></i><i class="pk" style="left:16px;top:54px;width:150px;height:6px"></i><i class="pk pk--d" style="left:16px;top:74px;width:88px;height:52px"></i><i class="pk" style="left:120px;top:78px;width:100px;height:6px"></i><i class="pk" style="left:120px;top:92px;width:80px;height:6px"></i></i><i class="pedge"></i></div>
+    <div class="bar bar--s host-dark" style="position:absolute;left:560px;top:326px"><span class="hz"></span><span class="cell cell--s is-on"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="4" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>50%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div>
+    <span class="click" style="left:578px;top:208px"></span>
+    <svg class="cur" style="left:584px;top:217px" viewBox="0 0 16 16"><path d="M5 3v9l2.3-2.1 1.8 3.7 1.9-.9-1.8-3.6 3.3-.5z" fill="#fff" stroke="rgba(0,0,0,.85)" stroke-width=".9" stroke-linejoin="round"/></svg>
+    <span class="call" style="left:300px;top:10px">① 正常：实线边 · 按钮全静 · 100%</span>
+    <span class="call" style="left:470px;top:138px">② 穿透中：虚线边 · 按钮蓝 · 50% 半透明 —— 点它（光标处）= 点下面的表格（高亮格在透过它显形）</span>
+    <span class="dim" style="left:450px;top:158px;width:110px"><span>110</span></span>
+  </div><figcaption>两张钉图互不干扰：各自的条、各自的档、各自的状态。穿透只属于 ② —— ① 照常拖、照常挡。</figcaption></figure>
+  <p class="planfoot">② 同时调到了 50% —— 穿透 + 半透明是这套组合最常见的用法："挡着看，但点得到"。高亮格是下面那个表格自己的选中态，透过 50% 的图看得见 —— 这就是"点击落到了下面"的证据。</p>
+  <h3>穿透开着时的两条硬要求（F.2.1）</h3>
+  <div class="grid grid--2">
+    <figure class="stg" data-od-id="fig-thru-click"><div class="stage host-dark stage--c" style="position:relative;width:560px;height:290px;display:block;padding:0">
+      <div class="wina" style="left:40px;top:60px;width:480px;height:80px"><i class="pk" style="left:0;top:0;width:480px;height:20px;border-radius:0"></i></div>
+      <i class="chov" style="left:180px;top:110px;width:120px;height:28px"></i>
+      <div class="pin pin--d" style="left:70px;top:40px;width:300px;height:150px"><i class="pimg" style="opacity:.5"><i class="pk" style="left:20px;top:30px;width:150px;height:10px"></i><i class="pk" style="left:20px;top:48px;width:190px;height:6px"></i><i class="pk pk--d" style="left:20px;top:70px;width:100px;height:56px"></i></i><i class="pedge"></i></div>
+      <span class="click" style="left:172px;top:106px"></span>
+      <svg class="cur" style="left:178px;top:115px" viewBox="0 0 16 16"><path d="M5 3v9l2.3-2.1 1.8 3.7 1.9-.9-1.8-3.6 3.3-.5z" fill="#fff" stroke="rgba(0,0,0,.85)" stroke-width=".9" stroke-linejoin="round"/></svg>
+      <span class="call" style="left:330px;top:210px">点图 = 点下面：本体不接收这一下</span>
+    </div><figcaption>穿透中 · 点本体 —— 高亮格（下面那层的）从半透明的图里显出来</figcaption></figure>
+    <figure class="stg" data-od-id="fig-thru-bar"><div class="stage host-dark stage--c" style="position:relative;width:560px;height:290px;display:block;padding:0">
+      <div class="pin pin--d" style="left:70px;top:30px;width:300px;height:150px"><i class="pimg" style="opacity:.5"><i class="pk" style="left:20px;top:30px;width:150px;height:10px"></i><i class="pk" style="left:20px;top:48px;width:190px;height:6px"></i><i class="pk pk--d" style="left:20px;top:70px;width:100px;height:56px"></i></i><i class="pedge"></i></div>
+      <div class="bar bar--s host-dark" style="position:absolute;left:70px;top:186px"><span class="hz"></span><span class="cell cell--s is-on is-hover"><svg class="ic"><use href="#i-thru"/></svg></span><span class="cell cell--s ocell"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="4" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>50%</b></span><span class="cell cell--s"><svg class="ic"><use href="#i-x"/></svg></span></div>
+      <svg class="cur" style="left:110px;top:192px" viewBox="0 0 16 16"><path d="M5 3v9l2.3-2.1 1.8 3.7 1.9-.9-1.8-3.6 3.3-.5z" fill="#fff" stroke="rgba(0,0,0,.85)" stroke-width=".9" stroke-linejoin="round"/></svg>
+      <span class="call" style="left:210px;top:250px">控制条不穿透 —— 出口永远打得开</span>
+    </div><figcaption>穿透中 · 点控制条 —— 条照常响应（高亮格还多一档 hover 提亮）</figcaption></figure>
+  </div>
+</section>
+
+<section data-od-id="countdown">
+  <h2><span class="n">07</span>延时倒计时 —— 一个不能被打断的等待，怎么让它不烦人</h2>
+  <p class="lead">它不是"请等待"：没有进度圈、没有灰纱、没有任何字。屏幕上唯一变化的东西是一个在减少的数字 —— "马上就好"由数字本身承担。</p>
+  <figure class="stg" data-od-id="fig-num-3"><figcaption>大数字的三档 · 72 pt · SF Pro Display 600 · tabular-nums（10 → 9 不跳宽）</figcaption><div class="stage stage--desk" style="position:relative;width:1148px;height:240px;display:block;padding:0">
+    <span class="num" style="position:absolute;left:160px;top:70px">3</span>
+    <span class="num" style="position:absolute;left:540px;top:70px">5</span>
+    <span class="num" style="position:absolute;left:900px;top:70px">10</span>
+    <span class="lbl" style="position:absolute;left:170px;top:170px">3 秒档</span>
+    <span class="lbl" style="position:absolute;left:550px;top:170px">5 秒档</span>
+    <span class="lbl" style="position:absolute;left:918px;top:170px">10 秒档 —— 换成两位也不动位置</span>
+    <span class="call" style="left:24px;top:24px">屏幕中央（鼠标所在那块屏）· 无底、无框、无字</span>
+  </div></figure>
+  <div class="grid grid--2">
+    <figure class="stg" data-od-id="fig-num-light"><figcaption>压浅色内容 —— 黑晕干活</figcaption><div class="stage stage--white" style="position:relative;width:560px;height:300px;display:block;padding:0">
+      <i class="pk" style="left:170px;top:56px;width:220px;height:14px"></i>
+      <i class="pk" style="left:170px;top:106px;width:300px;height:9px"></i>
+      <i class="pk" style="left:170px;top:136px;width:260px;height:9px"></i>
+      <i class="pk" style="left:170px;top:166px;width:280px;height:9px"></i>
+      <i class="pk pk--d" style="left:170px;top:206px;width:200px;height:44px"></i>
+      <span class="num" style="position:absolute;left:50%;top:48%;transform:translate(-50%,-50%)">3</span>
+    </div></figure>
+    <figure class="stg" data-od-id="fig-num-dark"><figcaption>压深色内容 —— 白字干活</figcaption><div class="stage stage--black" style="position:relative;width:560px;height:300px;display:block;padding:0">
+      <i class="pk pk--w" style="left:170px;top:56px;width:220px;height:14px"></i>
+      <i class="pk pk--w2" style="left:170px;top:106px;width:300px;height:9px"></i>
+      <i class="pk pk--w2" style="left:170px;top:136px;width:260px;height:9px"></i>
+      <i class="pk pk--w2" style="left:170px;top:166px;width:280px;height:9px"></i>
+      <i class="pk pk--w" style="left:170px;top:206px;width:200px;height:44px"></i>
+      <span class="num" style="position:absolute;left:50%;top:48%;transform:translate(-50%,-50%)">5</span>
+    </div></figure>
+  </div>
+  <p class="planfoot">白芯黑边从线扩展到字：白字 + 1px 黑晕 + 一层柔影。浅内容上黑晕在干活；深内容上白字在干活；中等灰上两者同时在场（对照见下）。所以在任意内容上都读得清 —— 且完全没有底盘。</p>
+  <figure class="stg" data-od-id="fig-thru-num"><figcaption>点穿状态 —— 等待期间用户还能操作下面的东西（这是"不能中止"的补偿）</figcaption><div class="stage stage--white" style="position:relative;width:1148px;height:300px;display:block;padding:0">
+    <i class="pk" style="left:120px;top:60px;width:180px;height:12px"></i>
+    <i class="pk" style="left:120px;top:120px;width:840px;height:8px"></i>
+    <i class="pk" style="left:120px;top:150px;width:760px;height:8px"></i>
+    <i class="pk" style="left:120px;top:180px;width:820px;height:8px"></i>
+    <i class="pk" style="left:120px;top:210px;width:600px;height:8px"></i>
+    <span style="position:absolute;left:376px;top:236px;width:18px;height:18px;border-radius:4px;background:#0a84ff;display:flex;align-items:center;justify-content:center;color:#fff"><svg class="ic ic--s"><use href="#i-check"/></svg></span>
+    <i class="pk" style="left:404px;top:240px;width:150px;height:9px"></i>
+    <span class="num" style="position:absolute;left:520px;top:80px">5</span>
+    <span class="click" style="left:372px;top:232px"></span>
+    <svg class="cur" style="left:378px;top:241px" viewBox="0 0 16 16"><path d="M5 3v9l2.3-2.1 1.8 3.7 1.9-.9-1.8-3.6 3.3-.5z" fill="#fff" stroke="rgba(0,0,0,.85)" stroke-width=".9" stroke-linejoin="round"/></svg>
+    <span class="call" style="left:560px;top:236px">数字也拦不住点击：整块倒计时都是点穿的</span>
+  </div></figure>
+  <h3>为什么不是圆盘（对照）</h3>
+  <figure class="stg" data-od-id="fig-disc"><div class="stage stage--desk" style="position:relative;width:1148px;height:230px;display:block;padding:0;overflow:hidden">
+    <span class="pho" style="right:574px"></span>
+    <span class="pho" style="left:574px"></span>
+    <span class="lbl" style="position:absolute;left:24px;top:16px;color:rgba(255,255,255,.64)">采用：白芯黑边的数字</span>
+    <span class="lbl" style="position:absolute;left:598px;top:16px;color:rgba(255,255,255,.64)">不采用：不透明圆盘 —— 最保险，也最像"系统提示"</span>
+    <span class="num" style="position:absolute;left:262px;top:66px">5</span>
+    <span class="disc" style="position:absolute;left:812px;top:52px"><span class="num num--s">5</span></span>
+    <span class="call" style="left:24px;top:194px">在乱底上依然可读，且不遮住它下面是什么</span>
+    <span class="call" style="left:598px;top:194px">同一份内容：圆盘把底下的东西盖掉了 104 ⌀，像一枚系统徽章</span>
+  </div></figure>
+  <ul class="rules">
+    <li><b>延时为 0 时什么都不显示</b> —— "延时 0"与"不延时"行为完全等价（⑤ 四档里 0 那档没有第二套行为）。</li>
+    <li><b>节奏是"秒针"不是"进度条"：</b>每秒一次极轻的缩放脉冲（约 1.04 → 1.0，120ms）—— 让跳秒像节拍；没有环形进度，进度圈读作"请等待"。</li>
+    <li><b>不抢焦点、不能中止是刻意的取舍：</b>要支持 Esc 就得再挂一层全局键盘监听，而等待最长 10 秒 —— 收益远小于代价。补偿是点穿：等待里用户照常操作。</li>
+  </ul>
+</section>
+
+<section data-od-id="dialogs">
+  <h2><span class="n">08</span>权限与错误提示 —— 系统对话框里的文案与按钮</h2>
+  <p class="lead">这一块我们设计的<b>不是版式</b>：四张对话框按 macOS 系统对话框的样子示意（材质、字体、按钮随系统外观 —— 深色三张、浅色一张说明它跟着系统走）。我们管的是标题、说明与按钮。按钮顺序是系统的规矩：取消在最左，主动作在最右（蓝色填充）。</p>
+  <div class="grid grid--2">
+    <figure class="stg" data-od-id="fig-d1-dark"><figcaption>① 缺屏幕录制权限 · 深色（含"列表里找不到"）</figcaption><div class="stage stage--desk" style="position:relative;width:560px;height:330px;display:block;padding:0">
+      <div class="sysdlg" style="left:60px;top:36px;width:440px">
+        <div class="sd__t">Marquee 需要「屏幕录制」权限</div>
+        <div class="sd__b">截图要能看见屏幕上的内容，得先在系统设置里把 Marquee 勾上：隐私与安全性 → 屏幕录制。没勾之前，截出来的只有桌面壁纸。</div>
+        <div class="sd__h">列表里找不到 Marquee？先退出 Marquee 再打开一次 —— 这个列表只收录"请求过"权限的应用，请求过它才会出现。还是没有的话，点「在 Finder 中显示」确认它不在下载文件夹或磁盘映像里。</div>
+        <div class="sd__btns"><span class="sdb sdb--sec">稍后</span><span class="sdb sdb--sec">在 Finder 中显示</span><span class="sdb sdb--pri">打开系统设置</span></div>
+      </div>
+      <span class="dim" style="left:60px;top:22px;width:440px"><span>440</span></span>
+    </div></figure>
+    <figure class="stg" data-od-id="fig-d1-light"><figcaption>① 同一组文案 · 浅色（它跟随系统外观，不跟随 Marquee 的深色优先）</figcaption><div class="stage stage--deskl" style="position:relative;width:560px;height:330px;display:block;padding:0">
+      <div class="sysdlg sysdlg--lt" style="left:60px;top:36px;width:440px">
+        <div class="sd__t">Marquee 需要「屏幕录制」权限</div>
+        <div class="sd__b">截图要能看见屏幕上的内容，得先在系统设置里把 Marquee 勾上：隐私与安全性 → 屏幕录制。没勾之前，截出来的只有桌面壁纸。</div>
+        <div class="sd__h">列表里找不到 Marquee？先退出 Marquee 再打开一次 —— 这个列表只收录"请求过"权限的应用，请求过它才会出现。还是没有的话，点「在 Finder 中显示」确认它不在下载文件夹或磁盘映像里。</div>
+        <div class="sd__btns"><span class="sdb sdb--sec">稍后</span><span class="sdb sdb--sec">在 Finder 中显示</span><span class="sdb sdb--pri">打开系统设置</span></div>
+      </div>
+      <span class="call" style="left:60px;top:296px">同一套字，两种外观 —— 与 ① 引导页"深浅两版"同一做法</span>
+    </div></figure>
+    <figure class="stg" data-od-id="fig-d2"><figcaption>② 已勾选但未生效 · 深色</figcaption><div class="stage stage--desk" style="position:relative;width:560px;height:250px;display:block;padding:0">
+      <div class="sysdlg" style="left:100px;top:40px;width:360px">
+        <div class="sd__t">勾选已保存 · 重新打开 Marquee 后生效</div>
+        <div class="sd__b">macOS 只在应用启动时读这条权限。退出 Marquee，再打开一次就好 —— 不用重启电脑。它要是又变回没勾的样子，点「打开系统设置」再看一眼。</div>
+        <div class="sd__btns"><span class="sdb sdb--sec">稍后</span><span class="sdb sdb--sec">打开系统设置</span><span class="sdb sdb--pri">重新打开 Marquee</span></div>
+      </div>
+    </div></figure>
+    <figure class="stg" data-od-id="fig-d3"><figcaption>③ 截图没完成 · 深色</figcaption><div class="stage stage--desk" style="position:relative;width:560px;height:250px;display:block;padding:0">
+      <div class="sysdlg" style="left:100px;top:40px;width:360px">
+        <div class="sd__t">这次截图没有完成</div>
+        <div class="sd__b">截图时屏幕上的内容变了（窗口关了或分辨率切了），Marquee 没拿到一块稳定的画面。这一张没有留下，剪贴板还是你之前的东西 —— 再截一次通常就好。</div>
+        <div class="sd__btns"><span class="sdb sdb--pri">好</span></div>
+      </div>
+    </div></figure>
+    <figure class="stg" data-od-id="fig-d4"><figcaption>④ 快捷键没生效 · 深色</figcaption><div class="stage stage--desk" style="position:relative;width:560px;height:250px;display:block;padding:0">
+      <div class="sysdlg" style="left:100px;top:40px;width:360px">
+        <div class="sd__t">这组快捷键现在没生效</div>
+        <div class="sd__b">⌃Q 被另一个应用占用了 —— 系统里同一条快捷键只能属于一个应用，谁先注册谁生效。到偏好设置 → 快捷键里换一组，或者退出最近装的截图/录屏工具再试。</div>
+        <div class="sd__btns"><span class="sdb sdb--pri">好</span></div>
+      </div>
+    </div></figure>
+    <div class="stg" data-od-id="fig-d-copy" style="margin-top:18px">
+      <h4 style="margin-top:22px">按钮 · 为什么这么排</h4>
+      <ul class="rules">
+        <li><b>①「打开系统设置」直接落在屏幕录制面板</b>（深链，不是设置首页）—— 少一步就少一次流失；「在 Finder 中显示」只做一件事：确认它不在下载文件夹/磁盘映像里（这是"列表里找不到"最常见的物理原因）。</li>
+        <li><b>②的主动作是「重新打开 Marquee」</b>（对 brief「同上」的偏离，见 10）：那组按钮里没有任何动作能让权限生效 —— 用户读完会无处可点。</li>
+        <li><b>③④只有一个「好」</b>：原因已说清、后果已交代、下一步就是再试 —— 不给假选择。</li>
+        <li><b>语气与 ⑤/① 一致：</b>说人话、给下一步；不写"操作失败 / 请重试"，不写"很抱歉给您带来不便"；路径写满三级（④ 的规矩）；冲突能指名就指名，指不了就不编名字（⑤ 的规矩）。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section data-od-id="behavior">
+  <h2><span class="n">09</span>行为边界表 —— 它们收不收键盘</h2>
+  <table>
+    <thead><tr><th></th><th>收键盘（能否成为 key window）</th><th>跟随切换 Space</th><th>点击穿透</th><th>出现多久</th><th>怎么结束</th></tr></thead>
+    <tbody>
+      <tr><td><b>F 钉图</b></td><td>不收 —— 硬约束</td><td>跟</td><td>本体可选（穿透开时穿透）；控制条永不穿透</td><td class="mono">分钟–小时</td><td>控制条 ✕（不可逆）</td></tr>
+      <tr><td><b>G 倒计时</b></td><td>不收 —— 刻意的取舍</td><td>跟</td><td>整块穿透（数字上也能点）</td><td class="mono">3 / 5 / 10 秒</td><td>自己消失；不能中止</td></tr>
+      <tr><td><b>H 提示</b></td><td>收 —— 系统模态</td><td>不跟（随触发它的那一步）</td><td>不穿透</td><td class="mono">读完为止</td><td>按钮</td></tr>
+    </tbody>
+  </table>
+  <p class="planfoot">这张表的每一格都不是实现细节，是设计约束：凡是"不收键盘"的格子，背后都对应着一句"用户此刻正在别处打字"。</p>
+</section>
+
+<section data-od-id="notes">
+  <h2><span class="n">10</span>主动偏离登记 · 接缝 · 五问</h2>
+  <h3>主动偏离 / 对已有稿的改写登记</h3>
+  <ul class="rules">
+    <li><b>1 · 控制条紧凑档（新）。</b>格 24 · 条高 32 · 内边距 4 · 圆角 8。有意的：条要常显在每张钉图上，尺寸是它唯一付得起的代价；④ 的材质、三态、16 图标一字不动。</li>
+    <li><b>2 · 不透明度格加宽到 56（新）。</b>全稿唯一比标准格宽的按钮 —— "按钮兼读数"是 brief 的硬要求，读数比格宽大，只能横向让位。</li>
+    <li><b>3 · 穿透态本体描边实线 → 虚线（新）。</b>白虚线 + 黑晕，仍是白芯黑边；与 i-thru 图标同一意象。理由见 Q4。</li>
+    <li><b>4 · 控制条不随本体透明度变淡。</b>钉图 25% 时条仍 100% —— 仪器不属于内容；否则最淡那档会把唯一出口一起藏起来。</li>
+    <li><b>5 · H 不戴宿主材质。</b>四张对话框材质/字体/按钮随系统（深浅各示意）—— 这不是我们设计的部分，登记以免被读成"忘了统一语言"。</li>
+    <li><b>6 · ②的按钮偏离 brief「同上」。</b>主按钮改为「重新打开 Marquee」；「打开系统设置」退为次动作（系统更新偶尔会重置勾选，留着它当出口）。</li>
+    <li><b>7 · 图标两新两旧。</b>i-thru / 填充方框为新增（16 · 1.5 · 圆头，④ 规格）；i-pin / i-x / i-check 逐字复用。</li>
+    <li><b>8 · 「关闭」的提示不写"不可撤销"四个字。</b>写「这张钉图会从屏幕上移除」—— 不可逆要用"会发生什么"说，不用形容词（F.2 硬要求 ③）。</li>
+  </ul>
+  <h3>接缝（与已有八份稿）</h3>
+  <ul class="rules">
+    <li><b>① 权限行</b>（「屏幕录制：还没授权」+ 86 × 22 [打开系统设置]）是这条权限的"常驻面"，本稿 ① 号文案是它的"弹出面" —— 同一个词，两种载体；① 的默认快捷键 ⌃Q 就是 ④ 号文案里的那个例子。</li>
+    <li><b>④ 供了三件：</b>i-pin（L305）、白芯黑边、控制条的材质/格/三态/提示胶囊；④ 的三级路径写法（系统设置 → 隐私与安全性 → …）是 H 四段的语气底稿。</li>
+    <li><b>⑤ 供了两件：</b>--c-cau 的语义（琥珀="去系统设置里办点事"）与"冲突能指名就指名"的规矩；登录项的 note 写法（「没能加入登录项 · 看系统设置 → 通用 → 登录项」）与本稿 ② 号文案同构。</li>
+    <li><b>②③⑦ 里的「钉图」已是 Pro 能力：</b>它的入口（工具条上的销子格带小锁）在 ④/⑧，本稿只管钉上去以后的那张图 —— 不新增任何入口。</li>
+  </ul>
+  <h3>请回答的五题（brief-小浮层.md §请回答）</h3>
+  <ul class="rules">
+    <li><b>Q1 常显还是悬停才出：常显，但很轻。</b>两个理由比"轻"更硬：悬停才出会和硬要求 ① 打架 —— 穿透开着时本体收不到悬停，"悬停本体出条"这条路就死了，换成"悬停图附近"又要一块看不见的感应区。其次，不透明度是读数，读数不能藏在悬停后 —— 不然"现在是几成"永远要先摸一下。轻的落点全在尺寸上：152 × 32、挂在图外下缘、无底纹无装饰 —— 它占的是图外的地方，不是内容。</li>
+    <li><b>Q2 横条。</b>三个理由：整条当把手时，横条的连续空区（34 × 24）是最大的一块空白，好抓；条贴图下缘 —— 用户把图对齐到左上角后，横条在图的里侧，竖条会顶到屏幕最左、最挤的一侧；与 ④⑧ 的工具条同族同向，"最右是关闭"与既有读法一致。</li>
+    <li><b>Q3 白芯黑边的数字，不用圆盘。</b>把 ④ 的白芯黑边从线扩展到字：白字 + 1px 黑晕 + 柔影 —— 浅内容上黑晕干活，深内容上白字干活，中等灰上两者同时在场。圆盘最保险，但它是"系统提示"的长相（brief 已写了），在浅色文档上还像一块疤。配套：tabular-nums（10→9 不跳宽）+ 每秒一次极轻的缩放脉冲（像秒针，不像进度圈）。</li>
+    <li><b>Q4 高亮之外三件：</b>本体描边实线→虚线（在点上去之前先说明"这一层是透的"）；高亮按钮的悬停提示换句子（「已开启 · 点一下关掉」—— 唯一出口在需要的时刻再讲一遍）；多张共存时只让穿透的那张变虚边，不做全屏提示 —— 安静地指向那一张。</li>
+    <li><b>Q5 讲不清，而且不该用图讲。</b>系统对话框里放图只回答"列表长什么样"，回答不了"我该怎么办"—— 而用户卡在那里要的恰恰是后者。解法是两句话 + 一个按钮：先给原因（列表只收录"请求过"的应用 → 退出再打开），再给动作（「在 Finder 中显示」确认不在下载文件夹/磁盘映像里）。图不能点，按钮能点。</li>
+  </ul>
+</section>
+
+</div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-pin" viewBox="0 0 16 16"><path d="M9.4 1.9 14 6.5l-1.7 1.7-1-.3-2.6 2.6.3 2-1.5 1.5L3.4 9.9l-1.7.4-1 1"/><path d="M4.3 11.7 1.9 14.1"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5 6.6 11.6 12.5 4.6"/></symbol>
+  <symbol id="i-thru" viewBox="0 0 16 16"><path d="M5 2.2v8.5l2.2-2 1.7 3.5 1.8-.9-1.7-3.4 3.1-.5z"/><path d="M2.4 13.3h11.2" stroke-dasharray="2 1.6"/></symbol>
+</svg>
+</body>
+</html>
