@@ -121,15 +121,21 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 | `Release` | **Developer ID** 打包（`scripts/package.sh`） | 正式 id | **无** | 优化 |
 | **`MAS`** | **上架 App Store**（2026-10-03 加） | 正式 id | **有** | 优化 |
 
-> ⚠️ **「沙盒」那一列是 2026-10-03 才有的第四档**（ticket 32）。三件事要看清：
+> ⚠️ **「沙盒」那一列是 2026-10-03 才有的第四档**（ticket 32）。四件事要看清：
 >
-> 1. **只有 `MAS` 带 `CODE_SIGN_ENTITLEMENTS` + hardened runtime。**
->    `Release` 不带是刻意的 —— 它是 **Developer ID** 那条路，而那条路存在的
+> 1. **只有 `MAS` 带 `CODE_SIGN_ENTITLEMENTS`** —— 也就是说只有它进沙盒。
+>    `Release` 不带是刻意的：它是 **Developer ID** 那条路，而那条路存在的
 >    **全部价值就是保住自动滚动**（沙盒禁止向其它 app 投递输入事件）。
 > 2. **`Debug` 的身份与数据根早已不是"正式 id / 临时目录"**（这张表原先写错了）：
 >    它和 `Dev` 一样是 `com.tango.Marquee.dev`，**从 Debug 切到 Dev 不会多出一个身份**。
 > 3. **bundle id 靠继承**：`settings.base` 里是正式 id，只有 `Debug` / `Dev` 覆盖成 `.dev`。
 >    所以"只有 `Release` 与 `MAS` 拿生产 id"这条约束由**继承关系**保证，不靠人记得。
+> 4. **`ENABLE_HARDENED_RUNTIME` 四份配置都开**（在 `settings.base` 里）。
+>    与"`Dev` 照抄 `Release` 的优化设置"同一条理由：**本地跑的那个与发版行为一致，
+>    问题才会在平时暴露**。只给发版配置开的话，硬运行时独有的破坏要等到打包那天
+>    才发现 —— 而那正是最不适合发现它的时刻。
+>    （历史：2026-10-03 之前这里是 `NO`，而 `scripts/package.sh` 走公证 ⇒
+>      那条路**必然**会在公证那步被拒，只是 ticket 18 从没真跑过。）
 
 ### 4.1 `Dev` 与 `Debug` 的区别（逐项对比过）
 

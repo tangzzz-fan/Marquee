@@ -182,7 +182,20 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "Apple Development"
         DEVELOPMENT_TEAM: UKXWZ3FS84
-        ENABLE_HARDENED_RUNTIME: NO
+        # hard runtime：**公证与 App Store 都要求它开**。
+        #
+        # 为什么放在 base（而不是只给 Release / MAS）：与「Dev 照抄 Release 的优化设置」
+        # 同一条理由 —— **本地跑的那个与发版行为一致，问题才会在平时暴露**。
+        # 只给发版配置开的话，硬运行时独有的破坏要等到打包那天才发现，
+        # 而那正是最不适合发现它的时刻。
+        #
+        # ⚠️ 它限制的是：加载非同团队签名的库、可写可执行内存（JIT）、
+        # DYLD_* 环境变量、无 entitlement 的调试。本项目这几样都不用。
+        # 断言（`assert`）不受它影响 —— 那个由**优化级别**决定（见 docs/DEV-VS-PROD.md §4.2）。
+        #
+        # 历史（2026-10-03）：原先这里是 `NO`，而 `scripts/package.sh` 走的是公证 ——
+        # 那条路**必然**会在公证那步被拒，只是 ticket 18 从没真跑过，所以一直没暴露。
+        ENABLE_HARDENED_RUNTIME: YES
         COMBINE_HIDPI_IMAGES: YES
         # 图标（ticket 29）。之前这里是**空串**，等于"这个 app 没有图标" ——
         # 在 Dock / 访达 / App Store 里都会显示成一张白纸。
@@ -206,7 +219,5 @@ targets:
         # 这条约束的落法 —— 它由**继承关系**保证，不靠人记得。
         MAS:
           CODE_SIGN_ENTITLEMENTS: App/Marquee.entitlements
-          # hard runtime 是公证与 App Store 都要求的（`settings.base` 里是 NO）。
-          # ⚠️ 打开之后要重验所有需要系统资源的能力 —— 尤其是截图与 OCR，
-          # 别把它当成"只是加了一行配置"。
-          ENABLE_HARDENED_RUNTIME: YES
+          # `ENABLE_HARDENED_RUNTIME` 不在这里写 —— 它在 `settings.base` 里已经是 YES，
+          # 四份配置都开。重复声明只会让人以为"只有 MAS 才开"。

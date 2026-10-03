@@ -88,7 +88,7 @@
 | 30 权益状态机（Core） | ✅ 已完成（18 条测试 + 5 个变异） |
 | 31 StoreKit 2 接入 | 🟡 **代码全部完成**，待真机沙盒验证 | 第一批：商品目录 / 交易事实 / 纯映射 / 权益缓存（22 条）。第二批：Core 接缝 + **启动编排** + `MarqueeStore` 适配器 + `Products.storekit` + `-marqueeEntitlement` 自检入口（27 条）。**界面已收口**：三个入口的锁与升级卡片 · 偏好状态区 · 免费版历史配额（§Z 的 Z9–Z16）。真机沙盒验证前需先在 ASC 建 `com.tango.Marquee.pro` |
 | 34 首次启动引导 | ✅ **已完成**（后加的，未进原台账）| 三步、每步可跳过：它是什么 / 挑一个键 / 屏幕录制权限。判据在 Core：**带 `-marquee` 前缀的自检运行一律不弹**。改键复用 `ShortcutRecorderView`，与偏好页同一套逻辑。验收 Z17–Z21 |
-| 32 沙盒化改造 | 🟡 **进行中**（2026-10-03 起）| 已落：第四个配置 **`MAS`（只有它带沙盒）** + `App/Marquee.entitlements`（`app-sandbox` / `files.user-selected.read-write` / `assets.pictures.read-write` 三项）+ hardened runtime + 沙盒判据 `AppIdentity.isSandboxed` + **默认落盘改 `~/Pictures/Marquee`** + 自动滚动降级（`AutoScrollGate`）。**剩**：沙盒构建下重跑 §3 清单（要你人工过）；数据/偏好迁移**已查明在沙盒内做不到**，见 §6 |
+| 32 沙盒化改造 | 🟡 **进行中**（2026-10-03 起）| 已落：第四个配置 **`MAS`（只有它带沙盒）** + `App/Marquee.entitlements`（`app-sandbox` / `files.user-selected.read-write` / `assets.pictures.read-write` 三项）+ **`ENABLE_HARDENED_RUNTIME` 四份配置都开**（原先只有它没开，而公证要求开）+ 沙盒判据 `AppIdentity.isSandboxed` + **默认落盘改 `~/Pictures/Marquee`** + 自动滚动降级（`AutoScrollGate`）。**剩**：§3 末尾的 **AA1–AA8** 人工过一遍；数据/偏好迁移**已查明在沙盒内做不到**（见 ticket 32 §2） |
 | 33 MAS 打包与提审 | ⏳ 依赖 32 |
 
 ⚠️ **路线 B 的代价**：**自动滚动必须砍掉**（沙盒禁止向其它 app 投递输入事件），

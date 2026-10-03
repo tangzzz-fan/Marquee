@@ -274,8 +274,10 @@ App Review 原文（3.1.1）明确允许：
 - [x] **App 图标**：做 1024×1024 → `Assets.xcassets/AppIcon` → `ASSETCATALOG_COMPILER_APPICON_NAME`（ticket 29）
 - [x] **`App/Marquee.entitlements`**：`app-sandbox` + `files.user-selected.read-write`
       + `assets.pictures.read-write`；**不勾**用不到的项（ticket 32）
-- [x] `project.yml`：`CODE_SIGN_ENTITLEMENTS` + `ENABLE_HARDENED_RUNTIME: YES`
-      —— **只加在新的第四个配置 `MAS` 上**，`Release`（Developer ID）保持不带沙盒
+- [x] `project.yml`：`CODE_SIGN_ENTITLEMENTS`（**只加在新的第四个配置 `MAS` 上**，
+      `Release` 那条 Developer ID 路保持不带沙盒 —— 后路的价值就是保住自动滚动）；
+      `ENABLE_HARDENED_RUNTIME: YES` **四份配置都开**（放 `settings.base`，与
+      "`Dev` 照抄 `Release`"同一条理由：本地与发版行为一致，问题平时就暴露）
 - [x] **`Info.plist` 补 `NSScreenCaptureUsageDescription`**（ticket 29）
 - [x] 默认输出目录改 `~/Pictures/Marquee`（ticket 32）。**`bookmark` 那条路没走** ——
       默认目录本身就在 `Pictures` 里，不需要用户再选一次
