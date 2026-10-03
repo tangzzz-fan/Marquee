@@ -16,7 +16,7 @@ options:
   # 英文由 `App/Resources/Localizable.xcstrings` 提供（见 ticket 17b）。
   developmentLanguage: zh-Hans
 
-# 三个配置，各司其职（逐项对比见 docs/DEV-VS-PROD.md §4.1）：
+# 四个配置（2026-10-03 起加了 `MAS`，逐项对比见 docs/DEV-VS-PROD.md §4.1）：
 #
 #   Dev      **本地运行**（scheme 的 Run 指它）。与 Release **同一套优化设置**，
 #            但 bundle id 带 `.dev` 后缀 ⇒ 偏好、数据、屏幕录制授权自动隔离。
@@ -25,9 +25,18 @@ options:
 #            "要能用的断点"时把 Run 临时切过来 —— 工程里**没有 test target**
 #            （单元测试走 SwiftPM），所以 scheme 的 Test / Analyze 两个 action 基本是空转。
 #            ⚠️ 别拿它测性能：`-Onone` 下的帧率与耗时没有参考价值（这正是 `Dev` 存在的理由）。
-#   Release  发版 / 打包 / 内购的**真实沙盒验证**。
+#   Release  **Developer ID** 那条路（`scripts/package.sh`：归档 → 导出 → 公证 → DMG）。
+#            与 Dev/Debug 一样**不带沙盒** —— 因为这条路存在的全部价值就是
+#            保住自动滚动（沙盒禁止向其它 app 投递输入事件）。
+#   MAS      **App Store** 那条路。**只有它带沙盒** + hardened runtime。
+#            代价（已接受，见 docs/MAS-AND-MONETIZATION.md）：自动滚动关闭、
+#            默认落盘改 ~/Pictures/Marquee、数据进容器。
 #
-# 身份：**只有 `Release` 是正式 id**；`Dev` 与 `Debug` 都是 `com.tango.Marquee.dev`。
+# ⚠️ 「在不在沙盒里」**不许**用编译期开关分派（`#if` / 配置名）：
+# 那样同一份代码在两个构建里行为不同，而**没编进去的那条分支只有发版那天才跑得到**。
+# 用 `AppIdentity.isSandboxed`（运行期读 APP_SANDBOX_CONTAINER_ID，能脱机单测）。
+#
+# 身份：**只有 `Release` 与 `MAS` 是正式 id**；`Dev` 与 `Debug` 都是 `com.tango.Marquee.dev`。
 # 所以从 Debug 切到 Dev 不会多出一个身份 —— 数据、偏好、TCC 授权都还是同一份。
 #
 # ⚠️ 为什么 Run 不用 `Release`（改名前就是这么干的）：那时"本地跑的那个"与
@@ -38,6 +47,7 @@ configs:
   Debug: debug
   Dev: release
   Release: release
+  MAS: release
 
 packages:
   MarqueeModules:
@@ -186,3 +196,17 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: com.tango.Marquee.dev
         Dev:
           PRODUCT_BUNDLE_IDENTIFIER: com.tango.Marquee.dev
+        # ── App Store 那条路（ticket 32）────────────────────────────────────
+        #
+        # **只有这一份带 `CODE_SIGN_ENTITLEMENTS`** —— 也就是说只有它进沙盒。
+        # Dev / Debug / Release 都不带，于是自动滚动在那儿照旧可用。
+        #
+        # bundle id 不用写：它从 `settings.base` 继承正式 id（`com.tango.Marquee`），
+        # 而只有 Debug / Dev 覆盖成 `.dev`。这正是"只有 Release 与 MAS 拿生产 id"
+        # 这条约束的落法 —— 它由**继承关系**保证，不靠人记得。
+        MAS:
+          CODE_SIGN_ENTITLEMENTS: App/Marquee.entitlements
+          # hard runtime 是公证与 App Store 都要求的（`settings.base` 里是 NO）。
+          # ⚠️ 打开之后要重验所有需要系统资源的能力 —— 尤其是截图与 OCR，
+          # 别把它当成"只是加了一行配置"。
+          ENABLE_HARDENED_RUNTIME: YES

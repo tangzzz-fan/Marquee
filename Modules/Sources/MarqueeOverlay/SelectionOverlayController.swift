@@ -64,6 +64,12 @@ public final class SelectionOverlayController {
     /// "往别的应用注入事件"的授权探针（系统设置里的**辅助功能**）。
     /// 自动滚动是唯一需要它的功能，所以它只用于**按需**申请。
     private let postEventPermission: PostEventPermissionProbing?
+    /// 当前进程是不是跑在沙盒里（ticket 32）。
+    ///
+    /// **默认从运行期探测，宿主不需要接线** —— 漏接的后果是"App Store 版去申请一个
+    /// 勾了也没用的权限"，而那正是这条判据要防的事（判据本体在 Core 的 `AutoScrollGate`）。
+    /// 声明成 `var` 只为让测试能把它钉住。
+    var isSandboxed = AppIdentity().isSandboxed
     /// 放大镜取色用的整屏像素来源（ticket 10）。`nil` 时整个放大镜不出现。
     private let lensProvider: LensFrameProviding?
 
@@ -1030,12 +1036,30 @@ public final class SelectionOverlayController {
               let makeScrollWheelEmitter,
               let postEventPermission else { return }
 
-        if postEventPermission.currentPostEventPermission() != .granted,
-           !postEventPermission.requestPostEventPermission() {
-            autoScrollMessage = L10n.t("自动滚动需要「辅助功能」授权（系统设置 → 隐私与安全性 → 辅助功能）。")
-                + L10n.t("也可以自己滚 —— 手动模式一样能拼长图")
+        // 判据在 Core（`AutoScrollGate`）：**沙盒**与**授权**是两个互不相干的来源，
+        // 而它们要给出完全不同的话 —— 说反了就是把用户送去做一件注定没用的事。
+        // 顺序也是判据的一部分，沙盒优先。
+        let gate = AutoScrollGate.evaluate(
+            isSandboxed: isSandboxed,
+            permissionGranted: postEventPermission.currentPostEventPermission() == .granted
+        )
+        switch gate {
+        case .unavailableInSandbox:
+            // 沙盒里**连申请都不申请** —— 弹一个"去勾辅助功能"的提示是骗人。
+            autoScrollMessage = AutoScrollGate.blockedMessage(for: gate)
             refresh()
             return
+
+        case .needsPermission:
+            // 先真的申请一次；申请失败才告诉他去哪儿勾（这是一条能走通的路）。
+            if !postEventPermission.requestPostEventPermission() {
+                autoScrollMessage = AutoScrollGate.blockedMessage(for: gate)
+                refresh()
+                return
+            }
+
+        case .allowed:
+            break
         }
 
         // 手动抓帧循环必须先停：它按固定节奏抓帧，会和"等画面停稳"的探测互相踩，

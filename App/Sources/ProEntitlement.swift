@@ -184,9 +184,11 @@ final class ProEntitlement {
     }
 
     /// 探针结果落到固定路径（用 `open` 启动时 stdout 不回终端）。
+    ///
+    /// 目录由 `AppIdentity.logDirectory()` 给 —— 三个探针原本各拼一遍同一个路径，
+    /// 那种重复迟早变成"有的探针读得到、有的读不到"。
     private static func writeProbe(_ text: String) {
-        let directory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/Marquee", isDirectory: true)
+        let directory = AppIdentity().logDirectory()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? text.write(to: directory.appendingPathComponent("entitlement-probe.txt"),
                         atomically: true,

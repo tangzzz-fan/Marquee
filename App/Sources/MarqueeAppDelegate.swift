@@ -126,7 +126,12 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         // 非独占注册永远返回成功），而它们又都发生在用户机器上、我们看不见。
         // 让用户跑一条命令把状态贴回来，比来回猜快得多。
         if ProcessInfo.processInfo.arguments.contains("-marqueeDiagnostics") {
-            print(coordinator.diagnosticsReport())
+            let report = coordinator.diagnosticsReport()
+            print(report)
+            // **同时落一份文件**：沙盒构建只能经 `open` 启动（直接跑会撞嵌套沙箱），
+            // 而那条路 stdout 拿不到 —— 不落文件的话，App Store 版就没有任何
+            // 自证状态的手段（"沙盒下文件到底落在哪"全靠这份报告）。
+            Self.writeProbeReport(report, name: "diagnostics.txt")
             NSApplication.shared.terminate(nil)
         }
 
@@ -139,8 +144,8 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         // 建议这样用：
         //   open -a Marquee.app --args -marqueeEntitlement            # 只查看
         //   open -a Marquee.app --args -marqueeEntitlement purchase   # 真买一次
-        // 报告同时落到 `~/Library/Logs/Marquee/entitlement-probe.txt`
-        //（用 `open` 启动时 stdout 不回终端）。
+        // 报告同时落到 `<数据根>/reports/entitlement-probe.txt`
+        //（用 `open` 启动时 stdout 不回终端；沙盒构建**只能**用 `open` 启动）。
         let arguments = ProcessInfo.processInfo.arguments
         if let index = arguments.firstIndex(of: "-marqueeEntitlement") {
             let next = arguments.count > index + 1 ? arguments[index + 1] : ""
@@ -159,7 +164,20 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
     /// 把探针结果落到固定路径。
     ///
     /// 用 `open`（LaunchServices）启动时 stdout 不会回到调用方的终端，
-    /// 所以这类一次性探针必须落文件才读得到。放在 `~/Library/Logs/Marquee/` 下，位置好记。
+    /// 所以这类一次性探针必须落文件才读得到。
+    ///
+    /// ⚠️ 沙盒构建**只能**走 `open` 这条路：在终端里直接跑二进制会撞上
+    /// **嵌套沙箱** —— 本会话自身已在沙盒里，`libsecinit` 初始化 App Sandbox
+    /// 会失败并直接 SIGTRAP，**连 `main` 都进不去**（症状是"一行输出都没有"）。
+    /// 所以报告落文件不是可选的美化，是 App Store 版唯一能自证状态的手段。
+    private static func writeProbeReport(_ text: String, name: String = "permission-probe.txt") {
+        let directory = AppIdentity().logDirectory()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? text.write(to: directory.appendingPathComponent(name),
+                        atomically: true,
+                        encoding: .utf8)
+    }
+
     /// 编辑器冒烟用的固定图，不依赖屏幕采集。
     private static func sampleEditorImage() -> CGImage {
         let width = 640
@@ -177,14 +195,5 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         context.setFillColor(CGColor(colorSpace: colorSpace, components: [0.95, 0.95, 0.95, 1])!)
         context.fill(CGRect(x: 70, y: 90, width: 220, height: 140))
         return context.makeImage()!
-    }
-
-    private static func writeProbeReport(_ text: String) {
-        let directory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/Marquee", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? text.write(to: directory.appendingPathComponent("permission-probe.txt"),
-                        atomically: true,
-                        encoding: .utf8)
     }
 }

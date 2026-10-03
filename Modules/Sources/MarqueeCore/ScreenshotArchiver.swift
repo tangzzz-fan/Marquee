@@ -18,9 +18,30 @@ public struct OutputSettings: Equatable, Sendable {
         self.nameTemplate = nameTemplate
     }
 
-    public static func desktopDirectory() -> URL {
-        FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Desktop", isDirectory: true)
+    /// 默认落盘目录：`~/Pictures/Marquee`。
+    ///
+    /// ## 为什么不是桌面（2026-10-03 改）
+    ///
+    /// Apple 的文件访问 entitlement 是**枚举式**的：只有 `user-selected` /
+    /// `Downloads` / `Pictures` / `Music` / `Movies`（外加一个已弃用的 All files）。
+    /// **「桌面」不在里面** —— 不是我们忘了勾，是它不存在。
+    ///
+    /// 沙盒下往 `~/Desktop` 写会直接 `Operation not permitted`，
+    /// 而那个失败发生在用户按 `⌘S` 的那一刻：他看到的是"保存不了"，
+    /// 却没有任何线索指向"这 app 是沙盒的"。
+    ///
+    /// ## 为什么自己拼路径，而不是问 `FileManager` 要 `.picturesDirectory`
+    ///
+    /// 沙盒下那个 API 返回的是**容器里的** Pictures（它由 `NSHomeDirectory()` 推出来），
+    /// 于是图会存到 `~/Library/Containers/<id>/Data/Pictures/` ——
+    /// 保存"成功"了，用户在访达里永远找不到。见 `AppIdentity.realHomeDirectory()`。
+    ///
+    /// 名字也从 `desktopDirectory()` 改掉了：它从今天起**不指向桌面**，
+    /// 留着原名就是给下一个人埋陷阱。
+    public static func defaultOutputDirectory() -> URL {
+        AppIdentity.realHomeDirectory()
+            .appendingPathComponent("Pictures", isDirectory: true)
+            .appendingPathComponent("Marquee", isDirectory: true)
     }
 }
 
@@ -129,7 +150,7 @@ public struct UserDefaultsOutputStore: @unchecked Sendable {
     public func settings() -> OutputSettings {
         let path = defaults.string(forKey: Self.directoryKey) ?? ""
         let directory = path.isEmpty
-            ? OutputSettings.desktopDirectory()
+            ? OutputSettings.defaultOutputDirectory()
             : URL(fileURLWithPath: path, isDirectory: true)
         let format = ImageFileFormat(rawValue: defaults.string(forKey: Self.formatKey) ?? "") ?? .png
         let storedQuality = defaults.object(forKey: Self.qualityKey) as? Double

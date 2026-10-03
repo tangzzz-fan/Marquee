@@ -111,7 +111,7 @@ struct AppPreferencesTests {
     func qualityIsClamped() {
         let store = UserDefaultsOutputStore(defaults: freshDefaults())
 
-        store.save(OutputSettings(directory: OutputSettings.desktopDirectory(), quality: 3))
+        store.save(OutputSettings(directory: OutputSettings.defaultOutputDirectory(), quality: 3))
 
         #expect(store.settings().quality == 1)
     }

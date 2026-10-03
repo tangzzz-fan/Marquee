@@ -1721,6 +1721,16 @@
         }
       }
     },
+    "自己滚一样能拼长图 —— 手动模式没受影响": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrolling yourself works just as well — manual mode is unaffected"
+          }
+        }
+      }
+    },
     "至少要有一个修饰键（⌘ ⌃ ⌥）": {
       "localizations": {
         "en": {
@@ -1967,6 +1977,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This frame scrolled too far (%lld rows) and barely overlaps the previous one, so it can't be aligned"
+          }
+        }
+      }
+    },
+    "这个版本不提供自动滚动：沙盒不允许代替你操作别的应用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This version doesn't offer auto-scroll: the sandbox doesn't allow acting on other apps."
           }
         }
       }

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 只有三项，一项都不多勾。 -->
+	<!--
+	  ⚠️ 多勾会被审核问（"你为什么要访问用户的音乐库？"）。
+	  见 docs/MAS-AND-MONETIZATION.md 与 ticket 32。
+
+	  为什么没有「桌面」这一项：Apple 的文件访问 entitlement 是**枚举式**的，
+	  只有 user-selected / Downloads / Pictures / Music / Movies（外加一个已弃用的
+	  All files）。**「桌面」不在里面** —— 不是我们忘了勾。
+	  所以默认落盘从 ~/Desktop 换成了 ~/Pictures/Marquee（见 OutputSettings）。
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- 用户在保存面板里自己选的目录（「另存为」那条路）。 -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+
+	<!-- 默认落盘 ~/Pictures/Marquee 要用它。 -->
+	<key>com.apple.security.assets.pictures.read-write</key>
+	<true/>
+
+	<!--
+	  刻意**没有**的东西，免得以后有人"顺手放开"：
+
+	  · network.client —— 本项目不上传任何东西（隐私标签答"不采集任何数据"）。
+	    截图只在本机处理。StoreKit 的网络由系统进程代劳，不需要它。
+	  · device.camera / microphone —— 用不到。
+	  · 任何 *.read-only 的宽泛项 —— 用不到就别要。
+	-->
+</dict>
+</plist>

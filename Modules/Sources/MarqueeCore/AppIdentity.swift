@@ -37,10 +37,51 @@ public struct AppIdentity: Equatable, Sendable {
 
     public let bundleIdentifier: String
 
-    public init(bundleIdentifier: String? = nil) {
+    /// 当前进程是不是跑在 App Sandbox 里。
+    ///
+    /// **为什么要有它**：沙盒不是"多了一个限制"，而是**改了几处行为** ——
+    /// 自动滚动做不到、默认落盘写不进桌面、数据进容器。
+    /// 这些差异必须**按运行期判据分派**，不能按构建配置用编译期开关分：
+    /// 那样同一份代码在两个构建里行为不同，而**没编进去的那条分支
+    /// 只有发版那天才跑得到**（届时才发现，正是最不适合发现的时刻）。
+    public let isSandboxed: Bool
+
+    public init(bundleIdentifier: String? = nil, isSandboxed: Bool? = nil) {
         self.bundleIdentifier = bundleIdentifier
             ?? Bundle.main.bundleIdentifier
             ?? Self.productionBundleIdentifier
+        self.isSandboxed = isSandboxed ?? Self.detectSandboxed()
+    }
+
+    /// 沙盒判据：`APP_SANDBOX_CONTAINER_ID`（沙盒在 exec 时一定会注入它）。
+    ///
+    /// 做成入参是为了**能脱机单测** —— 真跑在沙盒里没法测"不在沙盒里"那一支。
+    public static func detectSandboxed(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        guard let containerID = environment["APP_SANDBOX_CONTAINER_ID"] else { return false }
+        return !containerID.isEmpty
+    }
+
+    /// **真实**的家目录，不是沙盒容器里的那一个。
+    ///
+    /// ## 为什么不能直接用 `NSHomeDirectory()`
+    ///
+    /// 沙盒进程的 `NSHomeDirectory()` 是 `~/Library/Containers/<id>/Data`，
+    /// 于是 `FileManager.urls(for: .picturesDirectory, in: .userDomainMask)`
+    /// 也跟着指向**容器里的** Pictures。那会把图安静地存到用户永远找不到的地方 ——
+    /// "我明明按了保存，怎么没看见"，而屏幕上没有任何提示。
+    /// 这正是本项目最忌讳的那类缺陷（不崩、不报错、只悄悄错）。
+    ///
+    /// `getpwuid` 读的是 passwd 条目，沙盒**不会**改它，拿到的始终是 `/Users/<你>`；
+    /// 配上 `com.apple.security.assets.pictures.read-write` 就能真写进用户的 Pictures。
+    ///
+    /// 非沙盒构建下两者本来就相等 ⇒ 一条代码路径同时服务两种构建。
+    public static func realHomeDirectory() -> URL {
+        if let entry = getpwuid(getuid()), let path = entry.pointee.pw_dir {
+            return URL(fileURLWithPath: String(cString: path), isDirectory: true)
+        }
+        return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
     }
 
     /// 当前跑的是不是开发版。
@@ -81,5 +122,23 @@ public struct AppIdentity: Equatable, Sendable {
     public func historyDirectory(fileManager: FileManager = .default) -> URL {
         supportDirectory(fileManager: fileManager)
             .appendingPathComponent("history", isDirectory: true)
+    }
+
+    /// 一次性探针的报告目录：`<数据根>/reports/`。
+    ///
+    /// ⚠️ **刻意不放在 `~/Library/Logs/Marquee/`**（2026-10-03 改）。
+    /// 原因：沙盒下 `~/Library/Logs` 在容器**外**，写不进去 —— 而探针里写文件
+    /// 用的是 `try?`，失败会被**静静吞掉**。表现出来是"探针跑了但什么都没留下"，
+    /// 与"这个入口没触发"长得一模一样。这正是本项目最忌讳的那类错。
+    ///
+    /// 而 `supportDirectory()` 走 `.applicationSupportDirectory` —— 沙盒下它天然
+    /// 落在**容器内**，非沙盒下落在 `~/Library/Application Support/`，
+    /// 于是**两种构建同一条代码路径**都写得进去，不需要"沙盒走这边、否则走那边"。
+    ///
+    /// 单独立这一处，是因为它原本被三个探针各拼了一遍。三份同样的路径拼法，
+    /// 改一处忘两处就是"有的探针读得到、有的读不到"。
+    public func logDirectory(fileManager: FileManager = .default) -> URL {
+        supportDirectory(fileManager: fileManager)
+            .appendingPathComponent("reports", isDirectory: true)
     }
 }

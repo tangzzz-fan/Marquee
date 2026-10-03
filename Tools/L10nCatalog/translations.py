@@ -313,4 +313,11 @@ EN = {
     "授权之后可能需要重启 Marquee。权限只影响截屏，不影响别的功能。":
         "You may need to restart Marquee after granting it. "
         "This permission only affects screen capture.",
+
+    # 自动滚动的两种「不能用」（ticket 32）。⚠️ 这两句**不能混用** ——
+    # 沙盒里让用户去勾辅助功能，是把他送去做一件注定没用的事。
+    "这个版本不提供自动滚动：沙盒不允许代替你操作别的应用。":
+        "This version doesn't offer auto-scroll: the sandbox doesn't allow acting on other apps.",
+    "自己滚一样能拼长图 —— 手动模式没受影响":
+        "Scrolling yourself works just as well — manual mode is unaffected",
 }

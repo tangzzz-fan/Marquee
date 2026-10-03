@@ -199,7 +199,7 @@ final class CaptureCoordinator {
             },
             makeSaveRequest: { [weak self] window in
                 self?.makeSaveRequest(for: window) ?? CaptureSaveRequest(
-                    settings: OutputSettings(directory: OutputSettings.desktopDirectory()),
+                    settings: OutputSettings(directory: OutputSettings.defaultOutputDirectory()),
                     capturedAt: Date(),
                     sequence: 1,
                     applicationName: window?.ownerName ?? "",
@@ -389,6 +389,11 @@ final class CaptureCoordinator {
         return """
         Marquee 诊断
           运行位置        : \(Bundle.main.bundleURL.path)
+          沙盒            : \(AppIdentity().isSandboxed ? "是（App Store 版）" : "否")
+          进程家目录      : \(NSHomeDirectory())
+          真实家目录      : \(AppIdentity.realHomeDirectory().path)
+          默认落盘        : \(OutputSettings.defaultOutputDirectory().path)
+          历史仓库        : \(CaptureHistoryStore.defaultDirectory().path)
           构建时间        : \(Self.buildTimestamp())
           屏幕录制权限    : \(Self.describe(permission.currentPermission()))
           preflight 原始值: \(CGPreflightScreenCaptureAccess() ? "true" : "false")
