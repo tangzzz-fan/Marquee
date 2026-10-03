@@ -109,6 +109,24 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // IAP 审核截图：`Marquee -marqueeSmokeReview`
+        //
+        // 存在的理由：ASC 对审核截图有**硬性尺寸**，而且各平台不同
+        //（iOS 至少 640 × 920，**macOS 要 1280 × 800**），而设计对照那几张是
+        // "窗口多大就拍多大"（偏好页 440 × 430）—— 直接上传会被退回，
+        // 而那个报错只说"尺寸不对"，不告诉你该多大。
+        // 这条把真界面按 2–3 倍离屏渲染、超采样缩进 1280 × 800，并标出购买入口；
+        // **不需要屏幕录制授权**，所以任何机器上都能重跑。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeReview") {
+            let urls = coordinator.renderReviewShots(into: AppIdentity().logDirectory())
+            print("IAP 审核截图：")
+            urls.forEach { print("  " + $0) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                NSApplication.shared.terminate(nil)
+            }
+            return
+        }
+
         if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeEditor") {
             coordinator.presentEditor(image: Self.sampleEditorImage())
             // 顺手把工具条 / 状态行 / 文字预设弹层离屏渲成 PNG 落到报告目录：

@@ -66,7 +66,7 @@ macOS **只在应用实际调用采集 API 时**才把它登记进「屏幕录�
   可以一次性清掉这个 bundle id 的全部记录再重新授权：
 
   ```bash
-  tccutil reset ScreenCapture com.tango.Marquee
+  tccutil reset ScreenCapture com.tango.marquee
   ```
 
 - 不要为了让它在开发机上"不弹窗"而放宽代码里的权限检查逻辑 —— 权限路径必须保持真实。

@@ -37,6 +37,11 @@ final class ProEntitlement {
     /// 当前判定。界面只读这一个东西。
     var snapshot: EntitlementSnapshot { coordinator.snapshot }
 
+    /// 把当前状态推给所有界面。**判定与价格走同一个出口**。
+    private func publish() {
+        for observer in observers { observer(snapshot) }
+    }
+
     /// 判定变化时要通知的界面。
     ///
     /// 用列表而不是单个闭包：要跟着变的界面**不止一处**（设置里的状态区、
@@ -51,8 +56,24 @@ final class ProEntitlement {
         observer(snapshot)
     }
 
+    /// 价格变化时也要刷新界面吗 —— **要**，但它与判定共用 `observe`
+    ///（价格到货时会再推一次同一份快照）。理由见 `publish`。
+
     /// 与商店核对的状态（排障用：分得清"商店说没有"与"压根没连上"）。
     var verification: EntitlementCoordinator.Verification { coordinator.verification }
+
+    /// 商店的价格文案（`displayPrice`，含货币符号、已本地化）。启动时取一次并缓存。
+    ///
+    /// ## 为什么缓存而不是每次现取
+    ///
+    /// 它要出现在**卡片正文**里（App Review 3.1.1 要求试用开始前说清"后续费用"），
+    /// 而卡片是**同步**画出来的。现取的话只有两条路：让卡片等一次网络往返
+    ///（用户被挡下来时盯着一个空卡片），或者先画一张没有价格的、价格到了再重画
+    ///（闪一下，而那张卡片是此刻唯一的解释）。
+    ///
+    /// ⇒ 启动时取一次，之后同步读。价格变了（换店面、官方调价）下次启动就更新 ——
+    /// 而**取不到就是 `nil`**：界面会退化成不报价格的那一句，**绝不编一个数**。
+    private(set) var priceText: String?
 
     /// 启动。**幂等** —— 被调两次不会重复监听。
     func start() {
@@ -62,7 +83,18 @@ final class ProEntitlement {
         coordinator.onChange = { [weak self] snapshot in
             guard let self else { return }
             self.logger.info("权益变化 → \(String(describing: snapshot.entitlement), privacy: .public)")
-            for observer in self.observers { observer(snapshot) }
+            self.publish()
+        }
+
+        // 价格：与核实**并行**，不挡任何东西。拿到之后把同一份快照再推一次 ——
+        // 卡片上会多出"之后 ¥xx"那一句，而它画的正是这份快照。
+        // ⚠️ 走同一个出口（`publish`）：价格单独开一条通知的话，
+        // 一定会有某个界面只订阅了其中一条。
+        Task { [weak self] in
+            guard let self else { return }
+            guard let price = await coordinator.displayPrice() else { return }
+            self.priceText = price
+            self.publish()
         }
 
         // ⚠️ 启动顺序就是这两行：**先按缓存立刻出判定，再去核实**。

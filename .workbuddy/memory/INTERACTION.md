@@ -112,15 +112,36 @@ SF Symbol **只有一份来源**（Core `AnnotationIcon`），覆盖层与编辑
 原图立刻进剪贴板（`⌘S` 才落盘），**就地出图、不开窗口**。
 标注栅格化**失败必须让整次截图失败**（可能含打码）。**编辑器只从长截图进入**。
 
-## 恢复购买：五种结果、每档一句准话
+## 升级 / 恢复购买：每档一句准话（`proOutcomeLabel` 一行，两动作共用）
 
-`EntitlementCoordinator.RestoreOutcome` 五档：`restored` / `nothingToRestore` /
-`cancelledByUser` / `networkFailed` / `failed`。偏好页通用区底部那行**常驻**（不自动消失）。
-⚠️ **只有 `networkFailed` 配说"检查网络"** —— 用户按的取消必须中性（"已取消，没有改动"），
-认不出的失败说"请稍后再试"。**原因不许猜。**
-平台错误码 → 三档语义的翻译在 `MarqueeStore.StoreKitStorefront.classifyRestoreFailure`
-（`StoreKitError.userCancelled` 与老的 `SKErrorDomain` code 2 两种形态都要认），
+**价格必须在点下去之前看得见**（3.1.1 要求说出"后续费用"）：覆盖层卡片正文
+`试用 7 天 · 之后 %@ · 免费版仍可用`、偏好页按钮 `升级到 Pro · %@`；
+取不到价格时**退化成少说一句**（卡片回退到 `试用 7 天，结束后自动回到免费版`），
+**绝不写死 `¥36`、也不猜一个数**。价格由宿主在启动时取一次并缓存
+（`ProEntitlement.priceText`，同步读 —— 卡片是同步画的）。判据在 Core
+（`ProCard.bodyVariant(for:priceAvailable:)`），句子在视图。
+
+**恢复购买的结果走 `ProFeedback` 一处**（措辞共用、颜色各表各的）：
+偏好页那行**常驻**，覆盖层走**提示行**（`showTransientNotice`，8 秒自动让位）——
+那个动作是原地完成的，卡片收掉之后结果只剩那一行能说。
+
+**用户主动点的动作必须有回话**，五档结果都常驻（不自动消失）：
+
+| 动作 | 档位 → 话 |
+| --- | --- |
+| 升级到 Pro | 已购买 ✓ / 已取消，没有改动 / 等待批准 · 批准后会自动解锁 / **暂时买不了 · 商店里没有这个商品**（开发版另附"用 Xcode 运行 + scheme 挂 Products.storekit"）/ 购买失败 · 请稍后再试 |
+| 恢复购买 | 已恢复购买 ✓ / 这个账号下没有可恢复的购买 / 已取消，没有改动 / **恢复失败 · 检查网络后重试** / 恢复失败 · 请稍后再试 |
+
+⚠️ **只有 `networkFailed` 配说"检查网络"** —— 原因不许猜。平台错误码 → 三档语义的翻译在
+`MarqueeStore.StoreKitStorefront.classifyRestoreFailure`（`StoreKitError.userCancelled`、
+老的 `SKErrorDomain` code 2、`NSURLErrorDomain` **-1012** 三种形态都要认）；
 "哪档说什么话"在 Core。见 PITFALLS 180。
+
+⚠️ **「升级到 Pro」的可用性来自 Core**（`Entitlement.allowsUpgradePurchase`）：
+只有已购买那一档关掉，且那一档按钮文字同时改成「已购买」（两者不许分叉）。
+**`.unknown` 必须可点** —— 它曾经置灰，造成"按钮写着升级、点了没反应、永远不变"。
+见 PITFALLS 181。回执宽度有断言（`LocalizationScanTests.proPanelTextsFit`，
+状态句单行 + 回执两行，中英一起量）。
 
 ## 对照检查材料
 

@@ -402,7 +402,7 @@ struct ShortcutRecordingSuspensionTests {
 struct UserDefaultsShortcutStoreTests {
 
     private func makeDefaults() -> UserDefaults {
-        let suite = "com.tango.Marquee.tests.\(UUID().uuidString)"
+        let suite = "com.tango.marquee.tests.\(UUID().uuidString)"
         return UserDefaults(suiteName: suite)!
     }
 

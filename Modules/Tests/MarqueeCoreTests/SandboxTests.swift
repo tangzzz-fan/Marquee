@@ -11,7 +11,7 @@ struct SandboxTests {
 
     @Test("容器 id 在环境里 = 在沙盒里")
     func detectsSandbox() {
-        #expect(AppIdentity.detectSandboxed(environment: ["APP_SANDBOX_CONTAINER_ID": "com.tango.Marquee"]))
+        #expect(AppIdentity.detectSandboxed(environment: ["APP_SANDBOX_CONTAINER_ID": "com.tango.marquee"]))
     }
 
     @Test("没有那个变量 = 不在沙盒里")
@@ -30,8 +30,8 @@ struct SandboxTests {
 
     @Test("注入优先于探测 —— 否则这条判据在测试里根本没法验")
     func injectionWins() {
-        #expect(AppIdentity(bundleIdentifier: "com.tango.Marquee", isSandboxed: true).isSandboxed)
-        #expect(!AppIdentity(bundleIdentifier: "com.tango.Marquee", isSandboxed: false).isSandboxed)
+        #expect(AppIdentity(bundleIdentifier: "com.tango.marquee", isSandboxed: true).isSandboxed)
+        #expect(!AppIdentity(bundleIdentifier: "com.tango.marquee", isSandboxed: false).isSandboxed)
     }
 
     // MARK: - 默认落盘

@@ -10,13 +10,13 @@ import Foundation
 public enum StoreCatalog {
 
     /// 买断商品。¥36，非消耗型。
-    public static let proProductIdentifier = "com.tango.Marquee.pro"
+    public static let proProductIdentifier = "com.tango.marquee.pro"
 
     /// 试用商品：**0 价非消耗型 IAP**，交易时间戳就是试用起点。
     ///
     /// 单开一个商品而不是"用购买时间减 7 天"：后者的起点是**第一次购买**，
     /// 而试用必须发生在购买之前 —— 两者不是一件事。
-    public static let trialProductIdentifier = "com.tango.Marquee.pro.trial"
+    public static let trialProductIdentifier = "com.tango.marquee.pro.trial"
 
     /// 需要向商店查询的商品。
     public static var allProductIdentifiers: [String] {

@@ -8,7 +8,7 @@ struct MagnifierSettingsTests {
 
     private func makeDefaults() -> UserDefaults {
         // 独立 suite：不碰开发机上的真实偏好
-        let name = "com.tango.Marquee.tests.\(UUID().uuidString)"
+        let name = "com.tango.marquee.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return defaults

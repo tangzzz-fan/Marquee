@@ -10,8 +10,8 @@ import Testing
 @Suite("App 身份（ticket 31 第 0 步）")
 struct AppIdentityTests {
 
-    private let prod = AppIdentity(bundleIdentifier: "com.tango.Marquee")
-    private let dev = AppIdentity(bundleIdentifier: "com.tango.Marquee.dev")
+    private let prod = AppIdentity(bundleIdentifier: "com.tango.marquee")
+    private let dev = AppIdentity(bundleIdentifier: "com.tango.marquee.dev")
 
     @Test("开发版靠**后缀**识别，前缀冒充不算")
     func developmentDetection() {
@@ -26,23 +26,23 @@ struct AppIdentityTests {
         #expect(!AppIdentity(bundleIdentifier: "dev.tango.Marquee").isDevelopmentBuild,
                 "前缀里的 dev 不该被当成开发版")
         // 近似串也不能误判
-        #expect(!AppIdentity(bundleIdentifier: "com.tango.Marqueedev").isDevelopmentBuild)
-        #expect(!AppIdentity(bundleIdentifier: "com.tango.Marquee.develop").isDevelopmentBuild)
+        #expect(!AppIdentity(bundleIdentifier: "com.tango.marqueedev").isDevelopmentBuild)
+        #expect(!AppIdentity(bundleIdentifier: "com.tango.marquee.develop").isDevelopmentBuild)
     }
 
     @Test("正式 id 里不许再出现 `dev.` 前缀 —— 那就是这次要摆脱的东西")
     func productionIdentifierIsClean() {
-        #expect(AppIdentity.productionBundleIdentifier == "com.tango.Marquee")
+        #expect(AppIdentity.productionBundleIdentifier == "com.tango.marquee")
         #expect(!AppIdentity.productionBundleIdentifier.hasPrefix("dev."))
         // 开发版 = 正式 id + 后缀（同一个 app 的两个变体，不是两个东西）
         #expect(AppIdentity.productionBundleIdentifier + AppIdentity.developmentSuffix
-                == "com.tango.Marquee.dev")
+                == "com.tango.marquee.dev")
     }
 
     @Test("数据目录按 bundle id 分 —— 两个版本天然不打架，且不用写 dev 专用代码")
     func supportDirectoryIsPerBundleID() {
-        #expect(prod.supportDirectory().lastPathComponent == "com.tango.Marquee")
-        #expect(dev.supportDirectory().lastPathComponent == "com.tango.Marquee.dev")
+        #expect(prod.supportDirectory().lastPathComponent == "com.tango.marquee")
+        #expect(dev.supportDirectory().lastPathComponent == "com.tango.marquee.dev")
         #expect(prod.historyDirectory().path != dev.historyDirectory().path,
                 "两个版本共用历史目录，就是这次改名的起因")
         #expect(prod.historyDirectory().lastPathComponent == "history")

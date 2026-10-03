@@ -1,7 +1,7 @@
 # 开发版与正式版的区分（spec）
 
 > 状态：✅ **已实施**（2026-10-03，分支 `feat/iap`）。
-> 正式 `com.tango.Marquee` / 开发 `com.tango.Marquee.dev`；三个配置 `Debug` / `Dev` / `Release`。
+> 正式 `com.tango.marquee` / 开发 `com.tango.marquee.dev`；三个配置 `Debug` / `Dev` / `Release`。
 > 实施记录见 §9。
 
 ---
@@ -127,7 +127,7 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 >    `Release` 不带是刻意的：它是 **Developer ID** 那条路，而那条路存在的
 >    **全部价值就是保住自动滚动**（沙盒禁止向其它 app 投递输入事件）。
 > 2. **`Debug` 的身份与数据根早已不是"正式 id / 临时目录"**（这张表原先写错了）：
->    它和 `Dev` 一样是 `com.tango.Marquee.dev`，**从 Debug 切到 Dev 不会多出一个身份**。
+>    它和 `Dev` 一样是 `com.tango.marquee.dev`，**从 Debug 切到 Dev 不会多出一个身份**。
 > 3. **bundle id 靠继承**：`settings.base` 里是正式 id，只有 `Debug` / `Dev` 覆盖成 `.dev`。
 >    所以"只有 `Release` 与 `MAS` 拿生产 id"这条约束由**继承关系**保证，不靠人记得。
 > 4. **`ENABLE_HARDENED_RUNTIME` 四份配置都开**（在 `settings.base` 里）。
@@ -139,7 +139,7 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 
 ### 4.1 `Dev` 与 `Debug` 的区别（逐项对比过）
 
-**先说最容易搞错的一点：两者在「身份」上毫无区别。** 都是 `com.tango.Marquee.dev`，
+**先说最容易搞错的一点：两者在「身份」上毫无区别。** 都是 `com.tango.marquee.dev`，
 于是数据目录、偏好域、TCC 授权都是同一份 —— **从 Debug 切到 Dev 不会多出一个身份**。
 
 真正的差别只在编译器设置。生成工程后把两份 `XCBuildConfiguration` 摊开对比：
@@ -265,6 +265,30 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 
 ## 7. 前缀：已定 `com.tango.Marquee`
 
+> ### ⚠️ 2026-10-04：正式 id 改成**全小写** `com.tango.marquee`
+>
+> **为什么**：ASC 里的 App ID 是按小写创建的，而 TN3186 把"bundle id 与 ASC 里的
+> app 对不上"列为**商品取不到的第一条原因**；而 App ID 与 app 记录的 bundle id
+> **建了就不能改**（只能删了重建，且 app 记录一旦创建就不能换 id）。
+> ⇒ 只能改代码这一侧。
+>
+> **改了什么**：`AppIdentity.productionBundleIdentifier` · `project.yml` 的两处
+> `PRODUCT_BUNDLE_IDENTIFIER`（正式 / `.dev`）· `scripts/package.sh` 的期望值 ·
+> `scripts/build.sh` 的 `codesign --identifier` 兜底 · **两个商品 id**
+>（`com.tango.marquee.pro` / `.pro.trial`，它们由一条断言要求以正式 id 作前缀）·
+> `App/Products.storekit` · 各文档里的命令与 ASCII 图。
+>
+> **代价（都要重来一次，但都只影响这台开发机）**：
+>
+> | 项 | 后果 |
+> | --- | --- |
+> | TCC（屏幕录制授权） | 按 bundle id 记账 ⇒ **要重新授权一次** |
+> | 偏好 / 权益缓存 | UserDefaults 的域就是 bundle id ⇒ 开发机上看起来"全都回到默认" |
+> | 数据根目录 | `~/Library/Application Support/com.tango.marquee/`（老的那份留在原地，不自动搬） |
+>
+> **没变的**：正式 / 开发两个身份的分法、`.dev` 后缀推导、四个构建配置的语义。
+> 下面这一节（§7 原文）与 §9 的实施记录是**当时**的事实，刻意不改写。
+
 约定是**反写你控制的域名**（`com.example.app`）。Apple 不校验域名归属，但
 "能反写一个真实域名"在将来（App 转让、SDK 备案、universal links）会省事。
 
@@ -300,7 +324,7 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 ### 验证过的
 
 - `xcodegen generate` 后读 `project.pbxproj`：三个配置都在，
-  `Release` = `com.tango.Marquee`，`Dev` / `Debug` = `com.tango.Marquee.dev`；
+  `Release` = `com.tango.marquee`，`Dev` / `Debug` = `com.tango.marquee.dev`；
   scheme 的 `LaunchAction buildConfiguration = "Dev"`。
 - **`Dev` 与 `Release` 的项目级构建设置逐项一致**（53 项，含
   `SWIFT_OPTIMIZATION_LEVEL = -O`、`SWIFT_COMPILATION_MODE = wholemodule`、

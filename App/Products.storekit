@@ -30,7 +30,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.tango.Marquee.pro",
+      "productID" : "com.tango.marquee.pro",
       "referenceName" : "Marquee Pro",
       "type" : "NonConsumable"
     },
@@ -50,7 +50,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.tango.Marquee.pro.trial",
+      "productID" : "com.tango.marquee.pro.trial",
       "referenceName" : "Marquee 7 天试用",
       "type" : "NonConsumable"
     }

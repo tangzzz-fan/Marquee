@@ -87,4 +87,18 @@ public enum ChromeControl {
     public static let proPanelCornerRadius: CGFloat = 8
     /// 面板内边距。
     public static let proPanelPadding: CGFloat = 12
+
+    /// 面板里**文字可用宽度**：`440（窗宽）− 20×2（页边距）− 12×2（面板内边距）＝ 376`。
+    ///
+    /// 为什么这个数在 Core 而不是在视图里：**"文案够不够宽"那条断言要跟视图读同一个数**。
+    /// 两处各写一份的话，改了窗宽而忘了改断言，那条约束就悄悄失效 ——
+    /// 而失效的表现只是"某句英文被截断了尾巴"，中文开发机上永远看不见
+    ///（`RecentPanel.width` / `OverlayToolbar.toolbarSize` 都是这个做法）。
+    public static let proPanelTextWidth: CGFloat = 376
+
+    /// 面板上那些"回执"最多折几行。
+    ///
+    /// 定成 2 而不是 1：开发版那条"商店里没有这个商品"要带上可执行的下一步，
+    /// 一句话说不完。也定成 2 而不是无上限 —— 回执可以长，但不该把面板撑成一堵墙。
+    public static let proPanelOutcomeLineLimit = 2
 }

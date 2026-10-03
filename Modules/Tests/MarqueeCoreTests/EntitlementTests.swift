@@ -225,3 +225,74 @@ struct EntitlementTests {
         #expect(!revoked.allowsProFeatures)
     }
 }
+
+// MARK: - 「升级到 Pro」这个入口能不能点（2026-10-04）
+
+/// 用户原话：**「点击升级到 pro 无效」**。
+///
+/// 根因是这条判据散在视图的 `switch` 里，而 `.unknown` 那一档被置灰了：
+/// 按钮上写着「升级到 Pro」、点它什么也不发生，而且**永远不会变** ——
+/// 核实一旦失败，判定就停在 `.unknown`。
+///
+/// 判据搬进 Core（`Entitlement.allowsUpgradePurchase`）之后它才**能被断言**，
+/// 而这类 bug 的特征恰好是"不崩不报错，只是某一档的用户点不动"。
+@Suite("升级入口：哪些档可点（ticket 31）")
+struct UpgradeEntryAvailabilityTests {
+
+    private let origin = Date(timeIntervalSince1970: 1_760_000_000)
+
+    @Test("已购买 → 关掉；它同时把按钮文字改成「已购买」，所以关掉是自解释的")
+    func purchasedDisablesEntry() {
+        #expect(!Entitlement.pro(purchasedAt: origin).allowsUpgradePurchase)
+    }
+
+    @Test("**还没查（unknown）必须可点** —— 这就是那个 bug")
+    func unknownStillAllowsPurchase() {
+        #expect(Entitlement.unknown.allowsUpgradePurchase,
+                "unknown 是「还没问出来」，不是「不能买」；置灰会让入口永远点不动")
+    }
+
+    @Test("免费 / 试用中 / 被撤销 → 都可点")
+    func otherEntitlementsAllowPurchase() {
+        #expect(Entitlement.free.allowsUpgradePurchase)
+        #expect(Entitlement.trial(daysLeft: 30).allowsUpgradePurchase)
+        #expect(Entitlement.trial(daysLeft: 0).allowsUpgradePurchase)
+        for reason in RevocationReason.allCases {
+            #expect(Entitlement.revoked(reason).allowsUpgradePurchase,
+                    "被撤销的人正是最该能重新买的那一类（\(reason)）")
+        }
+    }
+
+    /// 逐档列全，而不是只试几个典型值。
+    ///
+    /// ⚠️ 断言要写「意图」：这条的意图是**"只有已购买那一档关掉"**。
+    /// 只断言"unknown 可点"的话，将来有人把 `.revoked` 也置灰（理由听起来还挺合理：
+    /// "他退款了"）不会有任何东西变红 —— 而那正是"某一类用户被关在门外"。
+    @Test("逐档列全：**只有已购买那一档关掉**")
+    func onlyPurchasedIsDisabled() {
+        let cases: [(Entitlement, Bool)] = [
+            (.unknown, true),
+            (.free, true),
+            (.trial(daysLeft: 0), true),
+            (.trial(daysLeft: 30), true),
+            (.pro(purchasedAt: origin), false),
+            (.revoked(.storeRevoked), true),
+            (.revoked(.purchaseNotFound), true),
+        ]
+        for (entitlement, expected) in cases {
+            #expect(entitlement.allowsUpgradePurchase == expected,
+                    "\(entitlement) 的升级入口可用性错了")
+        }
+    }
+
+    @Test("入口关掉与「按钮文字说已购买」是同一档 —— 两者不许分叉")
+    func disabledEntryMatchesTitleSource() {
+        for entitlement in [Entitlement.unknown, .free, .trial(daysLeft: 1),
+                            .pro(purchasedAt: origin), .revoked(.storeRevoked)] {
+            // 视图用 `isPurchased` 决定按钮文字、用 `allowsUpgradePurchase` 决定能不能点。
+            // 这两件事必须在**同一档**上成立：关掉却不改文字 = 一个说"来点我"的死按钮。
+            #expect(entitlement.isPurchased != entitlement.allowsUpgradePurchase,
+                    "\(entitlement)：关掉的那一档必须正是文字改成「已购买」的那一档")
+        }
+    }
+}

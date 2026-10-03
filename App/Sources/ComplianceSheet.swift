@@ -26,14 +26,48 @@ enum ComplianceSheet {
     /// `cacheDisplay` 只画**这一棵视图树自己**，窗口底那层不在里面，
     /// 不铺的话 PNG 的空白处就是透明的（在浅色查看器里看起来像"黑底白字错位"）。
     static func png(of view: NSView, name: String, into directory: URL,
-                    background: RGB? = nil) -> URL? {
+                    background: RGB? = nil, scale: CGFloat = 1) -> URL? {
+        guard let rep = rep(of: view, background: background, scale: scale),
+              let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        let url = directory.appendingPathComponent(name)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? png.write(to: url)
+        return url
+    }
+
+    /// 与 `png` 同一条路径，但返回位图本身 —— 供需要**再合成**的调用者用
+    /// （`ReviewShots` 要把几张拼进一块 1280 × 800 的画布）。
+    ///
+    /// `scale` > 1 时必须**自己造 rep**：`bitmapImageRepForCachingDisplay` 给的是 1x，
+    /// 它按视图所在窗口的 backing scale 算 —— 而这里都是**离屏**视图（没有窗口）。
+    /// 造好之后把 `rep.size` 设成点尺寸，`cacheDisplay` 就会按比例画进去
+    /// （等于超采样：画得比最终尺寸大，缩小之后反而更锐）。
+    static func rep(of view: NSView, background: RGB? = nil, scale: CGFloat = 1) -> NSBitmapImageRep? {
         view.layoutSubtreeIfNeeded()
         let bounds = view.bounds
-        guard bounds.width >= 1, bounds.height >= 1,
-              let rep = view.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        guard bounds.width >= 1, bounds.height >= 1 else { return nil }
+
+        let target: NSBitmapImageRep
+        if scale == 1 {
+            guard let plain = view.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+            target = plain
+        } else {
+            guard let scaled = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                                pixelsWide: Int((bounds.width * scale).rounded()),
+                                                pixelsHigh: Int((bounds.height * scale).rounded()),
+                                                bitsPerSample: 8,
+                                                samplesPerPixel: 4,
+                                                hasAlpha: true,
+                                                isPlanar: false,
+                                                colorSpaceName: .deviceRGB,
+                                                bytesPerRow: 0,
+                                                bitsPerPixel: 0) else { return nil }
+            scaled.size = bounds.size
+            target = scaled
+        }
 
         if let background {
-            if let context = NSGraphicsContext(bitmapImageRep: rep) {
+            if let context = NSGraphicsContext(bitmapImageRep: target) {
                 NSGraphicsContext.saveGraphicsState()
                 NSGraphicsContext.current = context
                 background.nsColor.setFill()
@@ -41,13 +75,8 @@ enum ComplianceSheet {
                 NSGraphicsContext.restoreGraphicsState()
             }
         }
-        view.cacheDisplay(in: bounds, to: rep)
-
-        guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
-        let url = directory.appendingPathComponent(name)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? png.write(to: url)
-        return url
+        view.cacheDisplay(in: bounds, to: target)
+        return target
     }
 
     /// 把一块窗口内容**按窗口自己的尺寸**照下来。

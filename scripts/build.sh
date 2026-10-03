@@ -18,7 +18,7 @@
 # ── 构建配置 ────────────────────────────────────────────────────────────
 #
 #   Debug    只用于跑测试
-#   Dev      **默认**。与 Release 同样的优化设置，但 bundle id 是 `com.tango.Marquee.dev`
+#   Dev      **默认**。与 Release 同样的优化设置，但 bundle id 是 `com.tango.marquee.dev`
 #            ⇒ 本地跑出来的东西不会碰正式版的数据、偏好与屏幕录制授权
 #   Release  发版 / 打包 / 内购的**真实沙盒验证**
 #
@@ -132,7 +132,7 @@ elif codesign -dvvv "$APP_PATH" 2>&1 | grep -q "adhoc"; then
     # "屏幕录制授权又留不住了"，很难联想到是这里（改名时就差点漏）。
     BUILT_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
                  "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "")
-    codesign --force --sign "$MARQUEE_SIGN_IDENTITY" --identifier "${BUILT_ID:-com.tango.Marquee}" "$APP_PATH"
+    codesign --force --sign "$MARQUEE_SIGN_IDENTITY" --identifier "${BUILT_ID:-com.tango.marquee}" "$APP_PATH"
     echo "✓ 已按 MARQUEE_SIGN_IDENTITY 强制重签：$MARQUEE_SIGN_IDENTITY" >&2
   else
     echo "   临时补救：MARQUEE_SIGN_IDENTITY=\"<证书名>\" ./scripts/build.sh" >&2

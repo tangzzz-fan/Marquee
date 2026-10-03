@@ -36,7 +36,7 @@ options:
 # 那样同一份代码在两个构建里行为不同，而**没编进去的那条分支只有发版那天才跑得到**。
 # 用 `AppIdentity.isSandboxed`（运行期读 APP_SANDBOX_CONTAINER_ID，能脱机单测）。
 #
-# 身份：**只有 `Release` 与 `MAS` 是正式 id**；`Dev` 与 `Debug` 都是 `com.tango.Marquee.dev`。
+# 身份：**只有 `Release` 与 `MAS` 是正式 id**；`Dev` 与 `Debug` 都是 `com.tango.marquee.dev`。
 # 所以从 Debug 切到 Dev 不会多出一个身份 —— 数据、偏好、TCC 授权都还是同一份。
 #
 # ⚠️ 为什么 Run 不用 `Release`（改名前就是这么干的）：那时"本地跑的那个"与
@@ -75,7 +75,7 @@ schemes:
     run:
       # Run 走 **Dev**（而不是 Release）：性能预算（落点→剪贴板 ≤150 ms、选区拖拽 120fps、
       # 编辑器重绘 ≤4 ms）只有在优化构建下才有意义，所以它**照抄 Release 的优化设置**；
-      # 但身份是 `com.tango.Marquee.dev`，于是本地跑出来的东西**不会碰正式版的数据与偏好**。
+      # 但身份是 `com.tango.marquee.dev`，于是本地跑出来的东西**不会碰正式版的数据与偏好**。
       #
       # 代价：调试体验下降（优化构建下断点与变量查看会被打乱）。
       # 需要单步排查时临时改成 Debug，或直接切 scheme 的 Run 配置。
@@ -163,7 +163,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Marquee
-        PRODUCT_BUNDLE_IDENTIFIER: com.tango.Marquee
+        PRODUCT_BUNDLE_IDENTIFIER: com.tango.marquee
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: App/Info.plist
@@ -206,15 +206,15 @@ targets:
         # **只有 Release 拿得到生产 id** —— 于是"误把开发构建发出去"这件事
         # 从"靠人记得"变成"配置上就不可能"（package.sh 另有一道前置检查）。
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.tango.Marquee.dev
+          PRODUCT_BUNDLE_IDENTIFIER: com.tango.marquee.dev
         Dev:
-          PRODUCT_BUNDLE_IDENTIFIER: com.tango.Marquee.dev
+          PRODUCT_BUNDLE_IDENTIFIER: com.tango.marquee.dev
         # ── App Store 那条路（ticket 32）────────────────────────────────────
         #
         # **只有这一份带 `CODE_SIGN_ENTITLEMENTS`** —— 也就是说只有它进沙盒。
         # Dev / Debug / Release 都不带，于是自动滚动在那儿照旧可用。
         #
-        # bundle id 不用写：它从 `settings.base` 继承正式 id（`com.tango.Marquee`），
+        # bundle id 不用写：它从 `settings.base` 继承正式 id（`com.tango.marquee`），
         # 而只有 Debug / Dev 覆盖成 `.dev`。这正是"只有 Release 与 MAS 拿生产 id"
         # 这条约束的落法 —— 它由**继承关系**保证，不靠人记得。
         MAS:

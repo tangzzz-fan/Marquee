@@ -103,9 +103,9 @@ final class PreferencesWindowController: NSWindowController {
         recorder.onRecordingChanged = { [weak self] isRecording in
             guard let self else { return }
             if isRecording {
-                shortcut.suspendForRecording()
+                self.shortcut.suspendForRecording()
             } else {
-                shortcut.resumeAfterRecording()
+                self.shortcut.resumeAfterRecording()
             }
         }
         loadAll()
@@ -130,6 +130,17 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     // MARK: - 展示
+
+    /// Pro 状态区那一块在**窗口内容坐标**里的矩形（y 向上，原点在内容左下角）。
+    ///
+    /// 给 `ReviewShots` 画审核截图的标注框用（"购买入口在这里"）。
+    /// **为什么是运行期算的而不是源码里估的**：布局一改，估的坐标会**静静地**
+    /// 指到别处 —— 而那张图会被原样上传给审核，谁也不会在开发机上发现。
+    var proPanelFrameInContent: CGRect? {
+        guard let content = window?.contentView, proPanel.superview != nil else { return nil }
+        content.layoutSubtreeIfNeeded()
+        return proPanel.convert(proPanel.bounds, to: content)
+    }
 
     /// 呈现窗口。`page` 给了就切到那一页 —— 从「了解 Pro」进来时要直接落到通用页
     /// （状态区在那儿），而不是用户上次停在的那一页。
@@ -289,10 +300,18 @@ final class PreferencesWindowController: NSWindowController {
         body.alignment = .leading
         body.spacing = 12
 
-        // 恢复购买的结果行（常驻，四种结果都在这儿）。它在**按钮下方** ——
-        // 它属于"刚才那一下"，不属于上面那句整句状态（稿子 §04）。
+        // 「刚才那一下」的回执行（常驻）。它在**按钮下方** ——
+        // 属于刚才那一下，不属于上面那句整句状态（稿子 §04）。
+        // **两个动作共用这一行**：升级到 Pro 与恢复购买结果同源，
+        // 各开一行的话两句话会同时在屏幕上互相打架。
         proOutcomeLabel.font = .systemFont(ofSize: 11)
         proOutcomeLabel.stringValue = ""
+        // 允许折成两行：开发版那条"商店里没有这个商品"的提示比其余几句长
+        //（它要给出可执行的下一步）。不折的话它会撑着面板往右长。
+        // 折行宽度与行数上限都取自 Core —— 有一条断言在按同一个数量这些文案。
+        proOutcomeLabel.maximumNumberOfLines = ChromeControl.proPanelOutcomeLineLimit
+        proOutcomeLabel.lineBreakMode = .byWordWrapping
+        proOutcomeLabel.preferredMaxLayoutWidth = ChromeControl.proPanelTextWidth
 
         proPanel.setContent([body, proOutcomeLabel])
         proPanel.translatesAutoresizingMaskIntoConstraints = false
@@ -621,21 +640,23 @@ final class PreferencesWindowController: NSWindowController {
         proStatusLabel.stringValue = Self.proStatusText(snapshot)
         proStatusLabel.textColor = palette.label.nsColor
 
-        switch snapshot.entitlement {
-        case .pro:
+        // 按钮的**可用性**是判据，放 Core（`Entitlement.allowsUpgradePurchase`）——
+        // 散在这里的 `switch` 里时，漏一档就是"某个状态的用户被关在门外"，
+        // 而那种错不崩不报错（2026-10-04 就是这么踩的：`.unknown` 置灰 ⇒ 点不动）。
+        proActionButton.isEnabled = snapshot.entitlement.allowsUpgradePurchase
+        // 文字与可用性**同源**：关掉的那一档必须自己说明为什么关。
+        //
+        // 价格写在按钮上（"点之前看得见"）：拿不到价格时退回不带价格的那个标题 ——
+        // 宁可少说，也不写死一个 `¥36`（每个店面的价格与货币都不同）。
+        let price = ProEntitlement.shared.priceText
+        if snapshot.entitlement.isPurchased {
             proActionButton.title = L10n.t("已购买")
-            proActionButton.isEnabled = false
-        case .unknown:
-            // ⚠️ **还在确认时主按钮是置灰的**：权益还没问出来，不能让用户买第二次
-            //（稿子 §04）。确认完成（通常几百毫秒）后它自己变成可点。
+        } else if let price {
+            proActionButton.title = L10n.t("升级到 Pro · \(price)")
+        } else {
             proActionButton.title = L10n.t("升级到 Pro")
-            proActionButton.isEnabled = false
-        case .trial, .free, .revoked:
-            proActionButton.title = L10n.t("升级到 Pro")
-            proActionButton.isEnabled = true
         }
-        // 「恢复购买」**永远可点**：App Review 要求可恢复，
-        // 而且"我明明买过"的人第一件事就是找这个按钮。
+
         // 「恢复购买」**永远可点**：App Review 要求可恢复，
         // 而且"我明明买过"的人第一件事就是找这个按钮。
     }
@@ -659,8 +680,54 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     private func proActionTapped() {
-        // 不等结果：买成之后判定会变，状态区靠 `observe` 那条路自己更新。
-        Task { _ = await ProEntitlement.shared.purchasePro() }
+        let palette = ChromePalette.Theme.current
+        proOutcomeLabel.stringValue = L10n.t("正在打开 App Store…")
+        proOutcomeLabel.textColor = palette.label2.nsColor
+        // 买成之后判定会变，状态区靠 `observe` 那条路自己更新 ——
+        // 但**结果本身必须有回话**，见 `showPurchaseOutcome`。
+        Task { [weak self] in
+            let outcome = await ProEntitlement.shared.purchasePro()
+            self?.showPurchaseOutcome(outcome)
+        }
+    }
+
+    /// 购买的结果。
+    ///
+    /// ⚠️ 这里原本是 `_ = await …purchasePro()` —— **把结果整个丢掉**，
+    /// 于是"点了没反应"是唯一可能的表现：取消没有回话、失败没有回话、
+    /// **商店里压根没有这个商品也没有回话**（开发版没挂 StoreKit 配置时就是这一档）。
+    /// 用户原话：「点击升级到 pro 无效」。
+    ///
+    /// 与「恢复购买」同一条规矩：**用户主动点的动作，五种结果都常驻**。
+    /// 顺带一提，这一行也是**排障的第一手证据** —— 它会当场说出是哪一档。
+    private func showPurchaseOutcome(_ outcome: PurchaseOutcome) {
+        let palette = ChromePalette.Theme.current
+        switch outcome {
+        case .purchased:
+            proOutcomeLabel.stringValue = L10n.t("已购买 ✓")
+            proOutcomeLabel.textColor = palette.success.nsColor
+        case .cancelledByUser:
+            // 他自己按的取消：不是错误，不报红 —— 与恢复购买同一句话
+            proOutcomeLabel.stringValue = L10n.t("已取消，没有改动")
+            proOutcomeLabel.textColor = palette.label2.nsColor
+        case .pending:
+            // 家人共享的"购买前询问"、或银行的额外验证。**既不是成功也不是失败**，
+            // 而"什么都没变"正是此刻最难自己搞明白的一件事，所以要说清下一步。
+            proOutcomeLabel.stringValue = L10n.t("等待批准 · 批准后会自动解锁")
+            proOutcomeLabel.textColor = palette.label2.nsColor
+        case .unavailable:
+            // **我们这边的问题**（商品没建 / 还没审核过 / bundle id 对不上），
+            // 所以不许说成"网络问题"（PITFALLS 180 同一条原则）。
+            // 开发版另给一句可执行的下一步 —— 这一档在开发机上最常见的原因
+            // 就是"没用 Xcode 运行"，而那句话当场就能排掉。
+            proOutcomeLabel.stringValue = AppIdentity().isDevelopmentBuild
+                ? L10n.t("暂时买不了 · 商店里没有这个商品（开发版：请用 Xcode 运行，且 scheme 要挂 Products.storekit）")
+                : L10n.t("暂时买不了 · 商店里还没有这个商品")
+            proOutcomeLabel.textColor = palette.danger.nsColor
+        case .failed:
+            proOutcomeLabel.stringValue = L10n.t("购买失败 · 请稍后再试")
+            proOutcomeLabel.textColor = palette.danger.nsColor
+        }
     }
 
     private func proRestoreTapped() {
@@ -675,37 +742,18 @@ final class PreferencesWindowController: NSWindowController {
     /// 恢复购买**必须如实回报** —— 这是用户主动点的动作，
     /// 悄悄失败等于骗他"恢复过了，确实没有记录"。
     ///
-    /// ⚠️ **原因不许猜。** 原先只有一句"恢复失败 · 检查网络后重试"，
-    /// 而用户在系统弹框上按的取消也会走进这一档 —— 于是网络正常的人被派去查网
-    ///（2026-10-04 用户报回来的就是这个）。现在每一档对应一句**说得准**的话：
-    /// 只有真·连不上才提网络，其余一律"稍后再试"。
-    ///
-    /// 五种结果**都常驻**（不自动消失、不需要"知道了"）——
-    /// 它属于"刚才那一下"，不属于上面那句整句状态。
+    /// ⚠️ **说哪句话不在这里**：五档措辞由 `ProFeedback` 一处决定 ——
+    /// 覆盖层里点「恢复购买」也会说同一件事（那儿只有一行提示行），
+    /// 两处各写一份的话，"用户取消该说中性的话"这类判断必然只修一处。
+    /// 这里只管它的颜色与放置（那一行**常驻**，不自动消失）。
     private func showRestoreOutcome(_ outcome: EntitlementCoordinator.RestoreOutcome) {
+        let feedback = ProFeedback.restore(outcome)
         let palette = ChromePalette.Theme.current
-        switch outcome {
-        case .restored:
-            proOutcomeLabel.stringValue = L10n.t("已恢复购买 ✓")
-            proOutcomeLabel.textColor = palette.success.nsColor
-        case .nothingToRestore:
-            // 中性，**不是错误**："这个账号下没有可恢复的"是一个正常结果
-            proOutcomeLabel.stringValue = L10n.t("这个账号下没有可恢复的购买")
-            proOutcomeLabel.textColor = palette.label2.nsColor
-        case .cancelledByUser:
-            // 用户自己按的取消：**不是错误**，不报红、不说"失败"。
-            // 也不能什么都不显示 —— 上面那行还停在"正在恢复…"，
-            // 一句不回等于让人以为它卡住了（本文件开头那条"点了就一定有回话"）。
-            proOutcomeLabel.stringValue = L10n.t("已取消，没有改动")
-            proOutcomeLabel.textColor = palette.label2.nsColor
-        case .networkFailed:
-            proOutcomeLabel.stringValue = L10n.t("恢复失败 · 检查网络后重试")
-            proOutcomeLabel.textColor = palette.danger.nsColor
-        case .failed:
-            // 已经知道失败了，但**不知道原因** —— 那就只说知道的这一半。
-            // 顺手加一句"网络"是把自己没查过的事说成事实。
-            proOutcomeLabel.stringValue = L10n.t("恢复失败 · 请稍后再试")
-            proOutcomeLabel.textColor = palette.danger.nsColor
+        proOutcomeLabel.stringValue = feedback.text
+        proOutcomeLabel.textColor = switch feedback.kind {
+        case .success: palette.success.nsColor
+        case .neutral: palette.label2.nsColor
+        case .failure: palette.danger.nsColor
         }
     }
 

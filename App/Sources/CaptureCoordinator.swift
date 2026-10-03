@@ -253,6 +253,9 @@ final class CaptureCoordinator {
         // 没注入时覆盖层一律放行（见 `proEntitlement` 的文档），
         // 所以"忘了接"的后果是**该锁的没锁**，而不是"什么都点不动"。
         controller.proEntitlement = { ProEntitlement.shared.snapshot }
+        // 价格同样是**宿主注入**的：覆盖层不认识 StoreKit，也就无从知道
+        // "完整版要多少钱"（见 `ProEntitlement.priceText`）。
+        controller.proPriceText = { ProEntitlement.shared.priceText }
         controller.onProCardAction = { [weak self] action in
             self?.handleProCardAction(action)
         }
@@ -271,7 +274,14 @@ final class CaptureCoordinator {
         case .startTrial:
             Task { _ = await entitlement.startTrial() }
         case .restore:
-            Task { _ = await entitlement.restorePurchases() }
+            // ⚠️ **结果不能丢**。这个动作是原地完成的：卡片收掉了、覆盖层还留着，
+            // 而另外两个动作会开窗口（用户看得见那扇窗）—— 只有它什么都不弹。
+            // 结果全落在提示行那一句上；少了它就是"点了没反应"。
+            Task { [weak self] in
+                let outcome = await entitlement.restorePurchases()
+                let feedback = ProFeedback.restore(outcome)
+                self?.overlay?.showTransientNotice(feedback.text, role: feedback.kind.readoutRole)
+            }
         case .purchase:
             // ⚠️「了解 Pro」**不直接发起购买**。扣款是不可逆的动作，
             // 得让用户先看见价格与自己的当前状态 —— 所以打开**通用页**，
@@ -315,6 +325,17 @@ final class CaptureCoordinator {
                                output: outputStore,
                                currentPermission: { [permission] in permission.currentPermission() },
                                into: directory)
+    }
+
+    /// IAP 审核截图（**只在 `-marqueeSmokeReview` 那条路用**）。
+    ///
+    /// 与上面那条同一个理由：ASC 要 1280 × 800，而对照材料是"窗口多大拍多大"。
+    /// 两张分别对应两个商品（买断看在偏好页的入口、试用看在覆盖层卡片上的入口）。
+    func renderReviewShots(into directory: URL) -> [String] {
+        ReviewShots.render(shortcut: shortcut,
+                           preferences: preferences,
+                           output: outputStore,
+                           into: directory)
     }
 
     /// 编辑器的版面快照（**只在 `-marqueeSmokeEditor` 那条路用**）。

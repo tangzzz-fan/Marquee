@@ -383,13 +383,13 @@ struct ProCardLayoutTests {
                                    primary: .startTrial, secondary: .purchase)
         let usedUp = ProCardContent(feature: .textRecognition, reason: .neverPurchased,
                                     primary: .purchase, secondary: .restore)
-        #expect(ProCard.bodyVariant(for: trial) == .trial)
-        #expect(ProCard.bodyVariant(for: usedUp) == .trialEnded)
+        #expect(ProCard.bodyVariant(for: trial, priceAvailable: false) == .trial)
+        #expect(ProCard.bodyVariant(for: usedUp, priceAvailable: false) == .trialEnded)
 
         // 试用已经明确结束的那一档，无论主按钮是什么都说"已结束"
         let ended = ProCardContent(feature: .pin, reason: .trialEnded,
                                    primary: .purchase, secondary: .restore)
-        #expect(ProCard.bodyVariant(for: ended) == .trialEnded)
+        #expect(ProCard.bodyVariant(for: ended, priceAvailable: false) == .trialEnded)
 
         // 撤销的两档分开：对"被移出家人共享"的人说"你退款了"会让他以为账号被盗
         let revoked = ProCardContent(feature: .scrollCapture,
@@ -398,14 +398,41 @@ struct ProCardLayoutTests {
         let notFound = ProCardContent(feature: .scrollCapture,
                                       reason: .revoked(.purchaseNotFound),
                                       primary: .restore, secondary: .purchase)
-        #expect(ProCard.bodyVariant(for: revoked) == .revokedByStore)
-        #expect(ProCard.bodyVariant(for: notFound) == .purchaseNotFound)
-        #expect(ProCard.bodyVariant(for: revoked) != ProCard.bodyVariant(for: notFound))
+        #expect(ProCard.bodyVariant(for: revoked, priceAvailable: false) == .revokedByStore)
+        #expect(ProCard.bodyVariant(for: notFound, priceAvailable: false) == .purchaseNotFound)
+        #expect(ProCard.bodyVariant(for: revoked, priceAvailable: false)
+                    != ProCard.bodyVariant(for: notFound, priceAvailable: false))
     }
 
-    @Test("四种正文互不相同 —— 少一种就是两档说了同一句话")
+    @Test("**只有试用那一档**会因为拿到价格而换一句话（3.1.1 的「后续费用」）")
+    func onlyTheTrialVariantReportsPrice() {
+        let trial = ProCardContent(feature: .textRecognition, reason: .neverPurchased,
+                                   primary: .startTrial, secondary: .purchase)
+        #expect(ProCard.bodyVariant(for: trial, priceAvailable: true) == .trialWithPrice)
+        #expect(ProCard.bodyVariant(for: trial, priceAvailable: false) == .trial)
+
+        // ⚠️ 其余各档**不许**因为"有价格"就改口：它们说的不是"试用会怎样"，
+        // 报价格只会让"试用已结束"那张卡片看起来像在推销而不是在解释。
+        let others = [
+            ProCardContent(feature: .textRecognition, reason: .neverPurchased,
+                           primary: .purchase, secondary: .restore),
+            ProCardContent(feature: .pin, reason: .trialEnded,
+                           primary: .purchase, secondary: .restore),
+            ProCardContent(feature: .scrollCapture, reason: .revoked(.storeRevoked),
+                           primary: .restore, secondary: .purchase),
+            ProCardContent(feature: .scrollCapture, reason: .revoked(.purchaseNotFound),
+                           primary: .restore, secondary: .purchase),
+        ]
+        for content in others {
+            #expect(ProCard.bodyVariant(for: content, priceAvailable: true)
+                        == ProCard.bodyVariant(for: content, priceAvailable: false),
+                    "\(content.reason) 这一档不该因为价格而换句子")
+        }
+    }
+
+    @Test("五种正文互不相同 —— 少一种就是两档说了同一句话")
     func bodyVariantsAreDistinct() {
-        #expect(Set([ProCard.BodyVariant.trial, .trialEnded, .revokedByStore,
-                     .purchaseNotFound]).count == 4)
+        #expect(Set([ProCard.BodyVariant.trialWithPrice, .trial, .trialEnded,
+                     .revokedByStore, .purchaseNotFound]).count == 5)
     }
 }

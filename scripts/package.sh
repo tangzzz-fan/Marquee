@@ -46,7 +46,7 @@ BUILD_DIR="$PWD/.build-package"
 # 正式版的 bundle id。**它必须出现在最终产物里** —— 内购商品挂在 bundle id 下，
 # 拿开发版归档打出来的包在 App Store 上**取不到商品**（Apple TN3186），
 # 而那个现象很难反推回"我打包时用错了身份"。
-EXPECTED_BUNDLE_ID="com.tango.Marquee"
+EXPECTED_BUNDLE_ID="com.tango.marquee"
 ARCHIVE="$BUILD_DIR/$APP_NAME.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 

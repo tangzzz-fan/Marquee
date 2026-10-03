@@ -36,7 +36,11 @@ STRINGY = ("localizedDescription", ".path", "displayString", "reason", "detail",
            "title", "text", "conflict", "uppercased()", "String(",
            "displayName",
            # RecentPanel: dimensions 是拼好的 String（"1234×768"）→ %@
-           "dimensions")
+           "dimensions",
+           # ProCard 正文与偏好页按钮里的价格：来自商店 `displayPrice`，
+           # 是**已本地化的 String**（"¥36" / "US$4.99"）→ %@。
+           # 猜成 %lld 的话真机上会印出一串数字，而扫描测试看不出来（见本节开头）。
+           "price")
 
 
 # 这几个是**读过声明**定下来的，不是猜的（探测结果见 ticket 17b 的实现记录）：

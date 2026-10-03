@@ -60,7 +60,7 @@ public struct CaptureHistorySnapshot: Equatable, Sendable {
 /// ## 目录约定
 ///
 /// `<数据根>/history/`，而数据根是 `~/Library/Application Support/<bundle id>/`
-/// （见 `AppIdentity` —— 开发版是 `com.tango.Marquee.dev`，于是两个版本各有各的历史）：
+/// （见 `AppIdentity` —— 开发版是 `com.tango.marquee.dev`，于是两个版本各有各的历史）：
 /// - `index.json` —— 条目清单（新→旧）
 /// - `<uuid>-original.png` / `<uuid>-annotations.json`
 ///

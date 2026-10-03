@@ -12,7 +12,7 @@ struct EntitlementCacheTests {
     private let origin = Date(timeIntervalSince1970: 1_760_000_000)
 
     private func makeCache() -> (UserDefaultsEntitlementCache, UserDefaults) {
-        let name = "com.tango.Marquee.tests.entitlement.\(UUID().uuidString)"
+        let name = "com.tango.marquee.tests.entitlement.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return (UserDefaultsEntitlementCache(defaults: defaults), defaults)

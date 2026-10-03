@@ -138,7 +138,7 @@
 
 #### 定价（已定：**¥36**）
 
-- 形态：**一次性买断**，非消耗型 IAP，商品 id `com.tango.Marquee.pro`。
+- 形态：**一次性买断**，非消耗型 IAP，商品 id `com.tango.marquee.pro`。
 - **价格：¥36（人民币）**。
 - 这个数字**是合法的价格点**：Apple 的规则表里，中国区（CNY）在 **¥10–200 之间价格步长为 ¥1**
   （见 Apple《App Store 定价机制升级》附件），所以 ¥36 可以在 App Store Connect 里直接选中，
@@ -170,7 +170,7 @@
 
 | 项 | 做法 |
 | --- | --- |
-| 商品 | 买断：一个**非消耗型** IAP（如 `com.tango.Marquee.pro`）；订阅：`pro.monthly` / `pro.yearly` 一组 |
+| 商品 | 买断：一个**非消耗型** IAP（如 `com.tango.marquee.pro`）；订阅：`pro.monthly` / `pro.yearly` 一组 |
 | 查询 | `Product.products(for:)` 拿价格与本地化标题（价格文案**必须**用 `displayPrice`，不能写死） |
 | 购买 | `product.purchase()`；处理 `.success(verification)` / `.userCancelled` / `.pending`（家长批准会 pending） |
 | 权益 | `Transaction.currentEntitlements` 逐条 `verified`，取到即 Pro |
@@ -263,7 +263,7 @@ App Review 原文（3.1.1）明确允许：
 | **自动滚动**（滚动截屏的后半，ticket 12） | ❌ **做不了**：它靠代用户发滚轮事件，而那正是被禁的那一条 | ① MAS 版**只保留手动滚动**长截图（能力还在，只是要用户自己滚 —— 与"手动版 MVP"完全同构）；② 或者不发 MAS 版，保住这个差异点 |
 | 默认保存到**桌面** | ❌ **写不进去**：文件访问只有 user-selected / Downloads / **Pictures** / Music / Movies 这几类，**桌面对应的 entitlement 根本不存在** | 默认目录改成 `~/Pictures/Marquee`（加 `assets.pictures.read-write`）；或首次让用户选一次目录，存 **security-scoped bookmark** |
 | 最近截图仓库 | ⚠️ 路径会从 `~/Library/Application Support/…` 变成容器内 | ❌ **「搬一次」这件事在沙盒内做不到** —— 沙盒进程读不到容器**外**的 Application Support。只能由**非沙盒**构建代劳，或干脆不做：路线 B 下 MAS 版是首发，用户本来就没有"沙盒外的老数据"。（2026-10-03 核实） |
-| 偏好设置（`com.tango.Marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上。另：**偏好根本不在 Application Support**（在 `~/Library/Preferences/`），原文这句是错的。v1 首发无需迁移 |
+| 偏好设置（`com.tango.marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上。另：**偏好根本不在 Application Support**（在 `~/Library/Preferences/`），原文这句是错的。v1 首发无需迁移 |
 | 全局快捷键（Carbon 热键） | ✅ 不受影响 | 不用改 |
 | 截图 / 覆盖层 / 标注 / 导出 / 钉图 / OCR | ✅ 都不碰受限能力 | 不用改 |
 | 鼠标穿透的钉图窗口 | ✅ | 不用改 |
@@ -284,7 +284,7 @@ App Review 原文（3.1.1）明确允许：
 - [ ] ~~数据迁移（Application Support → 容器）~~ ⇒ **撤销**：沙盒内做不到，见 §2.2
 - [ ] **打包脚本加一条 MAS 路线**（ticket 33）：`xcodebuild archive` → `-exportArchive`（`app-store`）→ 上传
 - [x] StoreKit：本地 `Products.storekit` 配置文件（ticket 31）
-- [ ] **App Store Connect 里建商品**（`com.tango.Marquee.pro` ¥36 非消耗型）—— 真实沙盒交易与提审都卡在这一步
+- [ ] **App Store Connect 里建商品**（`com.tango.marquee.pro` ¥36 非消耗型）—— 真实沙盒交易与提审都卡在这一步
 - [x] `Entitlement` 状态机（Core，可脱机单测）+ 偏好通用页的状态区 + 三个触发点的锁与卡片（ticket 30 / 31）
 - [ ] 上架材料：隐私标签（**可以答"不采集任何数据"** —— 这是我们相对竞品的优势）、
       审核备注（一句解释为什么需要屏幕录制、一句说明**自动滚动的缺席是刻意的**）、截图、描述、关键词、年龄分级
@@ -357,7 +357,7 @@ App Review 原文（3.1.1）明确允许：
 
 | 项 | 做法 |
 | --- | --- |
-| 商品 | 一个**非消耗型** IAP：`com.tango.Marquee.pro`。**在 App Store Connect 里建**，代码这边用 `Products.storekit` 本地配置先跑通 |
+| 商品 | 一个**非消耗型** IAP：`com.tango.marquee.pro`。**在 App Store Connect 里建**，代码这边用 `Products.storekit` 本地配置先跑通 |
 | 取商品 | `Product.products(for: [id])`；价格文案**必须**用 `displayPrice`（写死价格＝本地化事故） |
 | 购买 | `product.purchase()`；要处理 `.success(verification)` / `.userCancelled` / `.pending`（家长批准会 pending，这时**不能**当成失败） |
 | 权益 | `Transaction.currentEntitlements` 逐条 `verified` —— **只认 `verified`**，`unverified` 一律忽略 |

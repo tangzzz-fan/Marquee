@@ -312,12 +312,12 @@ Tools/L10nCatalog/run.sh write    # 真的重写 catalog
 几个不改代码就能调的口子（都是 `defaults`，下次唤起对应界面时生效）：
 
 ```bash
-defaults write com.tango.Marquee lens.zoom -float 4            # 放大镜倍数
-defaults write com.tango.Marquee chrome.tint  -float 0.18     # 玻璃着色调淡（越淡越透；默认 0.25）
-defaults write com.tango.Marquee chrome.scrim -float 0.35     # 15.x 材质下的衬底（默认 0.35）
-defaults write com.tango.Marquee chrome.forceHUD -bool YES    # 强制走 15.x 的 HUD 材质（自检降级路径）
-defaults write com.tango.Marquee overlay.traceFrames -bool YES # 拖一次选区，日志出「帧数 / 平均 ms / 最大间隔」
-defaults delete com.tango.Marquee chrome.forceHUD
+defaults write com.tango.marquee lens.zoom -float 4            # 放大镜倍数
+defaults write com.tango.marquee chrome.tint  -float 0.18     # 玻璃着色调淡（越淡越透；默认 0.25）
+defaults write com.tango.marquee chrome.scrim -float 0.35     # 15.x 材质下的衬底（默认 0.35）
+defaults write com.tango.marquee chrome.forceHUD -bool YES    # 强制走 15.x 的 HUD 材质（自检降级路径）
+defaults write com.tango.marquee overlay.traceFrames -bool YES # 拖一次选区，日志出「帧数 / 平均 ms / 最大间隔」
+defaults delete com.tango.marquee chrome.forceHUD
 ```
 
 免权限自检入口（覆盖层 / 编辑器的渲染没法在自动化测试里目视确认，用这几个开关冒烟）：

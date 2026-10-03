@@ -9,6 +9,9 @@ EN = {
     # 中文照稿子来；英文同样占这条宽度 —— 太长会被裁掉尾巴（`RecentPanel`
     # 与提示行都栽过同一个跟头）。它由 `LocalizationScanTests` 按真字体量。
     "试用 7 天，结束后自动回到免费版": "Free for 7 days, then back to the free version",
+    # 拿到商店价格之后的那一句（3.1.1：试用开始前必须说清"后续费用"）。
+    # ⚠️ 它必须与上面那句**一样宽或更窄**放得进卡片正文那一行 —— 已经有断言在量。
+    "试用 7 天 · 之后 %@ · 免费版仍可用": "7-day trial · then %@ · free tier stays",
     "试用已结束，免费版仍可截图与标注": "Trial ended. Capture and annotate stay free",
     "购买已撤销，可点恢复购买重新获取": "Purchase revoked. Restore it to get it back",
     "这个账号下找不到这笔购买": "No purchase found for this account",
@@ -115,6 +118,17 @@ EN = {
     "已取消，没有改动": "Cancelled — nothing changed",
     "恢复失败 · 检查网络后重试": "Restore failed · check your connection and try again",
     "恢复失败 · 请稍后再试": "Restore failed · try again later",
+    # 「升级到 Pro」的回执（与恢复购买**共用同一行**）。
+    # 原来这一行完全不存在 —— 点了没反应是唯一可能的表现。
+    "正在打开 App Store…": "Opening the App Store…",
+    "已购买 ✓": "Purchased ✓",
+    "等待批准 · 批准后会自动解锁": "Waiting for approval · it unlocks automatically once approved",
+    "购买失败 · 请稍后再试": "Purchase failed · try again later",
+    "暂时买不了 · 商店里还没有这个商品": "Can't buy right now · this item isn't in the store yet",
+    # 开发版专用：这一档在开发机上最常见的原因就是"没用 Xcode 运行"，
+    # 而这句话当场就能把那个原因排掉。正式版看不到它。
+    "暂时买不了 · 商店里没有这个商品（开发版：请用 Xcode 运行，且 scheme 要挂 Products.storekit）":
+        "Can't buy right now · the store has no such item (dev build: run from Xcode with Products.storekit set in the scheme)",
     # 偏好设置「输出」页 —— 质量那一行的两种说明（稿子 §C.3 / §04）。
     # 无损那句必须给出**下一步**（换成哪种格式才有），不是一句「质量不可用」。
     "PNG 是无损格式，没有质量可调 —— 换成 JPEG 或 HEIC 才有":
@@ -371,6 +385,8 @@ EN = {
     "Marquee Pro · 这个账号下找不到这笔购买":
         "Marquee Pro · No purchase found for this account",
     "升级到 Pro": "Upgrade to Pro",
+    # 偏好页那颗按钮带上价格 —— "点之前看得见"。拿不到价格时退回上面那条。
+    "升级到 Pro · %@": "Upgrade to Pro · %@",
     "已购买": "Purchased",
     "这个账号下没有可恢复的购买": "No purchases to restore for this account",
 

@@ -144,8 +144,18 @@ public enum ProCard {
     /// 判据只看两件事：`reason`，以及**主按钮给的是不是试用** ——
     /// 后者才是"这一档是说试用还是说结束"的真正依据（同一个 `.neverPurchased`
     /// 在能试用与不能试用时是两个不同的状态）。
-    public enum BodyVariant: Equatable, Sendable {
-        /// 「试用 7 天，结束后自动回到免费版」
+    public enum BodyVariant: Equatable, Hashable, Sendable {
+        /// 「试用 7 天 · 之后 %@ · 免费版仍可用」—— **拿到价格时**说这一句。
+        ///
+        /// 3.1.1 原文要求：试用开始前必须"清楚指明时长、结束后不再能访问的内容，
+        /// **以及用户为获得完整功能需要支付的任何后续费用**"。
+        /// 最后那一条就是它存在的理由 —— 而它是**动态的**（每个店面的价格不同），
+        /// 所以句子要带一个参数，见 `bodyVariant(for:priceAvailable:)`。
+        case trialWithPrice
+        /// 「试用 7 天，结束后自动回到免费版」—— 价格**没拿到**时的退化。
+        ///
+        /// 退化是**刻意**的：宁可少说一句，也**不许编一个价格**出来
+        ///（写死 `¥36` 会在每个非中国区店面都错，而且错得看不出来）。
         case trial
         /// 「试用已结束，免费版仍可截图与标注」
         case trialEnded
@@ -156,12 +166,20 @@ public enum ProCard {
     }
 
     /// 这一张卡片的正文该说哪一句。
-    public static func bodyVariant(for content: ProCardContent) -> BodyVariant {
+    ///
+    /// - Parameter priceAvailable: 商店的价格文案拿到了没有。
+    ///
+    /// ⚠️ 价格**只影响试用那一档**。别的档说的不是"试用会怎样"，
+    /// 报价格没有意义 —— 把它们也带上价格，会让"试用已结束"那张卡片
+    /// 看起来像在推销而不是在解释。
+    public static func bodyVariant(for content: ProCardContent,
+                                   priceAvailable: Bool) -> BodyVariant {
         switch content.reason {
         case .neverPurchased:
             // ⚠️ 看的是**主按钮**，不是 reason 本身：`.neverPurchased` 里
             // 既可能是"还没试过"，也可能是"试用已经用掉了"。
-            return content.primary == .startTrial ? .trial : .trialEnded
+            guard content.primary == .startTrial else { return .trialEnded }
+            return priceAvailable ? .trialWithPrice : .trial
         case .trialEnded:
             return .trialEnded
         case .revoked(let cause):

@@ -8,7 +8,7 @@
 | 目标平台 | macOS **15.0+**（本地开发环境：macOS 27.0 / Xcode 27.0 / Swift 6.4 / arm64） |
 | 参考对象 | 腾讯 Snip（`snip.qq.com`，Mac App Store id 512505421） |
 | 工作目录 | `/Users/tango/Developments/Marquee` |
-| 产品名 / bundle id | **Marquee** · `com.tango.Marquee`（开发版 `.dev`） |
+| 产品名 / bundle id | **Marquee** · `com.tango.marquee`（开发版 `.dev`） |
 | 关联文档 | `docs/design/PAGE-LOGIC.md`（**界面逻辑**，设计输入的权威来源）、`docs/MAS-AND-MONETIZATION.md`（**收费与上架**）、`docs/DEV-VS-PROD.md`（开发版 vs 正式版）、`docs/STATUS-AND-ACCEPTANCE.md`（进度与人工验收清单）、`docs/PITFALLS.md`（实现陷阱）、`docs/RENDER-BENCH.md`、`docs/SPIKE-PLAN.md` |
 
 > ⚠️ **v0.3 修订说明**：本文起草于 2026-09-30（改名当天），此后实现了 34 张 ticket。
@@ -34,8 +34,8 @@
 | 6 | 画布渲染 **用 SwiftUI Canvas**（实测最优，见 `docs/RENDER-BENCH.md`）；CG 仅用于导出与非交互路径；**首期不引入 Metal**。 | ✅ |
 | 7 | 功能范围 **P0 + 精简版 P1**；滚动截屏**允许分期**——先交付可用形态（M3），自动滚动与拼接收敛至 M4。 | ✅ |
 | 8 | 交互与视觉：**原生 Liquid Glass**，且必须满足"功能简洁、交互流畅"（见 3.1 的量化预算）。 | ✅ |
-| 9 | 产品命名：**已定为 `Marquee`**（2026-09-30）。bundle id `com.tango.Marquee`，开发版 `.dev`。 | ✅ |
-| 10 | **收费**：买断 **¥36** 的非消耗型 IAP（`com.tango.Marquee.pro`）+ **7 天一次性试用**（0 价非消耗型）。**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5 张）。其余全部免费。 | ✅ |
+| 9 | 产品命名：**已定为 `Marquee`**（2026-09-30）。bundle id `com.tango.marquee`，开发版 `.dev`。 | ✅ |
+| 10 | **收费**：买断 **¥36** 的非消耗型 IAP（`com.tango.marquee.pro`）+ **7 天一次性试用**（0 价非消耗型）。**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5 张）。其余全部免费。 | ✅ |
 | 11 | **分发**：**改为上 Mac App Store（路线 B）**，Developer ID 那条路并存作后路。代价已接受：**沙盒版砍掉自动滚动，只留手动长截图**（`CGEventPost` 不允许来自沙盒应用）。 | ✅ |
 | 12 | **首次启动引导**：三步并作一页（它是什么 / 挑一个键 / 屏幕录制权限），走完或叉掉都不再出现。**这一条推翻了原「无启动引导」原则** —— 见 3 的修订。 | ✅ |
 
@@ -580,20 +580,20 @@ graph LR
 | --- | --- | --- | --- |
 | 1 | 最低系统版本 | **macOS 15.0** | `Package.swift` 的 `platforms`；26/27 专属能力走 `if #available` |
 | 2 | 滚动截屏 | **要做**，且**允许分期**：先出手动滚动 MVP → 再补自动滚动与配准优化 | ✅ **两期都已完成**；⚠️ 但**沙盒版只保留手动**，见 5.6 |
-| 3 | 产品名 | **`Marquee`**（2026-09-30 定）。bundle id `com.tango.Marquee`，开发版 `.dev` | ✅ 目录、模块、bundle id、TCC 授权均已就位 |
+| 3 | 产品名 | **`Marquee`**（2026-09-30 定）。bundle id `com.tango.marquee`，开发版 `.dev` | ✅ 目录、模块、bundle id、TCC 授权均已就位 |
 | 4 | 滚动截屏排期 | 手动先行、自动后补 | ✅ 已完成，不再是排期问题 |
 | 5 | 功能范围 | **P0 + 精简版 P1**（P1 由 11 项收敛为 7 项能力 + 2 项轻量形态，见 4.2） | 范围门禁 |
 | 6 | 视觉风格 | **原生 Liquid Glass**，26+ 用 `NSGlassEffectView`、15 用 `NSVisualEffectView(.hudWindow)` 降级（决策点收在 Core 的 `ChromeMaterial.resolved(glassAvailable:)`，可脱机单测） | 🟡 已实现；**视觉稿待 open-design 出**（见 `docs/design/PAGE-LOGIC.md`） |
 | 7 | 编辑器渲染技术 | **SwiftUI Canvas**（实测依据见 5.9 与 `docs/RENDER-BENCH.md`）；CG 走非交互路径；Metal 首期不引入 | 模块边界与性能预算 |
 | 8 | 本地 AI | **只做系统级**（Vision OCR），不引入本地视觉模型 | P2 的 A3 暂缓 |
 | 9 | 交互与功能基调 | **功能简洁、交互流畅**（量化约束见 3.1） | 全流程范围裁剪依据 |
-| **10** | **收费** | **买断 ¥36** 的非消耗型 IAP（`com.tango.Marquee.pro`）+ **7 天一次性试用**（0 价非消耗型）。**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5 张）。其余全部免费 | ✅ 见 `docs/MAS-AND-MONETIZATION.md` |
+| **10** | **收费** | **买断 ¥36** 的非消耗型 IAP（`com.tango.marquee.pro`）+ **7 天一次性试用**（0 价非消耗型）。**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5 张）。其余全部免费 | ✅ 见 `docs/MAS-AND-MONETIZATION.md` |
 | **11** | **分发形态** | ⚠️ **推翻原决策：改上 Mac App Store（路线 B）**，Developer ID 那条路并存作后路。代价已接受：**沙盒版砍掉自动滚动**（`CGEventPost` 不允许来自沙盒应用，Apple 文档明文） | ✅ 新增 `MAS` 配置（只有它带沙盒）；`Release` 仍走 Developer ID |
 | **12** | **首次启动引导** | **做**，一页（它是什么 / 挑一个键 / 屏幕录制权限），走完或叉掉都不再出现 | ✅ 推翻了原「无启动引导」原则 |
 
 ### 8.2 产品命名（**已定**）
 
-✅ **定为 `Marquee`**（2026-09-30）。bundle id `com.tango.Marquee`，开发版 `com.tango.Marquee.dev`。
+✅ **定为 `Marquee`**（2026-09-30）。bundle id `com.tango.marquee`，开发版 `com.tango.marquee.dev`。
 
 > ⚠️ **改名有时间窗**：App Store Connect 上**传过构建之后就不能再改**。本项目没上传过，
 > 所以现在仍可改，但要改就趁早。见 `docs/DEV-VS-PROD.md`。

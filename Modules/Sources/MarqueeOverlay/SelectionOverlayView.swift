@@ -244,6 +244,12 @@ struct ProCardPresentation: Equatable {
     /// 两边各算一遍的话，"看着在按钮上、点它没反应"会在某次调尺寸时悄悄出现，
     /// 而那属于"不崩不报错、只让用户觉得卡片点不动"。
     var layout: ProCardLayout.Content
+    /// 商店给的价格文案（`displayPrice`），`nil` = 还没拿到。
+    ///
+    /// 它是**试用**那一档正文要报的"后续费用"（App Review 3.1.1 的硬要求），
+    /// 所以必须一路从宿主传到这里 —— 中间任何一环漏掉，表现都只是
+    /// "卡片上少了一句"，不崩不报错。
+    var priceText: String?
     /// 这一张是载体 A（有微行）还是载体 B（无微行）。
     ///
     /// 高度已经烘在 `frame` 里，这里留着是因为**绘制**要按它决定画不画微行 ——
@@ -1334,7 +1340,8 @@ final class SelectionOverlayView: NSView {
                              layout: card.layout,
                              in: box,
                              hovered: cardHoveredAction,
-                             pressed: cardPressedAction)
+                             pressed: cardPressedAction,
+                             priceText: card.priceText)
     }
 
     /// 表情用字符串直接画（系统自带 emoji 字体），不找图片资源。

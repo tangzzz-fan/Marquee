@@ -8,7 +8,7 @@ import Foundation
 /// 与将来上架的 app 是**同一个身份**：同一份偏好、同一条屏幕录制授权、同一个数据目录。
 /// 于是"调试时敲的开关留在正式版里""调试删除逻辑删掉真实历史"这类事迟早会发生。
 ///
-/// 现在分成两个：正式 `com.tango.Marquee`、开发 `com.tango.Marquee.dev`。
+/// 现在分成两个：正式 `com.tango.marquee`、开发 `com.tango.marquee.dev`。
 ///
 /// ## 关键设计：「是不是开发版」**由 bundle id 推导**
 ///
@@ -26,7 +26,7 @@ import Foundation
 public struct AppIdentity: Equatable, Sendable {
 
     /// 正式版的 bundle id。**全项目只有这里写死它。**
-    public static let productionBundleIdentifier = "com.tango.Marquee"
+    public static let productionBundleIdentifier = "com.tango.marquee"
 
     /// 开发版的后缀。
     ///
@@ -100,7 +100,7 @@ public struct AppIdentity: Equatable, Sendable {
     /// 日志用的 subsystem。
     ///
     /// **刻意固定用正式 id，而不是当前 bundle id**：日志是给人 grep 的，
-    /// `log show --predicate 'subsystem == "com.tango.Marquee"'` 在开发版与正式版上
+    /// `log show --predicate 'subsystem == "com.tango.marquee"'` 在开发版与正式版上
     /// 都应当命中 —— 否则排障时还要先问"我该 grep 哪个 subsystem"。
     /// （只想看开发版就按进程过滤。）
     public var logSubsystem: String { Self.productionBundleIdentifier }

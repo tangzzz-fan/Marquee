@@ -646,6 +646,7 @@ struct LocalizationScanTests {
         let declared = Self.hintLineKeys + Self.recentPanelKeys
             + Self.proCardTitleKeys + Self.proCardBodyKeys
             + Self.proCardButtonKeys + [Self.proCardMicroKey]
+            + Self.proStatusKeys + Self.proOutcomeKeys
         let orphans = declared.filter { !used.contains(Self.normalized($0)) }
         #expect(orphans.isEmpty,
                 Comment(rawValue: "这些提示行文案已经没人用了：\n"
@@ -662,6 +663,10 @@ struct LocalizationScanTests {
     ]
     static let proCardBodyKeys = [
         "试用 7 天，结束后自动回到免费版",
+        // 拿到商店价格之后的那一句（3.1.1 的「后续费用」）。
+        // ⚠️ 它比上面那句长，而 `materialized` 把 %@ 换成 8 个 x —— 那正是
+        // 最坏情况（真实价格最长约 `US$12.99`）。
+        "试用 7 天 · 之后 %@ · 免费版仍可用",
         "试用已结束，免费版仍可截图与标注",
         "购买已撤销，可点恢复购买重新获取",
         "这个账号下找不到这笔购买",
@@ -687,7 +692,14 @@ struct LocalizationScanTests {
     func proCardTextsFit() throws {
         let catalog = try Self.loadCatalog()
 
-        func english(_ key: String) -> String? { catalog.keys[Self.normalized(key)] ?? nil }
+        // ⚠️ 查英文要**先按原样查**，再退回归一化之后的形状。
+        //
+        // `normalized` 会把插值折成 `{X}`，而 catalog 里的键是**原样**的
+        // （`%@` / `%lld`）—— 只按归一化查的话，**任何带格式符的文案都会
+        // 假报"在 catalog 里没有英文"**，看着像漏翻，其实只是查错了形状。
+        func english(_ key: String) -> String? {
+            catalog.keys[key] ?? catalog.keys[Self.normalized(key)] ?? nil
+        }
         func width(_ text: String, size: CGFloat, weight: NSFont.Weight) -> CGFloat {
             Self.textWidth(text, font: .systemFont(ofSize: size, weight: weight))
         }
@@ -756,6 +768,108 @@ struct LocalizationScanTests {
 
         #expect(overflows.isEmpty,
                 Comment(rawValue: "卡片上这些字放不下，会被裁掉尾巴：\n"
+                        + overflows.joined(separator: "\n")))
+    }
+
+    // MARK: - Pro 状态区：状态句一行、回执两行
+
+    /// 状态句（`proStatusLabel`）。它是 `byTruncatingTail` 的**单行**标签 ——
+    /// 放不下就截尾巴，而截掉的多半是括号里那句"最近截图保留几张"。
+    static let proStatusKeys = [
+        "Marquee Pro · 正在确认…",
+        "Marquee Pro · 免费版（最近截图保留 %lld 张）",
+        "Marquee Pro · 试用中，还剩 %lld 天",
+        "Marquee Pro · 已购买，谢谢",
+        "Marquee Pro · 这笔购买已被撤销",
+        "Marquee Pro · 这个账号下找不到这笔购买",
+    ]
+
+    /// 「刚才那一下」的回执（`proOutcomeLabel`）。升级到 Pro 与恢复购买**共用这一行**，
+    /// 所以两边的句子都要在这一块宽度里说得完。
+    static let proOutcomeKeys = [
+        // 恢复购买
+        "正在恢复…",
+        "已恢复购买 ✓",
+        "这个账号下没有可恢复的购买",
+        // 升级到 Pro（2026-10-04 补：从前这一行**根本不存在**）
+        "正在打开 App Store…",
+        "已购买 ✓",
+        "等待批准 · 批准后会自动解锁",
+        // 两边共用
+        "已取消，没有改动",
+        "恢复失败 · 检查网络后重试",
+        "恢复失败 · 请稍后再试",
+        "购买失败 · 请稍后再试",
+        "暂时买不了 · 商店里还没有这个商品",
+        "暂时买不了 · 商店里没有这个商品（开发版：请用 Xcode 运行，且 scheme 要挂 Products.storekit）",
+    ]
+
+    /// 为什么量这一块：`proOutcomeLabel` 的折行宽度（`ChromeControl.proPanelTextWidth`）
+    /// 与行数上限（`proPanelOutcomeLineLimit`）**都是被断言读的同一个数**。
+    /// 文案超了就是被截掉尾巴，而截掉的是句子的后半段 ——
+    /// 回执最要紧的恰恰是后半段（"批准后会自动解锁"、"请用 Xcode 运行"）。
+    ///
+    /// ⚠️ 中英一起量。英文比中文长得多，而这条约束**只有英文会撞上**：
+    /// 中文开发机上永远看不见（提示行与最近截图面板都栽过同一个跟头）。
+    @Test("Pro 状态区：状态句一行、回执两行，中英文都要放得进")
+    func proPanelTextsFit() throws {
+        let catalog = try Self.loadCatalog()
+        let available = ChromeControl.proPanelTextWidth
+        let font = NSFont.systemFont(ofSize: 11)
+        #expect(available > 300, "可用宽度算出来只有 \(available)，先看窗宽与内边距是不是改了")
+
+        var overflows: [String] = []
+        var missingEnglish: [String] = []
+
+        // ① 状态句：**单行**
+        for key in Self.proStatusKeys {
+            let zh = Self.materialized(key)
+            guard let raw = catalog.keys[key] ?? nil, !raw.isEmpty else {
+                missingEnglish.append(key)
+                continue
+            }
+            let en = Self.materialized(raw)
+            for (tag, text) in [("中", zh), ("英", en)] {
+                let width = Self.textWidth(text, font: font)
+                if width > available {
+                    overflows.append(String(format: "%@ 状态句 %.0fpt（上限 %.0f，单行）%@",
+                                            tag, width, available, text))
+                }
+            }
+        }
+
+        // ② 回执：**两行**。判据分两步 —— 总宽 ≤ 2×可用（必要），
+        //    且**没有一个不可断开的词**超过可用宽（否则它自己就要横向溢出）。
+        let limit = CGFloat(ChromeControl.proPanelOutcomeLineLimit)
+        for key in Self.proOutcomeKeys {
+            let zh = Self.materialized(key)
+            guard let raw = catalog.keys[key] ?? nil, !raw.isEmpty else {
+                missingEnglish.append(key)
+                continue
+            }
+            let en = Self.materialized(raw)
+            for (tag, text) in [("中", zh), ("英", en)] {
+                let width = Self.textWidth(text, font: font)
+                if width > available * limit {
+                    overflows.append(String(format: "%@ 回执 %.0fpt（上限 %.0f，%lld 行）%@",
+                                            tag, width, available * limit, Int(limit), text))
+                }
+                // 中文可以逐字断行，只有空白分隔出来的整词才有"断不开"的问题。
+                for token in text.split(whereSeparator: { $0 == " " || $0 == "\n" }) {
+                    let tokenWidth = Self.textWidth(String(token), font: font)
+                    if tokenWidth > available {
+                        overflows.append(String(format: "%@ 回执里有个断不开的词 %.0fpt（上限 %.0f）%@",
+                                                tag, tokenWidth, available, String(token)))
+                    }
+                }
+            }
+        }
+
+        #expect(missingEnglish.isEmpty,
+                Comment(rawValue: "这些回执在 catalog 里没有英文，英文用户会看到中文：\n"
+                        + missingEnglish.joined(separator: "\n")))
+        #expect(overflows.isEmpty,
+                Comment(rawValue: "Pro 状态区的字放不下，会被截掉尾巴：\n"
                         + overflows.joined(separator: "\n")))
     }
 }

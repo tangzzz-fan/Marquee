@@ -83,7 +83,8 @@ public enum ProCardRenderer {
                             in box: NSRect,
                             theme: ChromePalette.Theme = ChromePalette.dark,
                             hovered: ProCardAction? = nil,
-                            pressed: ProCardAction? = nil) {
+                            pressed: ProCardAction? = nil,
+                            priceText: String? = nil) {
         let radius = ProCardLayout.cornerRadius
         let outline = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5),
                                    xRadius: radius, yRadius: radius)
@@ -107,7 +108,7 @@ public enum ProCardRenderer {
                  font: titleFont,
                  color: theme.label.nsColor)
         // ③ 正文：**一行**（稿子：≤ 22 字）
-        drawLine(body(content),
+        drawLine(body(content, priceText: priceText),
                  in: layout.body.offsetBy(dx: box.minX, dy: box.minY),
                  font: bodyFont,
                  color: theme.label2.nsColor)
@@ -278,10 +279,14 @@ public enum ProCardRenderer {
     ///
     /// 所以 `.neverPurchased` 这一档要看 `primary`：同一个 reason 下，
     /// 主按钮是「7 天免费试用」还是「了解 Pro」取决于**试用有没有用过**。
-    private static func body(_ content: ProCardContent) -> String {
+    private static func body(_ content: ProCardContent, priceText: String?) -> String {
         // "哪一句"的判据在 Core（`ProCard.bodyVariant`），这里只负责把它翻成中文 ——
         // 判据留在视图层的话，"对着用过试用的人说可以试用 7 天"这种错没人拦得住。
-        switch ProCard.bodyVariant(for: content) {
+        switch ProCard.bodyVariant(for: content, priceAvailable: priceText != nil) {
+        case .trialWithPrice:
+            // ⚠️ 价格文案来自商店（`displayPrice`），**不许自己拼** ——
+            // 每个店面的货币与格式都不同，写死一个 `¥36` 只会在中国区看着对。
+            L10n.t("试用 7 天 · 之后 \(priceText ?? "") · 免费版仍可用")
         case .trial: L10n.t("试用 7 天，结束后自动回到免费版")
         case .trialEnded: L10n.t("试用已结束，免费版仍可截图与标注")
         case .revokedByStore: L10n.t("购买已撤销，可点恢复购买重新获取")

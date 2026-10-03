@@ -146,6 +146,10 @@ public final class SelectionOverlayController {
     /// 那会让所有工具与测试都跑不起来，而"少收一次"没人会投诉。
     public var proEntitlement: (@MainActor () -> EntitlementSnapshot)?
 
+    /// 商店的价格文案（宿主注入）。**同步读** —— 宿主在启动时取一次并缓存，
+    /// 于是卡片画的时候不需要等一次网络往返（"卡片先出来、价格后到"那种闪烁更糟）。
+    public var proPriceText: (@MainActor () -> String?)?
+
     /// 卡片上某个动作被点了。宿主负责真的去买 / 去恢复 / 去开试用。
     public var onProCardAction: (@MainActor (ProCardAction) -> Void)?
 
@@ -260,6 +264,10 @@ public final class SelectionOverlayController {
     /// 识别的一句话状态（识别中 / 结果 / 为什么没成）。挂在读数框的第三行。
     private var ocrStatus: String?
     private var ocrStatusTask: Task<Void, Never>?
+
+    /// 宿主推进来的**一句回执**（"刚才那一下"的结果），与 OCR 状态同一个套路。
+    private var transientNotice: ReadoutLine?
+    private var transientNoticeTask: Task<Void, Never>?
 
     // 打码预览（ticket 22）
     /// 从**冻结的整屏帧**拼出来的选区底图。只有选中马赛克/模糊时才准备。
@@ -1366,7 +1374,8 @@ public final class SelectionOverlayController {
                                             in: CGRect(origin: .zero, size: frame.size),
                                             includesMicro: includesMicro)
         return ProCardPresentation(frame: frame, content: content,
-                                   layout: layout, includesMicro: includesMicro)
+                                   layout: layout, priceText: proPriceText?(),
+                                   includesMicro: includesMicro)
     }
 
     /// 当前这一组的选中值。
@@ -1589,6 +1598,9 @@ public final class SelectionOverlayController {
         // OCR 的状态**优先于**常规提示：它是刚刚发生的事，而提示行只有那么大。
         // 识别完会在几秒后自动让位（见 `setOCRStatus`）。
         if let ocrStatus { return ReadoutLine(ocrStatus, .primary) }
+        // 宿主推进来的回执（见 `showTransientNotice`）。**排在 OCR 之后**：
+        // 两者都是"刚刚发生的事"，而 OCR 有进度语义（识别中就该一直显示）。
+        if let transientNotice { return transientNotice }
         if annotationSession.isEditingText {
             return ReadoutLine(L10n.t("输入文字 · ⏎ 确认 · Esc 放弃"), .secondary)
         }
@@ -2700,6 +2712,32 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             } else {
                 self.setOCRStatus(recognition.message ?? L10n.t("识别失败"))
             }
+        }
+    }
+
+    /// 宿主回报"刚才那一下"的结果 —— 现在只有一处用它：卡片上的「恢复购买」。
+    ///
+    /// ## 为什么那个动作特别需要它
+    ///
+    /// 卡片上三个动作里，另外两个会**开窗口**（StoreKit 的系统购买面板 / 偏好页），
+    /// 用户看得见那扇窗；只有 `restore` 是**原地完成**的 —— 卡片收掉了、
+    /// 覆盖层还留着，结果（成功了 / 这个账号下没有 / 连不上）全部落在这一行上。
+    /// 少了它，用户看到的就是"点了没反应"。
+    ///
+    /// ⚠️ 颜色由调用方给（`role`）：提示行只有三档角色，而"失败"在偏好页
+    /// 是危险红、在这里是琥珀 —— 那是各表面自己的事（见 `ProFeedback`）。
+    public func showTransientNotice(_ text: String,
+                                    role: ReadoutRole = .primary,
+                                    autoClearAfter seconds: Double = 8) {
+        transientNotice = ReadoutLine(text, role)
+        refresh()
+
+        transientNoticeTask?.cancel()
+        transientNoticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled, let self else { return }
+            self.transientNotice = nil
+            self.refresh()
         }
     }
 

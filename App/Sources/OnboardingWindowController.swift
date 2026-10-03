@@ -79,9 +79,9 @@ final class OnboardingWindowController: NSWindowController {
         recorder.onRecordingChanged = { [weak self] isRecording in
             guard let self else { return }
             if isRecording {
-                shortcut.suspendForRecording()
+                self.shortcut.suspendForRecording()
             } else {
-                shortcut.resumeAfterRecording()
+                self.shortcut.resumeAfterRecording()
             }
         }
         window.delegate = self

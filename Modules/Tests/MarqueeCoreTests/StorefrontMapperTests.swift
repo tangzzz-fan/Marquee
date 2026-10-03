@@ -72,7 +72,7 @@ struct StorefrontMapperTests {
     @Test("别的商品的交易被忽略")
     func unrelatedProductsIgnored() {
         let inputs = StorefrontMapper.inputs(from: snapshot([
-            record("com.tango.Marquee.something-else", at: origin),
+            record("com.tango.marquee.something-else", at: origin),
         ]))
 
         #expect(!inputs.hasPurchase)
