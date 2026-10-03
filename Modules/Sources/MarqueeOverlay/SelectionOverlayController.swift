@@ -90,6 +90,11 @@ public final class SelectionOverlayController {
     /// 覆盖层期间缓存的窗口清单。悬停只做命中测试，不每次去问 SCK。
     private var cachedWindows: [WindowInfo] = []
     private var hoveredWindow: WindowInfo?
+    /// 鼠标此刻压在哪一格工具条上（`nil` = 不在任何格子上）。悬停态的真相在这里。
+    ///
+    /// 它是**从全局点算出来的**（`OverlayToolbar.slot(at:in:)`），不是视图自己推的：
+    /// 绘制与命中必须同源，否则会出现"高亮在这儿、可点的是旁边那格"。
+    private var hoveredSlot: OverlayToolbarSlot?
     private var isOptionDown = false
     private let ownPID = Int32(ProcessInfo.processInfo.processIdentifier)
     /// 按下位置。用来区分「单击窗口」和「拖选区」，避免已落点后再点一下把选区清掉。
@@ -342,6 +347,9 @@ public final class SelectionOverlayController {
         pointerDownAt = nil
         dragExceededSlop = false
         hoveredWindow = nil
+        // 悬停态**每次开场都从"没有"开始**：上一次会话结束时鼠标停在哪一格，
+        // 与这一次没有任何关系；而工具条的矩形也可能完全不同。
+        hoveredSlot = nil
         isOptionDown = false
         textEditingView = nil
         resetScroll()
@@ -811,14 +819,19 @@ public final class SelectionOverlayController {
     /// 色值只在**按住 `⌥` 时**出现（PRD F4：「`⌥` 悬停即在放大镜旁显示 HEX/RGB，一键复制」）：
     /// 不按 `⌥` 时放大镜只负责"对准像素"，多两行数字反而干扰；
     /// 但仍留一句提示 —— 否则这个能力没人会发现。
-    private func magnifierLines() -> [(text: String, color: NSColor)] {
+    ///
+    /// 三行的**角色**（而不是颜色）在这里定：颜色只有一个来源
+    /// （`ChromePalette.Overlay.Readout`），而"第一行是主角、后两行是副手"
+    /// 这条层级由 `ReadoutRole` 表达，`OverlayReadoutTests` 会把它们量一遍。
+    private func magnifierLines() -> [ReadoutLine] {
         guard let color = sampledColor else { return [] }
         guard isOptionDown else {
-            return [(L10n.t("按住 ⌥ 取色"), ReadoutStyle.hint)]
+            // 只有一行，而且是"你还能做一件事"的提示 —— 那是副手级。
+            return [ReadoutLine(L10n.t("按住 ⌥ 取色"), .secondary)]
         }
-        return [(color.hexString, ReadoutStyle.normal),
-                (color.rgbString, ReadoutStyle.hint),
-                (L10n.t("点击复制"), ReadoutStyle.hint)]
+        return [ReadoutLine(color.hexString, .primary),
+                ReadoutLine(color.rgbString, .secondary),
+                ReadoutLine(L10n.t("点击复制"), .secondary)]
     }
 
     /// 把放大镜的变化推给视图。
@@ -1276,7 +1289,8 @@ public final class SelectionOverlayController {
             canRedo: annotationSession.canRedo,
             palette: palettePresentation(barFrame: barFrame, screenFrame: visibleFrame),
             proCard: proCardPresentation(barFrame: barFrame, screenFrame: visibleFrame),
-            lockedFeatures: lockedFeatures
+            lockedFeatures: lockedFeatures,
+            hoveredSlot: hoveredSlot
         )
     }
 
@@ -1430,14 +1444,17 @@ public final class SelectionOverlayController {
                                    height: (quartz.height * scale).rounded())
             presentation = SelectionPresentation(
                 globalRect: cocoaRect,
-                sizeText: "\(Int(quartz.width.rounded())) × \(Int(quartz.height.rounded())) pt   /   "
-                    + "\(Int(pixelSize.width)) × \(Int(pixelSize.height)) px",
-                originText: "(\(Int(quartz.minX.rounded())), \(Int(quartz.minY.rounded())))",
                 hoverRect: nil,
-                hoverLabel: "",
                 hoverCornerRadius: 10,
-                // 落点后放大镜已收起，取色随之结束（那时 `⌥` 归 ticket 04 的"无阴影"）
-                actionHintText: settledHintText()
+                // 读数框**换内容不换位置**（稿子 §08）：落点前它说颜色、落点后说尺寸。
+                // 第一行是主角（用户关心的那个值），其余都是副手。
+                readout: ReadoutLine.compact([
+                    ReadoutLine("\(Int(quartz.width.rounded())) × \(Int(quartz.height.rounded())) pt   /   "
+                                + "\(Int(pixelSize.width)) × \(Int(pixelSize.height)) px", .primary),
+                    ReadoutLine("(\(Int(quartz.minX.rounded())), \(Int(quartz.minY.rounded())))", .secondary),
+                    // 落点后放大镜已收起，取色随之结束（那时 `⌥` 归 ticket 04 的"无阴影"）
+                    ReadoutLine(settledHintText(), .secondary),
+                ])
             )
         } else if let hovered = hoveredWindow, session.phase == .awaitingDrag {
             let cocoaHover = ScreenCoordinateConversion.cocoaRect(fromQuartz: hovered.frame,
@@ -1451,10 +1468,7 @@ public final class SelectionOverlayController {
             // 正确做法是满屏蒙层 + 在光标旁挂一句提示 —— 那里正是用户的视线所在。
             presentation = SelectionPresentation(
                 globalRect: nil,
-                sizeText: "",
-                originText: "",
                 hoverRect: nil,
-                hoverLabel: "",
                 hoverCornerRadius: 12,
                 hintAnchor: NSEvent.mouseLocation,
                 hintText: L10n.t("长截图：拖出要滚动的区域，或单击要滚动的窗口")
@@ -1531,8 +1545,9 @@ public final class SelectionOverlayController {
         return L10n.t("拖角改大小 · 框内拖动移动  ·  选个工具可直接标注  ·  ⏎ 确认  ·  Esc 取消")
     }
 
-    private func updateHover(at cocoaPoint: CGPoint) {
-        guard session.phase == .awaitingDrag else {
+    /// `nil` = 鼠标不在这块屏上（走了 / 移出屏幕）—— 那种情况下**一切悬停都要收掉**。
+    private func updateHover(at cocoaPoint: CGPoint?) {
+        guard let cocoaPoint, session.phase == .awaitingDrag else {
             if hoveredWindow != nil {
                 hoveredWindow = nil
                 refresh()
@@ -1550,22 +1565,44 @@ public final class SelectionOverlayController {
     private func windowPresentation(_ window: WindowInfo,
                                     cocoaRect: CGRect,
                                     locked: Bool) -> SelectionPresentation {
-        var hint = ""
+        var lines: [ReadoutLine] = []
+        var title = window.hoverLabel
         if locked {
-            hint += L10n.t("  ·  ⏎ 确认")
+            title += L10n.t("  ·  ⏎ 确认")
         }
+        lines.append(ReadoutLine(title, .primary))
+
+        // ⚠️ 第二行是**"当前那一刻 ⌥ 是什么意思"的唯一声明处**（稿子 §08）。
+        //
+        // 三个细节都不能省：
+        //
+        // 1. **单独一行**，不再接在窗口标题后面 —— 接在后面时它读起来像标题的一部分，
+        //    而它其实是一个"现在按 ⌥ 会改什么"的说明。
+        // 2. **琥珀色**（`caution`）而不是次要色：稿子原话是
+        //    「它是一个会改变结果的开关，不是一个说明」。
+        // 3. **文案要说的是"结果"**，不是"这个键" —— 所以它得跟着偏好里那一项算。
+        //    写死"⌥ 无阴影"在用户把「窗口截图带阴影」关掉之后就是一句**反话**：
+        //    那时按 ⌥ 恰恰是**加上**阴影。而用户会照着这句话去按。
         if isOptionDown {
-            hint += L10n.t("  ·  ⌥ 无阴影")
+            lines.append(ReadoutLine(windowShadowInEffect
+                                        ? L10n.t("⌥ 窗口截图 · 带阴影")
+                                        : L10n.t("⌥ 窗口截图 · 不含阴影"),
+                                     .caution))
         }
-        return SelectionPresentation(
-            globalRect: nil,
-            sizeText: "",
-            originText: "",
-            hoverRect: cocoaRect,
-            hoverLabel: window.hoverLabel + hint,
-            hoverCornerRadius: 10
-        )
+
+        return SelectionPresentation(globalRect: nil,
+                                     hoverRect: cocoaRect,
+                                     hoverCornerRadius: 10,
+                                     readout: lines)
     }
+
+    /// 这一次窗口截图**实际**带不带阴影（偏好里的默认值 ⊕ `⌥`）。
+    ///
+    /// 两处要用它：真正采集时给 `WindowCaptureStyle` 的那个值，以及读数框里那句
+    /// 「⌥ 窗口截图 · 不含阴影」。**必须是同一个来源** —— 分开写的话，
+    /// "标签说无阴影、导出却带了阴影"这种错不崩不报错，
+    /// 只会让用户觉得"这个选项时灵时不灵"。
+    private var windowShadowInEffect: Bool { windowShadowDefault != isOptionDown }
 
     /// 长截图抓帧中的读数：进度 + 操作提示 + 告警。
     private func scrollPresentation(rect: CGRect?,
@@ -1587,17 +1624,21 @@ public final class SelectionOverlayController {
         let hint = autoScrolling
             ? L10n.t("自动滚动中 · 空格停止 · Esc 停止（已拼的保留）· ⏎ 结束")
             : L10n.t("继续往下滚，或按空格自动滚 · ⏎ 结束 · ⌘S 结束并保存 · Esc 取消")
+        // ⚠️ **告警不叠行，它取代提示行**（稿子 §10）。
+        //
+        // 目前三行还都在读数框里（"工具条下方那 22 点提示行"还没做），
+        // 但**顺序与角色**已经按稿子定了：主角是进度、告警是唯一那枚琥珀、
+        // 提示永远排最后。等提示行做出来时，只需把这个数组的后两行搬过去。
         return SelectionPresentation(
             globalRect: rect,
-            sizeText: "",
-            originText: "",
             hoverRect: nil,
-            hoverLabel: "",
             hoverCornerRadius: 10,
             isScrollCapturing: true,
-            scrollStatusText: status,
-            scrollHintText: hint,
-            scrollWarningText: progress.warning ?? autoScrollMessage ?? ""
+            readout: ReadoutLine.compact([
+                ReadoutLine(status, .primary),
+                ReadoutLine(progress.warning ?? autoScrollMessage ?? "", .caution),
+                ReadoutLine(hint, .secondary),
+            ])
         )
     }
 
@@ -1645,6 +1686,14 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     func overlayView(_ view: SelectionOverlayView, beganDragAt globalPoint: CGPoint) {
         beginFrameTrace()
         guard !isFinishing else { return }
+
+        // ⚠️ 拖动**全程不会有 `mouseMoved`**（走的是 `mouseDragged`），
+        // 所以悬停态得在这里主动收掉。不收的话，被高亮的那一格会一直亮着，
+        // 看起来就像"这一格被选中了"（而它其实只是上一次光标路过的位置）。
+        //
+        // 注意这一条走的是"在画布上按下"这条路 —— 按在工具条上走的是
+        // `clickedToolbarAt`，那时**要留住**悬停（它正是"按下"那个外观）。
+        hoveredSlot = nil
 
         // 正在输入文字时，这一下点击**只用来结束输入** —— 与编辑器的做法一致。
         // 不这样的话：点一下会先把文字提交掉、再顺手在别处落一个新输入点。
@@ -1907,6 +1956,30 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         // 拖拽中不会有 mouseMoved（走的是 draggedTo），所以这里只处理"空闲移动"
         updateMagnifier(at: globalPoint)
         updateHover(at: globalPoint)
+        updateToolbarHover(at: globalPoint)
+    }
+
+    /// 鼠标移到别处 / 离开这块屏 —— 悬停态必须**当场**清掉。
+    ///
+    /// 少了这一步，被高亮的那一格会一直亮着，看起来就像"这一格被选中了"。
+    func overlayViewDidExit(_ view: SelectionOverlayView) {
+        guard !isFinishing else { return }
+        updateToolbarHover(at: nil)
+        updateHover(at: nil)
+    }
+
+    /// 算出"鼠标此刻压在哪一格工具条上"。
+    ///
+    /// 只有工具条**真的在屏幕上**时才算 —— 还在拖选区、或者已经提交时工具条不存在，
+    /// 这时把悬停留着会让下一次工具条出现时**带着一个不属于它的高亮**。
+    private func updateToolbarHover(at globalPoint: CGPoint?) {
+        var slot: OverlayToolbarSlot?
+        if let globalPoint, let bar = toolbarPresentationIfSettled() {
+            slot = OverlayToolbar.slot(at: globalPoint, in: bar.frame)
+        }
+        guard slot != hoveredSlot else { return }
+        hoveredSlot = slot
+        refresh()
     }
 
     func overlayView(_ view: SelectionOverlayView, nudgeBy dx: CGFloat, dy: CGFloat) {
@@ -1987,9 +2060,10 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
             }
             // `⌥` = 临时反转偏好里的那个选择（PRD F4）。
             // 写成 `!isOptionDown` 就把它变成了"永远带阴影" —— 而偏好里那一项会失效。
-            let style = WindowCaptureStyle.isolatedWindow(includeShadow: isOptionDown
-                ? !windowShadowDefault
-                : windowShadowDefault)
+            //
+            // 这里与读数框里那句「⌥ 窗口截图 · 不含阴影」用的是**同一个**判据
+            // （`windowShadowInEffect`）—— 见那处的注释。
+            let style = WindowCaptureStyle.isolatedWindow(includeShadow: windowShadowInEffect)
             commitWindow(window, style: style, saveToDisk: saveToDisk, after: after)
         case .settleHoveredWindow:
             guard let window = hoveredWindow else { return }
@@ -2499,7 +2573,7 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
     ///
     /// 只在选中马赛克/模糊时做 —— 其余工具用不到，白拼一次图没有意义。
     /// 缺哪块屏的冻结帧就**整体放弃**（`nil`）：那时预览不画打码，
-    /// 但导出仍会应用，所以界面必须把这件事说出来（见 `actionHintText`）。
+    /// 但导出仍会应用，所以界面必须把这件事说出来（见 `settledHintText()`）。
     private func rebuildRedactionBackdropIfNeeded() {
         guard annotationSession.usesRedaction,
               !hasScrollSession,

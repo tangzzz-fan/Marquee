@@ -336,5 +336,35 @@ public enum ChromePalette {
         public static let strokeCoreWidth: Double = 1
         /// 黑边的**额外**宽度（点）。画成"总宽 3、芯 1"而不是两条 1 点线。
         public static let strokeEdgeWidth: Double = 1
+
+        /// 读数框那三行字。
+        ///
+        /// ## 为什么读数框与工具条共用材质
+        ///
+        /// 稿子 §01 把「工具条 / 弹层 / **读数**」并列写在 `--c-panel` 那一行下 ——
+        /// 一开始实现把它当成了"平的黑 72%"，那不是同一件事：
+        ///
+        /// | 底 | 次要行（白 64%）对它的对比度 |
+        /// | --- | --- |
+        /// | 黑 72% 压在**纯白**内容上 | 5.02 |
+        /// | 黑 72% 压在**纯黑**内容上 | **2.52** ← 连正文级都不到 |
+        /// | 不透明材质 `#313131` | 6.30（与稿子那个数一致） |
+        ///
+        /// 半透明底的对比度**取决于屏幕上此刻是什么**，而那个值不由我们决定；
+        /// 换成不透明材质之后，"这几行读不读得出"就成了一个**常量**，
+        /// 与 §04 里"工具条永远比它压着的东西暗一档"是同一个论证。
+        public enum Readout {
+            /// 框自己的底。**不透明**，与工具条同一块材质。
+            public static let backdrop = ChromePalette.dark.panel
+            /// 主角行：稿子量的是对材质 **12.9:1**。
+            public static let primary = RGB(hex: 0xFFFFFF)
+            /// 副手行：白 64%（稿子："提示行 / 弹层标签 白 64% 6.30:1"）。
+            public static let secondary = RGB(hex: 0xFFFFFF, alpha: 0.64)
+            /// 「此刻 `⌥` 会改变结果」那一行。
+            ///
+            /// 与 `caution` 同值（深色那枚琥珀本来就够亮），
+            /// 但**指向它而不是抄它的值** —— 哪天琥珀要调，两处一起动。
+            public static let caution = ChromePalette.dark.caution
+        }
     }
 }

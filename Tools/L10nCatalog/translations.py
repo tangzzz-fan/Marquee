@@ -3,8 +3,11 @@
 
 EN = {
     "开发版": "Development build",
-    "  ·  ⌥ 无阴影": "  ·  ⌥ No shadow",
     "  ·  ⏎ 确认": "  ·  ⏎ to confirm",
+    # 按住 ⌥ 时读数框第二行那句话 —— **说的是结果，不是键**：
+    # 它跟着「设置 → 截屏 → 窗口截图带阴影」那一项算，所以两种结果各有一条。
+    "⌥ 窗口截图 · 不含阴影": "⌥ Window capture · no shadow",
+    "⌥ 窗口截图 · 带阴影": "⌥ Window capture · with shadow",
     " · 已复制到剪贴板": " · Copied to clipboard",
     " · 配准 %.0f ms": " · Alignment %.0f ms",
     "%@ 已被其他应用占用（例如微信的截图快捷键）。\n请到菜单栏「快捷键…」换一个组合。":

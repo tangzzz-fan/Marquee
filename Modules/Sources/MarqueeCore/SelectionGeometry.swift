@@ -42,7 +42,23 @@ public enum SelectionGeometry {
     public static let handleHitRadius: CGFloat = 6
     /// 控制点画出来的边长（点）。比命中区小 —— 画 12 点的方块太抢眼，
     /// 而"看得见的小方块 + 摸得到的 12 点命中区"是这类控件的通行做法。
+    ///
+    /// ⚠️ 这是**白芯**的边长，不是控制点的整体足迹：黑边还各占 1 点（见下一条）。
     public static let handleVisualSide: CGFloat = 5
+
+    /// 控制点那圈黑边的宽度（点）。
+    ///
+    /// 控制点是画在**别人的内容**上的（选区里是用户要截的那片画面），
+    /// 所以它和选区描边、吸附线一样走「白芯黑边」那条纪律 ——
+    /// 纯白的小方块压在一张白底网页上就等于没画。
+    public static let handleEdgeWidth: CGFloat = 1
+
+    /// 控制点的**整体足迹**（点）：白芯 + 两侧各一圈黑边。
+    ///
+    /// 设计稿 §02 给的是「7 × 7 白芯黑边」—— 而 `5 + 1 + 1 = 7`，两者对得上。
+    /// 单独留一个常量是为了让"改了白芯大小、足迹就跟着变"这件事**明摆着**，
+    /// 而不是散在两处的加法（散着写的话，改了芯忘了边，控制点之间就会开始互相咬）。
+    public static var handleVisualFootprint: CGFloat { handleVisualSide + handleEdgeWidth * 2 }
     /// 最小边长（点）。沿用"框小于 8 像素视为误操作"的阈值。
     public static let minimumSide: CGFloat = 8
     /// 吸附阈值（点）。

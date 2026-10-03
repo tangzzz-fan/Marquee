@@ -53,9 +53,14 @@ struct ChromeMaterialTests {
                 "玻璃着色 \(ChromeStyle.glassTintAlpha) 与衬底 \(ChromeStyle.scrimAlpha) 太接近：玻璃会失去透光感")
     }
 
-    /// 自绘小框（读数框）也必须是不透光的深色 —— 它是白字压在白底截图上的唯一依靠。
-    @Test("读数框的深色底也不能太淡")
-    func readoutIsStrongEnough() {
-        #expect(ChromeStyle.readoutAlpha >= 0.5)
-    }
+    /// ⚠️ 原来这里还有一条「读数框的深色底也不能太淡」（`readoutAlpha >= 0.5`）。
+    ///
+    /// 2026-10-03 删掉了，连同那个常量本身 —— 因为**读数框改成不透明材质**了
+    /// （设计稿 §01 把它与工具条并入 `--c-panel`）。半透明的底做不到那条断言想保证的事：
+    /// 黑 72% 压在**纯黑**内容上时，白 64% 的次要行只有 2.52，连正文级都不到。
+    ///
+    /// 记一笔教训：那条断言写的是**边界**（`>= 0.5`），而它想保证的是**意图**
+    /// （"这些字压在任何内容上都读得出"）—— 0.72 与 0.5 都能过它，
+    /// 所以它给的保证比看起来的少。真正的意图现在由
+    /// `OverlayReadoutTests.backdropIsOpaque` + `everyRoleIsReadable` 承担。
 }

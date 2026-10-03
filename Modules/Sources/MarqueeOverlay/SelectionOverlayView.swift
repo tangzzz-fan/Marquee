@@ -8,23 +8,23 @@ import MarqueeCore
 struct SelectionPresentation: Equatable {
     /// 当前选区，**Cocoa 全局坐标**；`nil` = 还没拉出选区
     var globalRect: CGRect?
-    /// 尺寸读数（pt 与 px）
-    var sizeText: String
-    /// 左上角坐标读数
-    var originText: String
     /// 悬停窗口，**Cocoa 全局坐标**；拖选区时为 `nil`
     var hoverRect: CGRect?
-    var hoverLabel: String
     /// 系统窗口圆角的近似值。没有 API 给出真实圆角，10 点贴近近年 macOS 普通窗口
     var hoverCornerRadius: CGFloat
-    /// 长截图正在抓帧。此时读数换成进度与提示，描边加粗
+    /// 长截图正在抓帧。此时读数换成进度与提示，选区描边加粗
     var isScrollCapturing: Bool = false
-    /// 长截图进度（如「长截图 · 已拼 1200 px · 4 帧」）
-    var scrollStatusText: String = ""
-    /// 长截图操作提示（如「滚动到底后按 ⏎ 结束 · Esc 取消」）
-    var scrollHintText: String = ""
-    /// 长截图告警（如「已经滚到底了」「这一帧没对齐」），非空时用醒目色
-    var scrollWarningText: String = ""
+    /// **读数框里要显示的行**，顺序即上下顺序。空数组 = 不画读数框。
+    ///
+    /// 三种内容共用一个框（设计稿 §08「读数框当唯一的发言人」）：
+    /// 落点前说颜色、落点后说尺寸、长截图里说进度 —— 只换内容不换位置，
+    /// 用户不需要学两个框。
+    ///
+    /// ⚠️ 原先这里是**六个平行的字符串字段**（`sizeText` / `originText` / `hoverLabel` /
+    /// `actionHintText` / `scrollStatusText` / `scrollHintText` / `scrollWarningText`），
+    /// 而"每一行是什么角色"由绘制方当场 `switch` 决定。那样顺序与角色都是隐式的 ——
+    /// 改一个 `if` 的次序就换了层级，而没有任何东西会红。现在它们都是数据。
+    var readout: [ReadoutLine] = []
     /// 空状态提示的锚点（**Cocoa 全局坐标**，一般就是鼠标位置）
     ///
     /// 为什么要有它：长截图进入后还没选目标时，既没有选区也没有悬停窗口，
@@ -33,8 +33,6 @@ struct SelectionPresentation: Equatable {
     var hintAnchor: CGPoint?
     /// 空状态提示文字
     var hintText: String = ""
-    /// 已落点时的操作提示（第三行读数）
-    var actionHintText: String = ""
     /// 放大镜取色（ticket 10）。`nil` = 不显示。
     var magnifier: MagnifierPresentation?
 
@@ -90,10 +88,7 @@ struct SelectionPresentation: Equatable {
     var snapGuideHorizontal: CGFloat?
 
     static let empty = SelectionPresentation(globalRect: nil,
-                                             sizeText: "",
-                                             originText: "",
                                              hoverRect: nil,
-                                             hoverLabel: "",
                                              hoverCornerRadius: 10)
 
     /// 除放大镜之外的部分是否相等。用来判断"是不是只有放大镜在动"。
@@ -103,6 +98,22 @@ struct SelectionPresentation: Equatable {
         lhs.magnifier = nil
         rhs.magnifier = nil
         return lhs == rhs
+    }
+
+    /// 除工具条的悬停态之外，其余是否相等。用来判断"是不是只有鼠标在格子上扫"。
+    ///
+    /// ⚠️ 判据是**工具条那一整块**相等，不是"只把 `hoveredSlot` 抹掉"：
+    /// 抹掉再比会把"工具条整体移动了位置"也算成"只有悬停变了" ——
+    /// 那种情况下覆盖层自己也得重画（选区镂空的提示行位置跟着变），
+    /// 而漏掉它的表现是"工具条移过去了、原地留了一条残影"。
+    func equalsIgnoringToolbarHover(_ other: SelectionPresentation) -> Bool {
+        guard var lhs = toolbar, var rhs = other.toolbar else { return false }
+        lhs.hoveredSlot = nil
+        rhs.hoveredSlot = nil
+        var mine = self, theirs = other
+        mine.toolbar = lhs
+        theirs.toolbar = rhs
+        return mine == theirs
     }
 }
 
@@ -168,6 +179,18 @@ struct OverlayToolbarPresentation: Equatable {
     /// 只说"哪些能力被挡"，不说"哪一格" —— 格与能力的对应在
     /// `OverlayToolbarSlot.proFeature` 里，视图按它查。两份映射必然分叉。
     var lockedFeatures: Set<ProFeature> = []
+
+    /// 鼠标此刻压在**哪一格**上（`nil` = 不在任何格子上）。
+    ///
+    /// ## 为什么这个值要烘进 presentation 而不是让视图自己跟踪
+    ///
+    /// 因为它**不是一个纯粹的视觉状态**：它决定的是"这一下按下去会碰到什么"的预告，
+    /// 而"哪一格在哪"这件事的真相在 `OverlayToolbar.layout()`（Core）手里。
+    /// 视图自己拿 `bounds` 去推一遍的话，就会出现"高亮在这里、可点的是旁边那一格" ——
+    /// 而那种偏差肉眼几乎看不出来（PITFALLS 里那条"绘制与命中必须同一来源"）。
+    ///
+    /// 控制层每次 `mouseMoved` 用 `OverlayToolbar.slot(at:in:)` 算一次推过来。
+    var hoveredSlot: OverlayToolbarSlot?
 }
 
 /// 升级卡片要画什么。
@@ -205,18 +228,21 @@ struct MagnifierPresentation: Equatable {
     /// 取样像素在盒子里的落位（局部坐标的正方形边长）
     var sampleMarkerSize: CGFloat
     /// 采样像素的色值文本（第一行 HEX、第二行 rgb）
-    var colorLines: [(text: String, color: NSColor)]
+    var colorLines: [ReadoutLine]
     /// 复制之后的反馈（如「已复制 #1A2B3C」）
     var statusText: String?
 
     /// `CGImage` 没有值相等，按**引用**比 —— 同一个引用就不必重画。
-    /// 数组元素是元组（不合成 Equatable），所以只比文本。
+    ///
+    /// ⚠️ 这里从前还得**手工比一遍文字**（因为行是 `(String, NSColor)` 元组，
+    /// 元组不合成 `Equatable`，而 `NSColor` 又没法比）。
+    /// 换成 `ReadoutLine` 之后那一整段消失了：颜色不在数据里，文字本身可等。
     static func == (lhs: MagnifierPresentation, rhs: MagnifierPresentation) -> Bool {
         lhs.lensImage === rhs.lensImage
             && lhs.boxRect == rhs.boxRect
             && lhs.sampleMarkerSize == rhs.sampleMarkerSize
             && lhs.statusText == rhs.statusText
-            && lhs.colorLines.map(\.text) == rhs.colorLines.map(\.text)
+            && lhs.colorLines == rhs.colorLines
     }
 }
 
@@ -226,6 +252,9 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     func overlayView(_ view: SelectionOverlayView, draggedTo globalPoint: CGPoint)
     func overlayView(_ view: SelectionOverlayView, endedDragAt globalPoint: CGPoint, optionDown: Bool)
     func overlayView(_ view: SelectionOverlayView, movedTo globalPoint: CGPoint)
+    /// 鼠标离开了这块屏。**悬停态必须一起清掉** ——
+    /// "手不在了"这件事没有坐标可以表达，所以它得单独有一条消息。
+    func overlayViewDidExit(_ view: SelectionOverlayView)
     /// 方向键微调，`dx`/`dy` 只取 -1 / 0 / 1
     func overlayView(_ view: SelectionOverlayView, nudgeBy dx: CGFloat, dy: CGFloat)
     func overlayView(_ view: SelectionOverlayView, shiftChanged isDown: Bool)
@@ -265,11 +294,46 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     func overlayViewDidRequestCancel(_ view: SelectionOverlayView)
 }
 
-/// 读数框的三种行色。集中放一处，免得各处硬编码颜色漂移。
+/// 读数框的行色。
+///
+/// ⚠️ **这里不定义任何颜色** —— 它只是把 Core 的 `ReadoutRole` 翻成 `NSColor`。
+/// 颜色值在 `ChromePalette.Overlay.Readout`（唯一来源），
+/// 而"每一枚够不够亮""主副差几档"在 `OverlayReadoutTests` 里是可执行断言。
+///
+/// 以前这里是三个写死的 `NSColor`（`white` / `systemOrange` / `white 75%`），
+/// 于是同一块屏幕上出现了**第二套颜色 + 第二把尺子**：
+/// 稿子量的是 `#f8c20d`，代码给的是 `systemOrange`；
+/// 稿子说提示行是白 64%，代码给的是 75%。两处都不会报错，只会"看着差点意思"。
 enum ReadoutStyle {
-    static let normal = NSColor.white
-    static let warning = NSColor.systemOrange
-    static let hint = NSColor.white.withAlphaComponent(0.75)
+
+    static func color(_ role: ReadoutRole) -> NSColor { role.color.nsColor }
+
+    /// 主角行（尺寸 / 颜色 / 已拼高度）。
+    static let primary = color(.primary)
+    /// 副手行（位置、rgb、一句轻提示）。
+    static let secondary = color(.secondary)
+    /// 「此刻 `⌥` 会改变结果」那一行 —— 以及长截图的告警。
+    ///
+    /// 两者共用一枚是**有意的**：稿子里「不含阴影」与「已经滚到底了」用的是同一枚琥珀
+    /// （`--c-warn`），含义也一致 —— 都是"注意，这一条会改变结果"。
+    static let caution = color(.caution)
+}
+
+/// `RGB`（Core 的 sRGB 值）→ `NSColor`。**两条都不能省**：
+///
+/// · **alpha 要带上** —— 调色板里一半的颜色是半透明的（暗幕 32%、次要文字 64%、
+///   格图标 82%、置灰 30%、小锁 55%…）。曾经这里写死 `alpha: 1`，
+///   等于把「半透明」这个信息**在最后一步丢掉了** —— 画出来全是实心，
+///   而画错的颜色不会报错，只会「看着差点意思」。
+/// · **用 `srgbRed:` 而不是 `red:`** —— 后者是 deviceRGB，
+///   而设计稿给的十六进制是 sRGB。
+///
+/// 放在 `RGB` 上而不是视图里，是因为**不止视图要用它**：
+/// `ReadoutStyle` 那三个 `static let` 是全局初始化，走不了实例上的方法。
+extension RGB {
+    var nsColor: NSColor {
+        NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
+    }
 }
 
 /// 单块屏上的蒙层视图。
@@ -291,9 +355,15 @@ final class SelectionOverlayView: NSView {
                let old = oldValue.magnifier,
                let new = presentation.magnifier {
                 setNeedsDisplay(dirtyRect(for: old).union(dirtyRect(for: new)))
-            } else {
+            } else if !presentation.equalsIgnoringToolbarHover(oldValue) {
                 needsDisplay = true
             }
+            // ↑ 「只有悬停态在变」时**两件事都不做**：覆盖层自己的 `draw` 里
+            //   没有任何一个像素依赖 `hoveredSlot`（工具条是两个子视图画的），
+            //   而那条 513 × 40 的前景由下面这一句负责重画。
+            //
+            //   写 `needsDisplay = false` 是不对的：那会把上一帧还挂着的重绘请求一起取消掉。
+            //   "什么都不做"才是这里准确的意思。
             syncToolbarChrome()
             // 内容变了光标也可能变（选区落点、弹出面板、选中标注…），而**鼠标可能一动没动** ——
             // 只靠 `mouseMoved` 更新的话，用户会看到"控制点出来了、光标还是十字"。
@@ -508,11 +578,24 @@ final class SelectionOverlayView: NSView {
         applyCursor(at: point)
     }
 
+    /// 鼠标离开这块屏（走到别块屏、或者移出屏幕）。
+    ///
+    /// ⚠️ **必须有这一条**：悬停高亮是"手在这"的表示，而"手不在了"这件事
+    /// **不会**由 `mouseMoved` 告诉任何人 —— 光标走了就再没有坐标可算。
+    /// 少了它，被高亮的那一格会一直亮着，直到用户又把它扫一遍。
+    override func mouseExited(with event: NSEvent) {
+        delegate?.overlayViewDidExit(self)
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
+        // `.mouseEnteredAndExited` 与 `.mouseMoved` **要一起给**：
+        // 进入/离开是"手在不在"，移动是"手在哪儿"。只给后者的话，
+        // 悬停态有"进去"没有"出来"（见 `mouseExited`）。
         addTrackingArea(NSTrackingArea(rect: bounds,
-                                       options: [.activeAlways, .mouseMoved, .inVisibleRect],
+                                       options: [.activeAlways, .mouseMoved,
+                                                 .mouseEnteredAndExited, .inVisibleRect],
                                        owner: self,
                                        userInfo: nil))
     }
@@ -644,11 +727,11 @@ final class SelectionOverlayView: NSView {
             fillMask(punching: localSelection, cornerRadius: 0)
             stroke(localSelection,
                    cornerRadius: 0,
-                   lineWidth: presentation.isScrollCapturing ? 2 : 1)
+                   coreWidth: presentation.isScrollCapturing ? 2 : 1)
             // 标注画在镂空**之后**：镂空是挖洞，标注要落在洞里那层图上
             drawAnnotations(clippingTo: localSelection)
             drawSnapGuides()
-            drawReadout(in: localSelection, lines: readoutLines())
+            drawReadout(in: localSelection, lines: presentation.readout)
             if presentation.showsSelectionHandles {
                 drawSelectionHandles(on: localSelection)
             }
@@ -660,14 +743,11 @@ final class SelectionOverlayView: NSView {
         if let localHover, localHover.width >= 1, localHover.height >= 1 {
             let radius = presentation.hoverCornerRadius
             fillMask(punching: localHover, cornerRadius: radius)
-            stroke(localHover, cornerRadius: radius, lineWidth: 2)
+            stroke(localHover, cornerRadius: radius, coreWidth: 2)
             // 窗口落点（单击某扇窗停住）同样能就地标注、同样能拖角，所以这两句也要
             drawAnnotations(clippingTo: localHover)
             drawSnapGuides()
-            if !presentation.hoverLabel.isEmpty {
-                drawReadout(in: localHover,
-                            lines: [(presentation.hoverLabel, ReadoutStyle.normal)])
-            }
+            drawReadout(in: localHover, lines: presentation.readout)
             if presentation.showsSelectionHandles {
                 drawSelectionHandles(on: localHover)
             }
@@ -677,7 +757,7 @@ final class SelectionOverlayView: NSView {
         bounds.fill()
         if let anchor = presentation.hintAnchor, !presentation.hintText.isEmpty {
             drawHint(at: globalToLocal(anchor),
-                     lines: [(presentation.hintText, ReadoutStyle.normal)])
+                     lines: [ReadoutLine(presentation.hintText, .primary)])
         }
     }
 
@@ -707,64 +787,48 @@ final class SelectionOverlayView: NSView {
                             width: magnifier.sampleMarkerSize,
                             height: magnifier.sampleMarkerSize)
 
-        // 十字线贯穿整个盒子，方便对齐周边像素
+        // 十字线贯穿整个盒子，方便对齐周边像素。
+        //
+        // ⚠️ 这里**必须**是白芯黑边（稿子 §01 点名了放大镜准心）：放大镜压在任意屏幕内容上，
+        // 而纯白 55% 那一条在一张浅色网页上会直接化掉（那是它原来那个值的问题）。
         let cross = NSBezierPath()
         cross.move(to: CGPoint(x: box.midX, y: box.minY))
         cross.line(to: CGPoint(x: box.midX, y: box.maxY))
         cross.move(to: CGPoint(x: box.minX, y: box.midY))
         cross.line(to: CGPoint(x: box.maxX, y: box.midY))
-        cross.lineWidth = 1
-        NSColor.white.withAlphaComponent(0.55).setStroke()
-        cross.stroke()
+        overlayLine(cross, coreWidth: 1)
 
-        // 中心像素框：外框 + 淡淡的填充，让它在一堆格子中间仍然一眼可见。
+        // 中心像素框：淡淡的填充 + 白芯，让它在一堆格子中间仍然一眼可见。
         //
-        // 线宽固定 1 而不是 1.5：倍数降到 3 之后这个框只有 1~1.5 点见方
-        // （`zoom / backingScale`），1.5 点的描边会把它糊成一坨圆点，反而看不出"是哪一格"。
+        // ⚠️ 它**不套黑边**，而这是有意的一处例外：这一格的实际边长是
+        // `zoom / backingScale`（默认 3 / 2 = **1.5 点**，见 `sampleMarkerSize` 的算法）。
+        // 3 点宽的白芯黑边会把这 1.5 点整格吃掉 —— 用户看到的会是一小块黑白格，
+        // 而看不出"现在取的是哪一颗像素"。所以这里只保留白芯，靠它自己压住底。
         let markerPath = NSBezierPath(rect: marker)
-        markerPath.lineWidth = 1
-        NSColor.controlAccentColor.withAlphaComponent(0.25).setFill()
+        NSColor.white.withAlphaComponent(0.28).setFill()
         markerPath.fill()
-        NSColor.controlAccentColor.setStroke()
+        markerPath.lineWidth = ChromePalette.Overlay.strokeCoreWidth
+        Self.nsColor(ChromePalette.Overlay.strokeCore).setStroke()
         markerPath.stroke()
 
-        let border = NSBezierPath(rect: box.insetBy(dx: 0.5, dy: 0.5))
-        border.lineWidth = 1
-        NSColor.white.withAlphaComponent(0.85).setStroke()
-        border.stroke()
+        // 盒子外框：同样是白芯黑边。它压在内容边缘上，靠材质托不住。
+        overlayLine(NSBezierPath(rect: box), coreWidth: 1)
 
         // 色值文本贴在盒子下方（Cocoa y 向上 → "下方"是更小的 y），放不下就翻到上方
+        //
+        // 这一条框**不透明**（`--c-panel`）：设计稿 §08 的原话是
+        // 「放大镜自己带材质，所以它压在白底网页上也一样清 —— 它读的是『屏幕上的像素』，
+        // 但它的字靠自己的底」。半透明的底会让"这几行读不读得出"取决于底下的内容。
         var lines = magnifier.colorLines
         if let status = magnifier.statusText {
-            lines.append((status, ReadoutStyle.warning))
+            // 复制回执用**主角色**而不是琥珀：琥珀被限定为"这一条会改变结果"，
+            // 而"已复制 #1A2B3C"只是告诉你刚才那一下成了 —— 用琥珀会把那枚颜色的含义稀释掉。
+            lines.append(ReadoutLine(status, .primary))
         }
         guard let textBox = makeBox(lines: lines) else { return }
         var origin = CGPoint(x: box.minX, y: box.minY - textBox.size.height - 4)
         if origin.y < bounds.minY { origin.y = box.maxY + 4 }
         draw(textBox, at: origin)
-    }
-
-    /// 长截图抓帧中显示进度与提示，否则显示尺寸/坐标读数。
-    private func readoutLines() -> [(text: String, color: NSColor)] {
-        guard presentation.isScrollCapturing else {
-            var lines: [(text: String, color: NSColor)] = [(presentation.sizeText, ReadoutStyle.normal),
-                                                           (presentation.originText, ReadoutStyle.normal)]
-            if !presentation.actionHintText.isEmpty {
-                lines.append((presentation.actionHintText, ReadoutStyle.hint))
-            }
-            return lines
-        }
-        var lines: [(text: String, color: NSColor)] = []
-        if !presentation.scrollStatusText.isEmpty {
-            lines.append((presentation.scrollStatusText, ReadoutStyle.normal))
-        }
-        if !presentation.scrollWarningText.isEmpty {
-            lines.append((presentation.scrollWarningText, ReadoutStyle.warning))
-        }
-        if !presentation.scrollHintText.isEmpty {
-            lines.append((presentation.scrollHintText, ReadoutStyle.hint))
-        }
-        return lines
     }
 
     private func fillMask(punching hole: CGRect, cornerRadius: CGFloat) {
@@ -774,11 +838,62 @@ final class SelectionOverlayView: NSView {
         mask.fill()
     }
 
-    private func stroke(_ rect: CGRect, cornerRadius: CGFloat, lineWidth: CGFloat) {
-        let outline = Self.roundedPath(rect.insetBy(dx: 0.5, dy: 0.5), radius: max(0, cornerRadius - 0.5))
-        outline.lineWidth = lineWidth
-        NSColor.controlAccentColor.setStroke()
-        outline.stroke()
+    // MARK: - 「白芯黑边」
+
+    /// 画一条**画在别人内容之上**的线（稿子 §01）。
+    ///
+    /// 选区描边、控制点、吸附线、放大镜准心 —— 这四样都不能被材质托住：
+    /// 它们压在屏幕上此刻是什么内容之上，而那个内容是什么颜色不由我们决定。
+    ///
+    /// ## 为什么要两遍
+    ///
+    /// 白芯在深色内容上跳得出来，但在纯白内容上会**整根消失**；
+    /// 黑边反过来。两个凑一起才能同时通过两个极端 ——
+    /// 用户看到的是"一条白线夹在黑线中间"。
+    ///
+    /// ⚠️ **顺序不能反**：先铺黑边（更宽）、再把白芯压上去。
+    /// 反过来的话黑边会把白芯整根盖掉，而"线不见了"看起来像根本没画。
+    ///
+    /// ⚠️ **两遍 `stroke()` 而不是画两条平行线**：同一条路径上的两次描边天然同心，
+    /// 而两条线在拐角处必然分叉（外圈那条要多绕一段）。
+    private func overlayLine(_ path: NSBezierPath, coreWidth: CGFloat) {
+        path.lineWidth = Self.totalOverlayWidth(coreWidth: coreWidth)
+        Self.nsColor(ChromePalette.Overlay.strokeEdge).setStroke()
+        path.stroke()
+
+        path.lineWidth = coreWidth
+        Self.nsColor(ChromePalette.Overlay.strokeCore).setStroke()
+        path.stroke()
+    }
+
+    /// 一条白芯黑边的**总**宽度。
+    static func totalOverlayWidth(coreWidth: CGFloat) -> CGFloat {
+        coreWidth + ChromePalette.Overlay.strokeEdgeWidth * 2
+    }
+
+    /// 沿着矩形画一圈白芯黑边。
+    ///
+    /// 内缩量取**总宽的一半**（不是芯的一半）：`NSBezierPath` 的描边以路径为中心向两侧展开，
+    /// 而这条线的可见范围是总宽 —— 按芯算的话外圈那 1 点会落到选区之外，
+    /// 变成"描边往外糊出去一圈"（在贴边的选区上尤其明显）。
+    private func stroke(_ rect: CGRect, cornerRadius: CGFloat, coreWidth: CGFloat) {
+        let inset = Self.totalOverlayWidth(coreWidth: coreWidth) / 2
+        let outline = Self.roundedPath(rect.insetBy(dx: inset, dy: inset),
+                                       radius: max(0, cornerRadius - inset))
+        overlayLine(outline, coreWidth: coreWidth)
+    }
+
+    /// 画一个「白芯黑边」的小方块（控制点）。
+    ///
+    /// 用的是**先铺一块更大的黑底、再把白芯压上去**，不是描边 ——
+    /// 描边的黑环会同时落在方块内侧与外侧，内侧那半圈被白芯盖住倒无所谓，
+    /// 但外侧那半圈会把足迹撑到 `芯 + 1`，而稿子给的是 `7 × 7`（`芯 5 + 黑边 1 × 2`）。
+    private func drawOverlayHandle(in box: CGRect, cornerRadius: CGFloat) {
+        let edge = SelectionGeometry.handleEdgeWidth
+        Self.nsColor(ChromePalette.Overlay.strokeEdge).setFill()
+        Self.roundedPath(box.insetBy(dx: -edge, dy: -edge), radius: cornerRadius + edge).fill()
+        Self.nsColor(ChromePalette.Overlay.strokeCore).setFill()
+        Self.roundedPath(box, radius: cornerRadius).fill()
     }
 
     private static func roundedPath(_ rect: CGRect, radius: CGFloat) -> NSBezierPath {
@@ -834,10 +949,19 @@ final class SelectionOverlayView: NSView {
         let lit = OverlayToolbarHighlight.isLit(slot,
                                                 activeTool: state.activeTool,
                                                 openPalette: state.palette?.kind)
+        // 「能不能点」也走 Core：置灰的格子**不该有悬停反馈** ——
+        // 一个跟着鼠标亮起来的灰格子，会让用户以为它其实能用（点了没反应 ⇒ 报"按钮坏了"）。
+        // 而"谁才允许不可用"是产品决策（只有撤销/重做），不能靠绘制方自己判。
+        let enabled = OverlayToolbarHighlight.isEnabled(slot,
+                                                        canUndo: state.canUndo,
+                                                        canRedo: state.canRedo)
+        // ⚠️ 三种「底」互斥且有序，**谁也不冒充谁**（稿子 §07 那张六态表）：
+        //   1. `fill`（填充蓝）= 当前生效的工具，全条只许一个；
+        //   2. `pressedFill`（底白 16%）= 这个弹层正开着，属于「按下未复位」；
+        //   3. `hoverFill`（底白 9%）= 鼠标在这，最轻的一档。
+        // 悬停排在最后：已经"选中"或"按下"的格子再叠一层悬停，会让那两种状态看起来在闪。
+        let hovered = enabled && !lit && state.hoveredSlot == slot
         if lit {
-            // ⚠️ **两种「亮」是两件事，谁也不冒充谁**（稿子 §07）：
-            //   · `fill`（填充蓝）= 当前生效的工具，全条只许一个；
-            //   · `pressedFill`（底白 16%）= 这个弹层正开着，属于「按下未复位」。
             // 样式格是**入口** —— 它亮只说明「我自己的弹层开着」，
             // 而不是「我是当前工具」（工具是「待用」，不是「在用」）。
             if case .style = slot {
@@ -845,31 +969,39 @@ final class SelectionOverlayView: NSView {
             } else {
                 highlight(rect, fill: Self.theme.fill)
             }
+        } else if hovered {
+            highlight(rect, fill: ChromePalette.Overlay.hoverFill)
         }
+
+        // 图标颜色也跟着走三档：悬停时**升到 100%**（稿子："底白 9% + 图标 100%，12.9:1"）。
+        // 只加底不升图标的话，悬停看起来像"这一格被选中了"而不是"鼠标在这"。
+        let iconTint = (lit || hovered) ? Self.theme.label : Self.theme.icon
 
         switch slot {
         case .tool(let tool):
-            // 默认 **82%**、亮起时 **100%**（稿子 §07）——
+            // 默认 **82%**、亮起/悬停时 **100%**（稿子 §07）——
             // 一排 15 个纯白图标会糊成一片亮，压低一档之后「亮起来」才有地方可亮。
-            drawSymbol(Self.symbol(for: tool),
-                       in: rect,
-                       tint: Self.nsColor(lit ? Self.theme.label : Self.theme.icon))
+            drawSymbol(Self.symbol(for: tool), in: rect, tint: Self.nsColor(iconTint))
         case .style:
             // 展开时点亮：面板开着却看不出"是它开的"，用户会以为点空了
-            drawSymbol("paintpalette", in: rect, tint: Self.nsColor(lit ? Self.theme.label : Self.theme.icon))
+            drawSymbol("paintpalette", in: rect, tint: Self.nsColor(iconTint))
         case .ocr:
+            // ⚠️ 识别进行中**只换图标、不置灰**。
+            //
+            // 稿子 §07 限定「置灰只属于撤销与重做」，而这里原先还额外 `dimmed: true` ——
+            // 同一个意思（"现在忙"）用两处说，还破了那条"全工具条唯一允许变灰的地方"的约束。
+            // 沙漏图标本身就是那个状态，它不需要再暗一档。
             drawSymbol(state.isRecognizing ? "hourglass" : "text.viewfinder",
                        in: rect,
-                       tint: Self.nsColor(Self.theme.icon),
-                       dimmed: state.isRecognizing)
+                       tint: Self.nsColor(iconTint))
         case .pin:
-            drawSymbol("pin", in: rect, tint: Self.nsColor(Self.theme.icon))
+            drawSymbol("pin", in: rect, tint: Self.nsColor(iconTint))
         case .undo:
-            drawSymbol("arrow.uturn.backward", in: rect, tint: Self.nsColor(Self.theme.icon), dimmed: !state.canUndo)
+            drawSymbol("arrow.uturn.backward", in: rect, tint: Self.nsColor(iconTint), dimmed: !enabled)
         case .redo:
-            drawSymbol("arrow.uturn.forward", in: rect, tint: Self.nsColor(Self.theme.icon), dimmed: !state.canRedo)
+            drawSymbol("arrow.uturn.forward", in: rect, tint: Self.nsColor(iconTint), dimmed: !enabled)
         case .save:
-            drawSymbol("square.and.arrow.down", in: rect, tint: Self.nsColor(Self.theme.icon))
+            drawSymbol("square.and.arrow.down", in: rect, tint: Self.nsColor(iconTint))
         case .cancel:
             // ⚠️ **红**，不是白。参考工具条里 ✗ 是红的、✓ 是绿的 ——
             // 这两个是"结束这次截图"的两种结果，一眼分得出才有意义。
@@ -880,17 +1012,11 @@ final class SelectionOverlayView: NSView {
         }
     }
 
-    /// `RGB` → `NSColor`。**两条都不能省。**
+    /// `RGB` → `NSColor`。实现见 `RGB.nsColor` 那段注释（alpha 与 sRGB 两条都不能省）。
     ///
-    /// · **alpha 要带上** —— 调色板里一半的颜色是半透明的（暗幕 32%、次要文字 64%、
-    ///   格图标 82%、置灰 30%、小锁 55%…）。原来这里写死 `alpha: 1`，
-    ///   等于把「半透明」这个信息**在最后一步丢掉了** —— 画出来全是实心，
-    ///   而画错的颜色不会报错，只会「看着差点意思」。
-    /// · **用 `srgbRed:` 而不是 `red:`** —— 后者是 deviceRGB，
-    ///   而设计稿给的十六进制是 sRGB。
-    static func nsColor(_ rgb: RGB) -> NSColor {
-        NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: rgb.alpha)
-    }
+    /// 这里只留一个转发：颜色换算**只有一份实现**，读数框那三个全局常量与视图里的绘制
+    /// 走的是同一条路径 —— 两处各写一遍的话，将来改了 alpha 的规矩只会改到一处。
+    static func nsColor(_ rgb: RGB) -> NSColor { rgb.nsColor }
 
     /// 覆盖层的调色板。**它永远深色** —— 它压在别人的内容上，
     /// 底下是什么颜色不由我们决定（这与编辑器「深色台面」的理由还不一样）。
@@ -1167,21 +1293,20 @@ final class SelectionOverlayView: NSView {
 
     /// 画八个控制点。尺寸与命中区都取自 `SelectionGeometry` —— 各写一份的话，
     /// 会出现"小方块画在这儿、可拖的是旁边那一点"，而这种偏差肉眼几乎看不出来。
+    ///
+    /// 样式是**白芯黑边**（稿子 §02 原话：「7 × 7 白芯黑边 —— 压在浅底上不会『化掉』」）。
+    /// 原先是"白底 + 强调色描边"，而强调色是**用户的系统强调色**：
+    /// 有人把它设成浅蓝、有人设成黄，于是同一个控制点在不同机器上压在同一种内容上，
+    /// 有时看得见、有时看不见 —— 那种 bug 只会被报成"有时候看不到控制点"。
     private func drawSelectionHandles(on localSelection: CGRect) {
         let side = SelectionGeometry.handleVisualSide
         for handle in SelectionGeometry.Handle.allCases {
             let center = handle.center(on: localSelection)
-            let box = CGRect(x: center.x - side / 2,
-                             y: center.y - side / 2,
-                             width: side,
-                             height: side)
-            let path = NSBezierPath(rect: box)
-            // 白底 + 强调色描边：白底在深色蒙层上看得见，描边在浅色内容上也看得见
-            NSColor.white.setFill()
-            path.fill()
-            path.lineWidth = 1
-            NSColor.controlAccentColor.setStroke()
-            path.stroke()
+            drawOverlayHandle(in: CGRect(x: center.x - side / 2,
+                                         y: center.y - side / 2,
+                                         width: side,
+                                         height: side),
+                              cornerRadius: 0)
         }
     }
 
@@ -1189,6 +1314,9 @@ final class SelectionOverlayView: NSView {
     ///
     /// 没有它的话，用户只会觉得"拖到这里有点顿"，说不出在吸什么 ——
     /// 而"可感知"恰恰是吸附能不能用的关键。
+    ///
+    /// 白芯黑边：这条线要横穿整块屏，压到的内容从深到浅都有，
+    /// 单一颜色必然在某一段上消失（而"线断了一截"看起来像渲染 bug）。
     private func drawSnapGuides() {
         let vertical = presentation.snapGuideVertical.map { globalToLocal(CGPoint(x: $0, y: 0)).x }
         let horizontal = presentation.snapGuideHorizontal.map { globalToLocal(CGPoint(x: 0, y: $0)).y }
@@ -1203,12 +1331,10 @@ final class SelectionOverlayView: NSView {
             path.move(to: CGPoint(x: bounds.minX, y: horizontal))
             path.line(to: CGPoint(x: bounds.maxX, y: horizontal))
         }
-        path.lineWidth = 1
-        NSColor.controlAccentColor.withAlphaComponent(0.9).setStroke()
-        path.stroke()
+        overlayLine(path, coreWidth: 1)
     }
 
-    private func drawReadout(in localSelection: CGRect, lines: [(text: String, color: NSColor)]) {
+    private func drawReadout(in localSelection: CGRect, lines: [ReadoutLine]) {
         guard let box = makeBox(lines: lines) else { return }
 
         // 默认贴在选区左上角外侧；上下空间不够就翻到另一侧，再不够就贴进选区内部
@@ -1225,8 +1351,12 @@ final class SelectionOverlayView: NSView {
     /// 在光标旁挂一句提示。
     ///
     /// 贴右下角、再夹进视图内 —— 提示框跑到屏幕外等于没提示。
-    private func drawHint(at point: CGPoint, lines: [(text: String, color: NSColor)]) {
-        guard let box = makeBox(lines: lines) else { return }
+    ///
+    /// ⚠️ 它**不要**读数框那个 132 × 44 的最小尺寸：那是"读数框只换内容不换大小"的前提，
+    /// 而这句话是跟着光标跑的**一句话**（稿子 §01 管它叫「光标提示 高 26 pt」）。
+    /// 给它套上读数框的尺寸，会在鼠标旁边永远挂着一块 132 × 44 的空壳。
+    private func drawHint(at point: CGPoint, lines: [ReadoutLine]) {
+        guard let box = makeBox(lines: lines, minimumSize: .zero) else { return }
         let origin = CGPoint(x: point.x + 18, y: point.y - box.size.height - 12)
         draw(box, at: origin)
     }
@@ -1236,33 +1366,56 @@ final class SelectionOverlayView: NSView {
         let clamped = CGPoint(x: min(max(bounds.minX + 6, origin.x), bounds.maxX - box.size.width - 6),
                               y: min(max(bounds.minY + 6, origin.y), bounds.maxY - box.size.height - 6))
         let rect = NSRect(origin: clamped, size: box.size)
-        // 刻意用平的深色而不是材质：这是贴着选区的小读数，尺寸随内容变、位置跟着光标跑，
-        // 做成视图既难对齐也不划算；系统自带的截图工具在同一位置也是平的深色小条。
-        NSColor.black.withAlphaComponent(ChromeStyle.readoutAlpha).setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
+        // ⚠️ **不透明材质**，不是"平的黑 72%"。
+        //
+        // 半透明的底会让"这几行读不读得出"取决于屏幕上此刻是什么：
+        // 黑 72% 压在纯白内容上时，次要行有 5.02；压在纯黑内容上只剩 2.52 —— 连正文级都不到。
+        // 而不透明度这件事在设计稿里是有答案的：§01 把「工具条 / 弹层 / **读数**」
+        // 并列写在 `--c-panel` 那一行下面。
+        //
+        // 代价是它比"贴着一层薄纱"更像一块实心条 —— 但那正是 §04 那句
+        // "工具条永远比它压着的东西暗一档"所换来的东西：数字对任何底都成立。
+        Self.nsColor(ChromePalette.Overlay.Readout.backdrop).setFill()
+        NSBezierPath(roundedRect: rect,
+                     xRadius: OverlayReadout.cornerRadius,
+                     yRadius: OverlayReadout.cornerRadius).fill()
         box.text.draw(at: NSPoint(x: rect.minX + box.padding.width, y: rect.minY + box.padding.height))
     }
 
-    /// 把若干行文本排成一个读数框：逐行上色（告警行用醒目色，否则用户看不出
-    /// "到底了"和"还在滚"的差别），并算出框尺寸。
-    private func makeBox(lines: [(text: String, color: NSColor)])
+    /// 把若干行文本排成一个读数框。
+    ///
+    /// 三件事一起定，**不能拆**：
+    ///
+    /// 1. **行色**：每一行按它自己的角色上色（`ReadoutRole`）——
+    ///    告警/开关是琥珀、其余两句同色的话用户就得逐字读才知道哪行是结果。
+    /// 2. **行阶**：第一行 13 点、其余 11 点（稿子：读数框 `13 / 11`）。
+    /// 3. **框的最小尺寸**：读数框是 `132 × 44`。它是"同一块框只换内容"的物理前提 ——
+    ///    框随内容跳大小的话，用户会以为换了一个读数框（而设计稿 §08 明确说
+    ///    「用户不需要学两个框」）。
+    ///
+    /// - Parameter minimumSize: 传 `.zero` 就按内容自然大小（光标旁那句提示用这个）。
+    private func makeBox(lines: [ReadoutLine],
+                         minimumSize: CGSize = OverlayReadout.minimumSize)
         -> (text: NSAttributedString, size: NSSize, padding: NSSize)? {
-        let visible = lines.filter { !$0.text.isEmpty }
+        let visible = ReadoutLine.compact(lines)
         guard !visible.isEmpty else { return nil }
 
         let attributed = NSMutableAttributedString()
         for (index, line) in visible.enumerated() {
             if index > 0 { attributed.append(NSAttributedString(string: "\n")) }
             attributed.append(NSAttributedString(string: line.text, attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
-                .foregroundColor: line.color,
+                .font: NSFont.monospacedDigitSystemFont(
+                    ofSize: index == 0 ? OverlayReadout.primaryFontSize : OverlayReadout.secondaryFontSize,
+                    weight: .medium),
+                .foregroundColor: ReadoutStyle.color(line.role),
             ]))
         }
-        let padding = NSSize(width: 8, height: 5)
+        let padding = NSSize(width: OverlayReadout.textPadding.width,
+                             height: OverlayReadout.textPadding.height)
         let textSize = attributed.size()
         return (attributed,
-                NSSize(width: textSize.width + padding.width * 2,
-                       height: textSize.height + padding.height * 2),
+                NSSize(width: max(minimumSize.width, textSize.width + padding.width * 2),
+                       height: max(minimumSize.height, textSize.height + padding.height * 2)),
                 padding)
     }
 
@@ -1302,8 +1455,12 @@ final class SelectionOverlayView: NSView {
     /// **故意不跟标注的字号走**：它是一个**控件**，不是所见即所得的预览 ——
     /// 44 点的标注字号会做出一个 60 点高的白条糊在图上，反而看不清输入了什么
     /// （编辑器里那个输入框也是固定 13 点，同理）。真正的字号在提交后才生效。
-    private static let textInputSize = CGSize(width: 240, height: 26)
-    private static let textInputFontSize: CGFloat = 14
+    /// 设计稿 §01 给的尺寸是 **240 × 32 pt / 13 pt**。
+    private static let textInputSize = CGSize(width: 240, height: 32)
+    private static let textInputFontSize: CGFloat = 13
+
+    /// 「焦点环」的粗细（稿子 §01/§09：与引导页那个录制框**同一套**）。
+    private static let textInputRingWidth: CGFloat = 3
 
     /// 正在编辑时挂着的输入框。`nil` = 没有。
     private var textInput: NSTextField?
@@ -1349,16 +1506,14 @@ final class SelectionOverlayView: NSView {
         return true
     }
 
-    /// 画选中标注身上的 8 个控制点。样式与选区控制点**一致**（白底 + 强调色描边）。
+    /// 画选中标注身上的 8 个控制点。样式与选区控制点**一致**（白芯黑边 + 同一个足迹）。
+    ///
+    /// 用户不该为"缩选区"和"缩标注"学两套手感 —— 而两处样式一旦分叉，
+    /// 表现只是"这个好像比那个小一点"，没有任何东西会报错。
+    /// 所以这里走的是同一个 `drawOverlayHandle`。
     private func drawAnnotationHandles() {
         for item in presentation.selectedAnnotationHandles {
-            let box = globalToLocal(item.frame)
-            let path = NSBezierPath(roundedRect: box, xRadius: 1.5, yRadius: 1.5)
-            NSColor.white.setFill()
-            path.fill()
-            NSColor.controlAccentColor.setStroke()
-            path.lineWidth = 1.5
-            path.stroke()
+            drawOverlayHandle(in: globalToLocal(item.frame), cornerRadius: 1.5)
         }
     }
 
@@ -1383,14 +1538,26 @@ final class SelectionOverlayView: NSView {
         field.isBordered = false
         field.isBezeled = false
         field.drawsBackground = true
-        field.backgroundColor = .white
-        field.textColor = .black
+        // 外壳深、里面是真系统输入框（稿子 §09 原话：「它不是一个『像输入框的标注』，它是输入框」）。
+        //
+        // ⚠️ 从"白底黑字"改成"深内底白字"是**功能性的**，不只是配色：
+        // 白光条压在任意屏幕上内容之上时会自己发光，而覆盖层里**没有一块地方**是白的，
+        // 只有它一个。与工具条 / 读数框一样，控件自己带底，才不会因为底下的内容而难看。
+        field.backgroundColor = Self.nsColor(Self.theme.inset)
+        field.textColor = Self.nsColor(Self.theme.label)
         field.font = .systemFont(ofSize: Self.textInputFontSize)
-        field.placeholderString = L10n.t("输入文字")
+        // ⚠️ **没有占位句，这是刻意的**（稿子 §09）：
+        // 「空框里没有占位句：光标在闪，就是『在这儿打字』。占位句在这个场景里是多余的 ——
+        //  用户刚刚自己点了『文字』工具，他知道自己在干什么。」
+        // 留着 placeholderString 会让空框里常显一行灰字，而它对用户零信息量。
+        field.placeholderString = nil
         field.focusRingType = .none
         field.wantsLayer = true
-        field.layer?.cornerRadius = 5
-        field.layer?.borderWidth = 2
+        field.layer?.cornerRadius = OverlayReadout.cornerRadius
+        // 3 pt 焦点环：与引导页那个录制框同一套。
+        // 环画在**外侧**（borderWidth 默认居中于边缘），把 `layer?.masksToBounds` 留着关掉，
+        // 否则那 1.5 点会被裁掉、环看起来只有 1.5 点粗。
+        field.layer?.borderWidth = Self.textInputRingWidth
         field.layer?.borderColor = NSColor.controlAccentColor.cgColor
         // 不用 `NSTextField.lineBreakMode`：单行标注，换行会画到框外
         field.cell?.wraps = false

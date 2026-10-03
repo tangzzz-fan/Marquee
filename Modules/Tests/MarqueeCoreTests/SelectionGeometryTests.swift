@@ -267,4 +267,26 @@ struct SelectionGeometryTests {
 
         #expect(result.rect.minX == 300)
     }
+
+    // MARK: - 控制点的画法（白芯黑边）
+
+    @Test("控制点的整体足迹是稿子给的 7 × 7 —— 白芯 5 + 两侧各 1 点黑边")
+    func handleFootprintMatchesSpec() {
+        // 稿子 §02 原话：「8 个控制点：四角 + 四边中点，**7 × 7 白芯黑边** ——
+        // 压在浅底上不会『化掉』」。
+        //
+        // 这条钉的是**加法本身**：改了白芯大小而不动黑边，控制点之间就会开始互相咬
+        // （相邻两个的黑色外圈叠在一起），而那种错看起来只是"控制点有点糊"。
+        #expect(SelectionGeometry.handleVisualFootprint
+                    == SelectionGeometry.handleVisualSide + SelectionGeometry.handleEdgeWidth * 2)
+        #expect(SelectionGeometry.handleVisualFootprint == 7,
+                "整体足迹是 7 点（白芯 5 + 黑边 1 × 2），改了要说一声")
+
+        // 黑边必须细于白芯：反过来的话白芯只剩一条缝，控制点看起来是一坨黑方块。
+        #expect(SelectionGeometry.handleEdgeWidth < SelectionGeometry.handleVisualSide)
+
+        // 而**命中区仍然要大一圈** —— 画的小、摸的大，是这类控件的通行做法；
+        // 拿足迹去当命中半径的话，用户会觉得"这个角特别难拖"。
+        #expect(SelectionGeometry.handleHitRadius > SelectionGeometry.handleVisualFootprint / 2)
+    }
 }

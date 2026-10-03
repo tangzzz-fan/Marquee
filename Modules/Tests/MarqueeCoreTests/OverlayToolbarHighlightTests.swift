@@ -56,4 +56,36 @@ struct OverlayToolbarHighlightTests {
         #expect(!lit(.tool(.emoji), palette: .emoji))
         #expect(!lit(.tool(.text), palette: .emoji))
     }
+
+    // MARK: - 可点 / 不可点
+
+    private func enabled(_ slot: OverlayToolbarSlot,
+                         canUndo: Bool = true,
+                         canRedo: Bool = true) -> Bool {
+        OverlayToolbarHighlight.isEnabled(slot, canUndo: canUndo, canRedo: canRedo)
+    }
+
+    @Test("「不可用」只属于撤销与重做 —— 而且只在自己真的没得撤时")
+    func onlyUndoRedoCanBeDisabled() {
+        // 稿子 §07：「置灰只属于动作里的撤销与重做……**全工具条唯一允许变灰的地方**」。
+        for slot in OverlayToolbar.slots where slot != .undo && slot != .redo {
+            #expect(enabled(slot, canUndo: false, canRedo: false),
+                    "\(slot) 在「什么都没得撤」时也必须是可点的")
+        }
+        #expect(!enabled(.undo, canUndo: false), "没得撤 → 撤销置灰")
+        #expect(!enabled(.redo, canRedo: false), "没得重做 → 重做置灰")
+        // 而且两者互相独立：有得撤不代表有得重做
+        #expect(enabled(.undo, canUndo: true, canRedo: false))
+        #expect(enabled(.redo, canUndo: false, canRedo: true))
+    }
+
+    @Test("Pro 那两格永远可点 —— 变灰了就点不动，也就永远看不到那张解释的卡片")
+    func proSlotsAreNeverDisabled() {
+        // 这一条单独立出来，因为它是**产品决策**而不是实现细节：
+        // 免费版里「识别文字」「钉图」点了只弹卡片、不干活，而用户必须点得动。
+        for slot in [OverlayToolbarSlot.ocr, .pin] {
+            #expect(enabled(slot, canUndo: false, canRedo: false),
+                    "\(slot) 被置灰了 —— 用户再也没有途径知道为什么用不了")
+        }
+    }
 }
