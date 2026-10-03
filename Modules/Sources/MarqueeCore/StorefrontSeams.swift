@@ -94,7 +94,35 @@ public protocol ProductPurchasing: Sendable {
 
     /// 恢复购买（Guideline 要求必须提供）。失败要 throw —— 这是**用户主动发起**的动作，
     /// 悄悄失败等于骗他"恢复过了、确实没有购买记录"。
+    ///
+    /// ⚠️ 抛出的必须是 `StorefrontRestoreFailure`：**用户取消**与**真的出错**是两件事，
+    /// 而 `AppStore.sync()` 两种情况都会抛错。只有适配器知道平台错误码长什么样，
+    /// 所以翻译那一半（错误码 → 这一档语义）必须在适配器里做完。
     func restore() async throws
+}
+
+/// 恢复购买这一步失败的原因。
+///
+/// ## 为什么必须分档
+///
+/// `AppStore.sync()` 在**用户自己按了取消**时也会抛错（它会弹一次 Apple ID 登录 /
+/// 确认框）。把这一档报成"网络失败"，会让一个网络完全正常的人去重启路由器 ——
+/// 而真正的原因是他刚刚按下的那一下。
+///
+/// 平台错误码 → 这一档语义的**翻译在适配器**（`MarqueeStore.StoreKitStorefront`），
+/// **"哪一档配说什么话"在 Core**（`EntitlementCoordinator.RestoreOutcome`）。
+/// 这条分工与 `PurchaseOutcome` 完全一致：适配器翻译事实，Core 决定态度。
+public enum StorefrontRestoreFailure: Error, Equatable, Sendable {
+
+    /// 用户在系统弹的那个登录/确认框上按了取消。**不是错误**。
+    case cancelledByUser
+
+    /// 真的连不上商店（断网、商店不可达）。**只有这一档配说"检查网络"。**
+    case network
+
+    /// 其它（商店报错、账号或系统问题）。界面该说"稍后再试"，
+    /// ⚠️ **不许**顺手猜成网络 —— 猜错的方向是让用户去修一个没坏的东西。
+    case other
 }
 
 /// 商店里没有这条商品时的空实现，给"还没接上 StoreKit"的构建用。
@@ -116,5 +144,5 @@ public struct UnavailableStorefront: StorefrontReading, ProductPurchasing {
 
     public func purchase(_ productIdentifier: String) async -> PurchaseOutcome { .unavailable }
 
-    public func restore() async throws { throw StoreUnavailable() }
+    public func restore() async throws { throw StorefrontRestoreFailure.other }
 }

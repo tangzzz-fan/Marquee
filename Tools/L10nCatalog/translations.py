@@ -3,6 +3,51 @@
 
 EN = {
     "开发版": "Development build",
+    # ── 升级卡片（设计稿 `2026-10-03-引导与升级卡片`）─────────────────────
+    #
+    # ⚠️ ③ 正文是**一行**（稿子：≤ 22 字），而卡片只有 300 宽、内宽 268。
+    # 中文照稿子来；英文同样占这条宽度 —— 太长会被裁掉尾巴（`RecentPanel`
+    # 与提示行都栽过同一个跟头）。它由 `LocalizationScanTests` 按真字体量。
+    "试用 7 天，结束后自动回到免费版": "Free for 7 days, then back to the free version",
+    "试用已结束，免费版仍可截图与标注": "Trial ended. Capture and annotate stay free",
+    "购买已撤销，可点恢复购买重新获取": "Purchase revoked. Restore it to get it back",
+    "这个账号下找不到这笔购买": "No purchase found for this account",
+    # ⑤ 微行（只在覆盖层那张卡上出现）
+    "关闭卡片，选区保留": "closes this card, your selection stays",
+    # ── 编辑器：识别文字面板的四张脸（设计稿第 3 轮 §07）────────────────
+    #
+    # 面板宽 260（可用 ~236）—— 每句都要在那条宽度里说完，且**第一行说发生了什么、
+    # 第二行说下一步**。「没有文字」与「识别失败」两张脸必须一眼分得开：
+    # 前者安静（次要色），后者红 + 警告三角，且多一个「重试」。
+    "只读": "Read-only",
+    "正在识别…": "Recognizing…",
+    "首次识别可能要十几秒，之后会快。": "The first run can take a while; later ones are fast.",
+    "这张图里没有文字": "No text in this image",
+    "纯图或图形界面都可能这样；识别只看整张图。":
+        "Photos and UI screens look like this — recognition reads the whole image.",
+    "识别失败了": "Recognition failed",
+    "重试不会影响已经画好的标注。": "Retrying won't touch the annotations you've drawn.",
+    "重试": "Retry",
+    "%lld 行 · %lld 字": "%lld lines · %lld chars",
+    # ── 编辑器的文字预设弹层（设计稿第 3 轮 §05）────────────────────────
+    "预设": "Preset",
+    "从几开始": "Start at",
+    # 198 宽的弹层里放得下 —— 别写成一句解释（稿子：两段都不带解释文字）
+    "放一个，数字 +1（1–99）": "Each one adds 1 (1–99)",
+    "减少": "Decrease",
+    "增加": "Increase",
+    "点一下回到「适应窗口」": "Click to fit to window",
+    # ── 编辑器窗口的状态行（设计稿第 3 轮 B 块）─────────────────────────
+    #
+    # ⚠️ 尺寸那两条**必须短**：状态行 22 高、左边留给它的宽度有限，
+    # 而窗口再宽也不会把状态行折行（折了就成了 44 高，把画布挤掉一截）。
+    "长截图 · %@ px": "Scrolling capture · %@ px",
+    "%@ · %lld 段拼接": "%@ · %lld frames stitched",
+    "裁剪中 · 拖出保留框 · Esc 取消": "Cropping · drag the area to keep · Esc to cancel",
+    "裁剪中 · ⏎ 应用 · Esc 取消": "Cropping · ⏎ to apply · Esc to cancel",
+    # 「适应窗口 34%」：只有当前缩放**正好**是适应窗口那一个时才说这四个字。
+    # ⚠️ 百分号不在 key 里（它拼在外面）—— 见 `EditorChrome.trailing` 的注释。
+    "适应窗口 %lld": "Fit to window %lld",
     # ── 最近截图面板（设计稿第 2 轮 D 块）────────────────────────────────
     #
     # ⚠️ 底部那一行是**三段拼起来的一句话**，中间那个词才是可点的：
@@ -61,11 +106,15 @@ EN = {
     "Marquee 不在前台也能触发 · 任何时候按它，屏幕就定住":
         "Works even when Marquee isn't in front · press it any time and the screen freezes",
     "恢复默认": "Restore default",
-    # Pro 状态区（恢复购买那四种结果**常驻**）
+    # Pro 状态区（恢复购买那五种结果**常驻**）
     "正在恢复…": "Restoring…",
     "已恢复购买 ✓": "Purchase restored ✓",
     "这个账号下没有可恢复的购买": "No purchase to restore for this account",
+    # ⚠️ 三句失败提示**不能混用**：用户取消必须中性（不报红），
+    # 只有真·连不上才配提网络 —— 原因不许猜。
+    "已取消，没有改动": "Cancelled — nothing changed",
     "恢复失败 · 检查网络后重试": "Restore failed · check your connection and try again",
+    "恢复失败 · 请稍后再试": "Restore failed · try again later",
     # 偏好设置「输出」页 —— 质量那一行的两种说明（稿子 §C.3 / §04）。
     # 无损那句必须给出**下一步**（换成哪种格式才有），不是一句「质量不可用」。
     "PNG 是无损格式，没有质量可调 —— 换成 JPEG 或 HEIC 才有":
@@ -140,7 +189,6 @@ EN = {
     "已选中 %lld 个标注  ·  拖动移动  ·  Delete 删除  ·  Esc 取消选择":
         "%lld annotation(s) selected  ·  Drag to move  ·  Delete to remove  ·  Esc to deselect",
     "序号": "Counter",
-    "序号从几开始（后续每放一个自增）": "Starting number (increments with each new one)",
     "应用切换": "App switcher",
     "延时截图": "Delayed capture",
     "开机时自动启动": "Launch at login",
@@ -301,14 +349,14 @@ EN = {
     "识别文字是 Pro 能力": "Text recognition is a Pro feature",
     "钉图是 Pro 能力": "Pinning to screen is a Pro feature",
     "最近截图是 Pro 能力": "Unlimited history is a Pro feature",
-    "一次买断，不订阅": "One-time purchase, not a subscription",
-    "试用已结束，购买后继续使用": "Your trial has ended. Purchase Pro to keep using it.",
-    "购买被撤销：退款，或移出家人共享":
-        "This purchase was revoked: refunded, or removed from Family Sharing",
     "这个账号下找不到这笔购买": "No purchase found for this account",
-    "7 天免费试用": "Start a 7-day free trial",
+    # ⚠️ 这三个按钮的英文长度是**量出来的**：主按钮 + 10 + 次按钮 必须 ≤ 卡片内宽 268。
+    # 原先写的 "Start a 7-day free trial" + "Learn about Pro" 合起来 272 —— 差 4 点就放不下，
+    # 而超出的表现是**次按钮被裁掉尾巴**（英文系统上才看得见）。
+    # 判据在 `LocalizationScanTests`。
+    "7 天免费试用": "Try 7 days free",
     "了解 Pro": "Learn about Pro",
-    "恢复购买": "Restore Purchases",
+    "恢复购买": "Restore Purchase",
     "需要 Pro": "Requires Pro",
 
     # ── 偏好「通用」页底部的 Pro 状态区（ticket 31）──────────────────────

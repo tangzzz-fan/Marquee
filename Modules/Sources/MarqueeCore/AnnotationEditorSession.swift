@@ -366,6 +366,19 @@ public struct AnnotationEditorSession: Sendable {
 
     public var isCropping: Bool { cropDraft != nil }
 
+    /// 裁切框**已经被拖出来过**吗。
+    ///
+    /// 状态行靠它分辨两张脸：还没拖出时说「拖出保留框」，拖出来之后说「⏎ 应用」（§04）。
+    ///
+    /// 判据是"草稿与当前的裁切矩形不同" —— `beginCrop()` 把草稿设成**当前的**裁切矩形，
+    /// 所以刚拿起裁切刀那一刻它是 `false`（框还没动过）。
+    /// 拿 `cropDraft != nil` 当判据是错的：那个从头到尾都是真的，
+    /// 两张脸会合成一张 —— 用户永远等不到"可以按 ⏎ 了"那句话。
+    public var isCropFrameAdjusted: Bool {
+        guard let cropDraft else { return false }
+        return cropDraft != document.cropRect
+    }
+
     public mutating func beginCrop() {
         guard gesture == nil else { return }
         cropDraft = document.cropRect

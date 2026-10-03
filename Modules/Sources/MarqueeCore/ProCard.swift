@@ -13,6 +13,29 @@ public enum ProCardAction: String, CaseIterable, Sendable {
     case purchase
     /// 恢复购买。App Review 要求可恢复，所以每张卡片上都留得到它。
     case restore
+
+    /// 这一下要不要**把整个屏幕让出去**（打开另一个窗口 / 系统购买面板）。
+    ///
+    /// ## 为什么它是卡片自己的性质，而不是调用方那边的 if
+    ///
+    /// 三个动作里有一个（`restore`）是**原地就能完成**的：成功了当场解锁、
+    /// 失败了当场给一行回执。另外两个做不到 —— 它们要开窗口：
+    ///
+    /// | 动作 | 要什么 |
+    /// | --- | --- |
+    /// | `purchase` | 偏好设置窗口（价格与当前状态都在那一页上） |
+    /// | `startTrial` | StoreKit 的购买面板（**系统**开的，我们放不了它的位置） |
+    /// | `restore` | 什么都不要 |
+    ///
+    /// ⇒ 覆盖层必须在开窗口**之前**退场。覆盖层是 `.screenSaver` 层的非激活面板，
+    /// 整屏压在所有普通窗口之上：不退场的话，新开的窗口在用户眼里**根本没出现**，
+    /// 他只会说"这个卡片点不动"（2026-10-04 用户报的原话）。
+    public var needsAnotherWindow: Bool {
+        switch self {
+        case .purchase, .startTrial: true
+        case .restore: false
+        }
+    }
 }
 
 // MARK: - 卡片内容
@@ -106,6 +129,46 @@ public enum ProCard {
             // 对一个只是被移出家庭组的人说"重新购买"，是最容易招差评的一句话。
             return ProCardContent(feature: feature, reason: reason,
                                   primary: .restore, secondary: .purchase)
+        }
+    }
+
+    // MARK: - 正文该说哪一句
+
+    /// 卡片正文有**四句话**，对应四种"为什么被挡住"。
+    ///
+    /// ⚠️ 这个枚举存在的理由：**"哪一句"是判据，"那句话是什么"是文案。**
+    /// 两者分开之后，"从未购买但试用已用过"这一档到底该说"试用 7 天"还是
+    /// "试用已结束"就能在 Core 里被断言 —— 而它错了的样子是
+    /// **对着一个已经用过试用的人说"可以试用 7 天"**（一句明确的假话）。
+    ///
+    /// 判据只看两件事：`reason`，以及**主按钮给的是不是试用** ——
+    /// 后者才是"这一档是说试用还是说结束"的真正依据（同一个 `.neverPurchased`
+    /// 在能试用与不能试用时是两个不同的状态）。
+    public enum BodyVariant: Equatable, Sendable {
+        /// 「试用 7 天，结束后自动回到免费版」
+        case trial
+        /// 「试用已结束，免费版仍可截图与标注」
+        case trialEnded
+        /// 「购买已撤销，可点恢复购买重新获取」
+        case revokedByStore
+        /// 「这个账号下找不到这笔购买」
+        case purchaseNotFound
+    }
+
+    /// 这一张卡片的正文该说哪一句。
+    public static func bodyVariant(for content: ProCardContent) -> BodyVariant {
+        switch content.reason {
+        case .neverPurchased:
+            // ⚠️ 看的是**主按钮**，不是 reason 本身：`.neverPurchased` 里
+            // 既可能是"还没试过"，也可能是"试用已经用掉了"。
+            return content.primary == .startTrial ? .trial : .trialEnded
+        case .trialEnded:
+            return .trialEnded
+        case .revoked(let cause):
+            switch cause {
+            case .storeRevoked: return .revokedByStore
+            case .purchaseNotFound: return .purchaseNotFound
+            }
         }
     }
 }

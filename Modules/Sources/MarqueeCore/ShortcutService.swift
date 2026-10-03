@@ -82,6 +82,12 @@ public final class ShortcutService {
     private let store: ShortcutStoring
     private let registrar: HotKeyRegistering
     private let handler: @MainActor () -> Void
+    /// 还有几个录制器正在录。见 `suspendForRecording()`。
+    ///
+    /// 用**计数**而不是布尔：设置窗与引导窗各有一个录制器、共用这一个服务，
+    /// 布尔会让"先结束的那个"把全局注册提前装回来 —— 而另一个还在录，
+    /// 于是它又按不动自己的键了（同一个 bug 换个入口复发）。
+    private var recordingDepth = 0
 
     public init(store: ShortcutStoring,
                 registrar: HotKeyRegistering,
@@ -120,10 +126,52 @@ public final class ShortcutService {
     }
 
     public func stop() {
+        recordingDepth = 0
         registrar.unregister()
     }
 
+    /// 进入"录制中"：把全局注册摘下来。
+    ///
+    /// ## 为什么非做不可
+    ///
+    /// Carbon 的 `RegisterEventHotKey` 是**系统级**的：它在按键送到本应用的响应链
+    /// 之前就把它吃掉了。于是"录制时按下**当前生效**的那颗键"会同时踩两个坑 ——
+    ///
+    /// 1. 录制器收不到 `keyDown`，界面毫无反应（用户看到的："设置无效"）；
+    /// 2. 那一下被当成一次真实的截屏请求，屏幕上真的浮出覆盖层。
+    ///
+    /// 也就是说，用户**最想按的那颗键（就是现在用的这颗）恰恰是唯一录不进去的**。
+    /// 挂起之后录制器才收得到它自己。
+    ///
+    /// 计数式的：只有第一个进入的录制器会真的注销，也只有最后一个离开的会装回去。
+    public func suspendForRecording() {
+        recordingDepth += 1
+        guard recordingDepth == 1 else { return }
+        registrar.unregister()
+    }
+
+    /// 退出"录制中"：**最后一个**录制器离开时把 `current` 装回去。
+    ///
+    /// ⚠️ **不走 `apply`**：`apply` 里那道独占探测一旦返回 `.conflict` 就会
+    /// **什么都不注册**。而这个组合此前已经注册成功过（否则不会成为 `current`），
+    /// 再问一次系统毫无意义，问错了却会把一个本来可用的键弄丢。
+    /// 更要紧的是：非独占注册在"别的应用也占着同一个键"时依然会成功，
+    /// 这种共存本就正常工作 —— 挂起一次不该把它变成"被占用"。
+    ///
+    /// 若录制结束时已经通过 `change(to:)` 注册过新键，深度已被清成 0，
+    /// 这里是空操作（重复 `register` 会被 Carbon 判成冲突）。
+    public func resumeAfterRecording() {
+        guard recordingDepth > 0 else { return }
+        recordingDepth -= 1
+        guard recordingDepth == 0 else { return }
+        lastRegistration = registrar.register(current, handler: handler)
+    }
+
     private func apply(_ combo: KeyCombo, persist: Bool) -> ShortcutChangeResult {
+        // 任何一次"真的去注册"都结束了挂起状态 —— 否则随后的
+        // `resumeAfterRecording()` 会把同一个组合再注册一遍（Carbon 会报冲突）。
+        recordingDepth = 0
+
         // 先注销再注册：Carbon 对同一进程内同一组合的重复注册会返回 eventHotKeyExistsErr，
         // 不先注销的话"把 A 换成 A"这种操作会假报冲突。
         // 而且**带着自己的注册去独占探测也会假报占用**（本机实测），所以顺序不能换。

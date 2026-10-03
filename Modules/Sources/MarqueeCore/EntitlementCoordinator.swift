@@ -46,12 +46,20 @@ public final class EntitlementCoordinator {
     }
 
     /// 恢复购买的结果。
+    ///
+    /// 五档而不是三档，因为**界面要对每一档说不同的话**：
+    /// 把"用户自己按了取消"混进"失败"，得到的就是那句让网络正常的人去查网络的提示
+    ///（2026-10-04 用户实际报回来的就是这样一条）。
     public enum RestoreOutcome: Equatable, Sendable {
         /// 恢复到了东西（买断或试用）。
         case restored
         /// 恢复成功、但这个账号名下确实什么都没有。
         case nothingToRestore
-        /// 恢复这个动作本身失败了。
+        /// 用户在系统弹框上按了取消。**不是错误** —— 不该报红、不该说"失败"。
+        case cancelledByUser
+        /// 连不上商店。**只有这一档配说"检查网络"。**
+        case networkFailed
+        /// 其它失败（商店报错、账号问题…）。说"稍后再试"，不许猜原因。
         case failed
     }
 
@@ -207,11 +215,26 @@ public final class EntitlementCoordinator {
 
     /// 恢复购买。**失败要如实回报** —— 这是用户主动发起的动作，
     /// 悄悄失败等于骗他"恢复过了，确实没有记录"。
+    ///
+    /// ⚠️ **原因不许猜。** 原先这里把所有抛出来的错都归成 `.failed`，而界面只有
+    /// 一句"检查网络后重试" —— 于是"用户按了取消"（`AppStore.sync()` 也会抛错）
+    /// 被报成了网络故障。现在按 `StorefrontRestoreFailure` 的三档分开映射；
+    /// 认不出来的错误落 `.failed`（说"稍后再试"），**绝不**冒充网络问题。
     public func restorePurchases() async -> RestoreOutcome {
         do {
             try await purchaser.restore()
+        } catch StorefrontRestoreFailure.cancelledByUser {
+            // 用户自己按的取消：**不改动任何状态**，界面也不该报红。
+            logger.info("权益：用户在系统弹框上取消了恢复购买")
+            return .cancelledByUser
+        } catch StorefrontRestoreFailure.network {
+            logger.warning("权益：恢复购买失败 —— 连不上商店")
+            return .networkFailed
         } catch {
-            logger.warning("权益：恢复购买失败")
+            // 含 `StorefrontRestoreFailure.other` 与适配器漏出来的任何未分类错误。
+            // 一律按"未知原因"处理：`String(describing:)` 会把原始错误记进日志，
+            // 于是下一次报障可以直接从日志里看出到底是哪一类。
+            logger.warning("权益：恢复购买失败（未分类）\(String(describing: error), privacy: .public)")
             return .failed
         }
         await verifyWithStore()

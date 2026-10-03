@@ -571,6 +571,89 @@ final class ChromeTextButton: ChromeControlView {
     }
 }
 
+// MARK: - 实心按钮（偏好里 Pro 状态区那颗「升级到 Pro」）
+
+/// 稿子偏好稿的那颗**唯一色块**：`.btn--pri{height:24px;padding:0 12px;border-radius:6px;
+/// background:var(--c-fill);color:#fff;font:600 12px}`，悬停 `--c-fill-h`、按下 `--c-fill-p`。
+///
+/// ⚠️ 与卡片的 `.btn--pri` 同一条规格 —— 所以**字号、内边距、三态色全部从
+/// `ProCardLayout` 取**，不再各写一份。两处各写一份的话，改一档色另一处就旧了，
+/// 而那种错只是"两个地方的主按钮蓝得不一样"，没人会说得出原因。
+@MainActor
+final class ChromeFilledButton: ChromeControlView {
+
+    var title: String = "" {
+        didSet { invalidateIntrinsicContentSize(); needsDisplay = true }
+    }
+
+    /// 置灰 = "现在不能买"（权益还在确认中）。**它仍然可见** ——
+    /// 用户得先看见入口才可能等它亮起来。
+    var isEnabled = true {
+        didSet { if isEnabled != oldValue { needsDisplay = true } }
+    }
+
+    var onActivate: (() -> Void)?
+
+    private static let font = NSFont.systemFont(ofSize: ProCardLayout.buttonFontSize,
+                                                weight: .semibold)
+
+    override var intrinsicContentSize: NSSize {
+        let width = (title as NSString).size(withAttributes: [.font: Self.font]).width
+        return NSSize(width: width + ProCardLayout.primaryButtonPadding * 2,
+                      height: ProCardLayout.buttonHeight)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let palette = theme
+        let height = ProCardLayout.buttonHeight
+        let box = CGRect(x: 0, y: (bounds.height - height) / 2, width: bounds.width, height: height)
+
+        let fill: RGB
+        switch (isPressed, isHovered, isEnabled) {
+        case (_, _, false): fill = palette.cap          // 置灰 = 键帽色（"还没到能按的时候"）
+        case (true, _, true): fill = palette.fillPressed
+        case (_, true, true): fill = palette.fillHover
+        default: fill = palette.fill
+        }
+        fill.nsColor.setFill()
+        NSBezierPath(roundedRect: box,
+                     xRadius: ProCardLayout.escKeyCapRadius + 2.5,   // 6（稿子：按钮圆角 6）
+                     yRadius: ProCardLayout.escKeyCapRadius + 2.5).fill()
+
+        let color = isEnabled ? NSColor.white : palette.label2.nsColor
+        (title as NSString).draw(
+            at: CGPoint(x: box.midX - (title as NSString).size(withAttributes: [.font: Self.font]).width / 2,
+                        y: box.midY - (title as NSString).size(withAttributes: [.font: Self.font]).height / 2),
+            withAttributes: [.font: Self.font, .foregroundColor: color])
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        isPressed = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        isPressed = false
+        // 松开时光标已经移走就不算数 —— 与系统按钮一致，"按错了想反悔"不必点第二次
+        guard inside, isEnabled else { return }
+        onActivate?()
+    }
+
+    // MARK: 无障碍（自绘的入场费）
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .button }
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityLabel() -> String? { title }
+    override func accessibilityValue() -> Any? { isEnabled }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled else { return false }
+        onActivate?()
+        return true
+    }
+}
+
 // MARK: - 行
 
 /// 每一页的内容单位。稿子 §01：「最小 58 高（12 上 12 下）· **无底无框** · 行间 1px `--c-hair`」

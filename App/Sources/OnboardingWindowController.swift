@@ -74,6 +74,16 @@ final class OnboardingWindowController: NSWindowController {
         super.init(window: window)
 
         recorder.onRecord = { [weak self] combo in self?.apply(combo) }
+        // 与偏好页同一个动作、同一个理由：录制期间不挂起全局注册的话，
+        // 用户按下自己正用的那颗键会被 Carbon 吃掉（录制器收不到 + 真的截屏）。
+        recorder.onRecordingChanged = { [weak self] isRecording in
+            guard let self else { return }
+            if isRecording {
+                shortcut.suspendForRecording()
+            } else {
+                shortcut.resumeAfterRecording()
+            }
+        }
         window.delegate = self
 
         build()

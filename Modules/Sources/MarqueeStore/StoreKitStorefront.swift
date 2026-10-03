@@ -147,11 +147,88 @@ public actor StoreKitStorefront: StorefrontReading, ProductPurchasing {
     /// `AppStore.sync()` 会要求用户**登录 Apple ID**（可能弹系统提示）——
     /// 这是 Apple 的既定行为，不是我们能绕的。所以它只该在用户主动点了
     /// "恢复购买"时调用，不能放在启动路径上。
+    ///
+    /// ⚠️ **用户取消时它也抛错。** 直接把这个错误透出去、由 Core 一律当成"失败"，
+    /// 用户就会看到"恢复失败 · 检查网络后重试" —— 而他刚刚按的是取消，
+    /// 网络也没问题（2026-10-04 实际报回来的就是这个）。
+    /// 所以这里必须先把平台错误翻译成 `StorefrontRestoreFailure`。
     public func restore() async throws {
-        try await AppStore.sync()
+        do {
+            try await AppStore.sync()
+        } catch {
+            let failure = Self.classifyRestoreFailure(error)
+            logger.info("商店：恢复购买未完成 → \(String(describing: failure), privacy: .public)（原始错误 \(String(describing: error), privacy: .public)）")
+            throw failure
+        }
     }
 
     // MARK: - 内部
+
+    /// 平台错误 → 我们这一侧的三档语义。
+    ///
+    /// ⚠️ 这是**翻译**，不是判断：判断"取消算不算失败"在 Core（`RestoreOutcome`）。
+    /// 这里只回答"StoreKit 说的是哪一类"，**不丢弃任何信息** ——
+    /// 认不出来的原样落 `.other`，由 Core 记日志。
+    ///
+    /// 为什么要认这么几套错误：同一个"用户取消"，在不同系统版本上分别以
+    /// `StoreKitError.userCancelled`、老的 `SKErrorDomain` code 2、以及
+    /// `NSURLErrorDomain` code -1012 三种形态抛出来。只认一种就会漏 ——
+    /// 而漏掉的那一种会原样变成"网络失败"。
+    static func classifyRestoreFailure(_ error: Error) -> StorefrontRestoreFailure {
+        if let storeKitError = error as? StoreKitError {
+            switch storeKitError {
+            case .userCancelled:
+                return .cancelledByUser
+            case .networkError(let urlError):
+                // ⚠️ 网络域里也有"用户取消"那一档，别整片当成网络故障
+                return classifyURLError(urlError)
+            case .systemError(let underlying):
+                // 裹了一层。剥开再问一次，但**只剥一层** ——
+                // 平台错误可以互相嵌套，无界递归会把一次报错变成一次栈溢出。
+                if underlying is StoreKitError { return .other }
+                return classifyRestoreFailure(underlying)
+            default:
+                return .other
+            }
+        }
+
+        let nsError = error as NSError
+        // 老 API 的错误码也会从这条路上漏出来：StoreKit 2 的 async 接口
+        // 并不总是把 `SKError` 包成 `StoreKitError`。
+        //
+        // ⚠️ 这里用**域 + 码**判，而不是 `error as? SKError`。两条路覆盖的是同一批
+        // 错误（`SKError` 就是按这个域桥接的），而域这条不需要去定义"陌生错误码
+        // 该桥成什么"：`Code(rawValue:)` 是可选的，认不出来的码自然落 `.other`。
+        // （这处原来是两条都写 —— 变异验证时发现**其中一条是死的**：摘掉域那条，
+        // 全部测试照绿，因为 `as? SKError` 先接住了。留一条就够，见 PITFALLS 117。）
+        if nsError.domain == SKErrorDomain, let code = SKError.Code(rawValue: nsError.code) {
+            switch code {
+            case .paymentCancelled:
+                return .cancelledByUser
+            case .cloudServiceNetworkConnectionFailed:
+                return .network
+            default:
+                return .other
+            }
+        }
+
+        // Apple《Handling errors》把 `NSURLErrorDomain` 归为"StoreKit 的网络错误"，
+        // 但那张表里明确列着 **-1012 = 用户取消了这次认证** ——
+        // 它长得像网络错误，其实是用户按的取消。整片当成网络故障的话，
+        // 用户会看到"检查网络后重试"，而他刚刚按的是取消（正是本次要修的 bug）。
+        if nsError.domain == NSURLErrorDomain {
+            return classifyURLError(URLError(URLError.Code(rawValue: nsError.code)))
+        }
+        return .other
+    }
+
+    /// `URLError` 里的"取消"与"连不上"。
+    ///
+    /// 目前只挑出 -1012 这一档：它是**用户行为**，不该混进网络故障里。
+    /// 其余一律网络 —— 宁可把"真是网络问题"说成网络，也不把"用户取消"说成网络。
+    private static func classifyURLError(_ error: URLError) -> StorefrontRestoreFailure {
+        error.code == .userCancelledAuthentication ? .cancelledByUser : .network
+    }
 
     private func product(identifier: String) async -> Product? {
         do {

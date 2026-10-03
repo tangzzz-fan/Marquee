@@ -265,4 +265,26 @@ struct AnnotationEditorTests {
         #expect(abs(panned.x - (after.x - 5 / 2)) < 0.001)
         #expect(abs(panned.y - (after.y + 3 / 2)) < 0.001)
     }
+
+    @Test("裁切：刚拿起刀时框**还没**拖出来，拖过之后才算")
+    func cropFrameAdjustedFollowsTheDraft() {
+        // 状态行靠这条判据分辨「拖出保留框」与「⏎ 应用」两张脸（设计稿 §04）。
+        // 写错的话两张脸会合成一张 —— 而画面看起来完全正常，只是用户
+        // 永远等不到那句"可以按 ⏎ 了"。
+        var subject = AnnotationEditorSession(pixelSize: CGSize(width: 400, height: 300))
+
+        #expect(!subject.isCropping)
+        #expect(!subject.isCropFrameAdjusted, "没在裁切的时候说「框拖出来了」是假的")
+
+        subject.beginCrop()
+        #expect(subject.isCropping)
+        #expect(!subject.isCropFrameAdjusted, "刚拿起裁切刀 —— 框还没动过")
+
+        subject.updateCrop(handle: .topLeft, to: CGPoint(x: 40, y: 30))
+        #expect(subject.isCropFrameAdjusted, "拖过之后就该说「可以应用了」")
+
+        subject.cancelCrop()
+        #expect(!subject.isCropping)
+        #expect(!subject.isCropFrameAdjusted)
+    }
 }

@@ -644,9 +644,118 @@ struct LocalizationScanTests {
         // 两份清单一起查：它们都是"这些字受某个宽度约束"的声明，
         // 而一条不再被源码使用的声明**看起来仍在被检查**，其实只是在检查一句没人用的话。
         let declared = Self.hintLineKeys + Self.recentPanelKeys
+            + Self.proCardTitleKeys + Self.proCardBodyKeys
+            + Self.proCardButtonKeys + [Self.proCardMicroKey]
         let orphans = declared.filter { !used.contains(Self.normalized($0)) }
         #expect(orphans.isEmpty,
                 Comment(rawValue: "这些提示行文案已经没人用了：\n"
                         + orphans.joined(separator: "\n")))
+    }
+
+    // MARK: - 升级卡片：每一句都要放得进 300 宽的卡
+
+    /// 卡片上要受宽度约束的文案（key = 中文原句）。
+    ///
+    /// ⚠️ 加一条卡片文案就要加到这里 —— 这份清单就是"哪些字要受这张卡的宽度约束"的声明。
+    static let proCardTitleKeys = [
+        "滚动截屏是 Pro 能力", "识别文字是 Pro 能力", "钉图是 Pro 能力", "最近截图是 Pro 能力",
+    ]
+    static let proCardBodyKeys = [
+        "试用 7 天，结束后自动回到免费版",
+        "试用已结束，免费版仍可截图与标注",
+        "购买已撤销，可点恢复购买重新获取",
+        "这个账号下找不到这笔购买",
+    ]
+    static let proCardButtonKeys = ["7 天免费试用", "了解 Pro", "恢复购买"]
+    static let proCardMicroKey = "关闭卡片，选区保留"
+
+    /// 三种文案结构里 (主, 次) 的组合 —— 卡片的核心判据（`ProCard.content`）只吐这三种。
+    static let proCardButtonPairs: [(primary: String, secondary: String)] = [
+        ("7 天免费试用", "了解 Pro"),     // 从未购买 · 可试用
+        ("了解 Pro", "恢复购买"),         // 试用已结束
+        ("恢复购买", "了解 Pro"),         // 购买被撤销
+    ]
+
+    /// 卡片只有 300 宽、内宽 268 —— **一行**的正文、**一排**的按钮都要放得进。
+    ///
+    /// ⚠️ 稿子上量的是中文（≤ 22 字），而英文同样占这条宽度。
+    /// 这一条是同一类错的**第三次**：提示行（556 pt）、最近截图底部那一句（370 pt），
+    /// 现在是卡片的按钮组（"Start a 7-day free trial" + "Learn about Pro" = **272 > 268**）
+    /// 与正文（"Trial ended. The free version still captures and annotates" = **321**）。
+    /// 三处都只在英文系统上被裁掉尾巴，中文开发机上永远看不见。
+    @Test("升级卡片：标题 / 正文 / 按钮组 / 微行，中英文都要放得进它自己那块宽度")
+    func proCardTextsFit() throws {
+        let catalog = try Self.loadCatalog()
+
+        func english(_ key: String) -> String? { catalog.keys[Self.normalized(key)] ?? nil }
+        func width(_ text: String, size: CGFloat, weight: NSFont.Weight) -> CGFloat {
+            Self.textWidth(text, font: .systemFont(ofSize: size, weight: weight))
+        }
+
+        var overflows: [String] = []
+
+        // ① + ② 标题：从图标右边 8 点起，到右内边距止
+        let titleAvailable = ProCardLayout.width - ProCardLayout.padding
+            - (ProCardLayout.glyphSize + ProCardLayout.glyphTitleGap)
+        for key in Self.proCardTitleKeys {
+            let en = english(key)
+            #expect(en != nil, "「\(key)」在 catalog 里没有英文 —— 英文用户会看到一句中文")
+            for (tag, text) in [("中", key), ("英", en ?? "")] where !text.isEmpty {
+                let w = width(text, size: ProCardLayout.titleFontSize, weight: .semibold)
+                if w > titleAvailable {
+                    overflows.append(String(format: "%@ 标题 %.0fpt（上限 %.0f）%@",
+                                            tag, w, titleAvailable, text))
+                }
+            }
+        }
+
+        // ③ 正文：**一行**。超出就是被裁尾巴（它没有换行的余地）
+        for key in Self.proCardBodyKeys {
+            let en = english(key)
+            #expect(en != nil, "「\(key)」在 catalog 里没有英文")
+            for (tag, text) in [("中", key), ("英", en ?? "")] where !text.isEmpty {
+                let w = width(text, size: ProCardLayout.bodyFontSize, weight: .regular)
+                if w > ProCardLayout.bodyLineWidth {
+                    overflows.append(String(format: "%@ 正文 %.0fpt（上限 %.0f）%@",
+                                            tag, w, ProCardLayout.bodyLineWidth, text))
+                }
+            }
+        }
+
+        // ④ 按钮组：主 + 间距 + 次，右对齐 —— 总量必须放得进内宽
+        for pair in Self.proCardButtonPairs {
+            for tag in ["中", "英"] {
+                let primary = tag == "中" ? pair.primary : (english(pair.primary) ?? "")
+                let secondary = tag == "中" ? pair.secondary : (english(pair.secondary) ?? "")
+                let total = width(primary, size: ProCardLayout.buttonFontSize, weight: .semibold)
+                    + ProCardLayout.primaryButtonPadding * 2
+                    + ProCardLayout.buttonGap
+                    + width(secondary, size: ProCardLayout.buttonFontSize, weight: .medium)
+                    + ProCardLayout.textButtonPadding * 2
+                if total > ProCardLayout.buttonRowWidth {
+                    overflows.append(String(format: "%@ 按钮组 %.0fpt（上限 %.0f）[%@ / %@]",
+                                            tag, total, ProCardLayout.buttonRowWidth,
+                                            primary, secondary))
+                }
+            }
+        }
+
+        // ⑤ 微行：键帽 + 5 + 那句话
+        let capWidth = max(ProCardLayout.escKeyCapMinWidth,
+                           width("esc", size: ProCardLayout.escKeyCapFontSize, weight: .medium)
+                           + ProCardLayout.escKeyCapPadding * 2)
+        let microKey = Self.proCardMicroKey
+        for (tag, text) in [("中", microKey), ("英", english(microKey) ?? "")] where !text.isEmpty {
+            let total = capWidth + ProCardLayout.microGap
+                + width(text, size: ProCardLayout.microFontSize, weight: .regular)
+            if total > ProCardLayout.bodyLineWidth {
+                overflows.append(String(format: "%@ 微行 %.0fpt（上限 %.0f）%@",
+                                        tag, total, ProCardLayout.bodyLineWidth, text))
+            }
+        }
+
+        #expect(overflows.isEmpty,
+                Comment(rawValue: "卡片上这些字放不下，会被裁掉尾巴：\n"
+                        + overflows.joined(separator: "\n")))
     }
 }

@@ -232,7 +232,7 @@ struct OverlayToolbarTests {
     func sizeSlotCountsMatch() {
         // 工具条上的格数是按**线宽**那组建的，而控制层按当前工具去**打码强度**那组取下标 ——
         // 两组长度不一样就会越界（或永远选中不到最后一档），而界面看起来只是"少了一档"。
-        #expect(AnnotationPalette.overlayRedactionStrengths.count == AnnotationPalette.lineWidths.count)
+        #expect(AnnotationPalette.overlayRedactionStrengths.count == AnnotationPalette.overlayLineWidths.count)
         #expect(AnnotationPalette.overlayRedactionStrengths.count == 3)
         // 默认档必须落在数组里，否则一进来就没有任何一档高亮
         #expect(AnnotationPalette.overlayRedactionStrengths.contains(AnnotationPalette.defaultRedactionStrength))
@@ -294,7 +294,7 @@ struct OverlayToolbarTests {
         // 工具条上的格子数是按**线宽**那组建的（`slots` 用的是 `lineWidths.indices`），
         // 而控制层按当前含义去另一组取同一个下标。长度不一样就会越界，
         // 或者最后一档永远高亮不上 —— 而界面看起来只是"那一档点了没反应"。
-        let expected = AnnotationPalette.lineWidths.count
+        let expected = AnnotationPalette.overlayLineWidths.count
         for meaning in OverlaySizeMeaning.allCases {
             #expect(meaning.values.count == expected,
                     "\(meaning) 有 \(meaning.values.count) 档，与工具条的 \(expected) 格对不上")

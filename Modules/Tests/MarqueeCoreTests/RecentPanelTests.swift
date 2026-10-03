@@ -304,8 +304,12 @@ struct RecentPanelTests {
         // 行数少时（空态 / 一两行）必须撑到装得下 —— 让卡片露到面板外面是唯一不能接受的结果。
         let needed = RecentPanel.upgradeCardMinimumPanelHeight
         #expect(needed > 0)
-        // 空态那一档正好等于它：一边都不多
-        #expect(RecentPanel.panelHeight(rowCount: 0, showsFooter: true) == needed)
+        // 空态那一档本来就高过它（装得下还得有余量）——
+        // ⚠️ 这条原先写的是 `== needed`，那是**照着当时的数**写的：
+        // 卡片从 140 变成 115（去掉微行，稿子 §04）之后它就红了。
+        // 「空态装得下」才是那条不变量，等号只是当时恰好成立。
+        #expect(RecentPanel.panelHeight(rowCount: 0, showsFooter: true) >= needed,
+                "空态那一档装不下这张卡片了")
         // 三行往上就不用撑了
         #expect(RecentPanel.panelHeight(rowCount: 3, showsFooter: true) > needed)
         // 一两行必须撑

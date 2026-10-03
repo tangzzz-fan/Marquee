@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>Marquee · 设计稿 vs 实装 · 对照检查</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 32px 80px;
+    background: #1c1c1c; color: #fff;
+    font: 400 13px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font: 600 21px/1.3 -apple-system, "SF Pro Display", sans-serif; margin: 0 0 8px; }
+  .lede { color: rgba(255,255,255,.64); margin: 0 0 28px; max-width: 820px; }
+  h2 {
+    font: 600 15px/1.3 -apple-system, sans-serif; margin: 44px 0 6px;
+    padding-top: 18px; border-top: 1px solid rgba(255,255,255,.10);
+  }
+  h2 .tag {
+    font: 500 10.5px/1 ui-monospace, "SF Mono", monospace;
+    padding: 3px 7px; border-radius: 4px; margin-left: 8px; vertical-align: 2px;
+  }
+  .ok   { background: rgba(48,209,88,.18);  color: #6ee08a; }
+  .warn { background: rgba(248,194,13,.16); color: #f5cd4a; }
+  .todo { background: rgba(255,107,96,.16); color: #ff8f85; }
+  .why { color: rgba(255,255,255,.64); margin: 0 0 14px; max-width: 900px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  figure { margin: 0; background: #252525; border: 1px solid rgba(255,255,255,.10);
+           border-radius: 10px; padding: 14px; }
+  figure.flat { padding: 0; overflow: hidden; }
+  figcaption {
+    font: 500 10.5px/1.4 ui-monospace, "SF Mono", monospace;
+    color: rgba(255,255,255,.64); margin-bottom: 10px; letter-spacing: .01em;
+  }
+  figure.flat img { display: block; width: 100%; }
+  img { display: block; width: 100%; border-radius: 6px; }
+  ul { margin: 8px 0 0; padding-left: 18px; color: rgba(255,255,255,.8); }
+  li { margin: 3px 0; }
+  code { font: 500 11.5px/1 ui-monospace, "SF Mono", monospace;
+         background: rgba(255,255,255,.07); padding: 2px 5px; border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.08);
+           font-size: 12.5px; vertical-align: top; }
+  th { color: rgba(255,255,255,.64); font-weight: 500; }
+  .note { background: #252525; border: 1px solid rgba(255,255,255,.10); border-radius: 10px;
+          padding: 16px 18px; margin-top: 26px; }
+  .note b { color: #62a7fa; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Marquee · 设计稿 vs 实装 · 对照检查</h1>
+  <p class="lede">
+    稿子在 <code>docs/design/2026-10-03-*</code>（open-design 出的五块）。这份文件把每一块与
+    <b>真跑出来的界面</b>并排放。实装侧全部是离屏渲染的产物，不是示意图 ——
+    复现只要三条命令（见文末）。
+    <br>以下截图都是 2026-10-04 这一轮之后的状态；这一轮修掉了 4 处不一致（标 <span class="tag ok">已修</span>）。
+  </p>
+
+  <table>
+    <tr><th>稿子</th><th>状态</th><th>差在哪</th></tr>
+    <tr><td>编辑器（工具条 / 状态行 / 文字预设）</td><td><span class="tag ok">基本对齐</span></td>
+        <td>本轮换了两个图标（画笔、模糊）、补上了「识别文字」那一格；一处有记录的背离：编辑器里没有 Pro 小锁</td></tr>
+    <tr><td>升级卡片（三种文案 · 两个载体）</td><td><span class="tag ok">已重做对齐</span></td>
+        <td>本轮按稿子重做：① 图标槽、⑤ 微行、按钮组右对齐（一个色块 + 一个文字按钮）、悬停/按下两态</td></tr>
+    <tr><td>偏好设置 4 页</td><td><span class="tag ok">本轮修 2 处</span></td>
+        <td>Pro 状态区的主次与结构（原先两颗系统按钮反过来）、状态区面板没有铺满整列宽</td></tr>
+    <tr><td>最近截图面板</td><td><span class="tag ok">对齐</span></td>
+        <td>配额文案的数与稿子不同（产品定为 5 张，稿子示意 12）</td></tr>
+    <tr><td>引导页</td><td><span class="tag ok">对齐</span></td>
+        <td>—</td></tr>
+    <tr><td>覆盖层（工具条 / 提示行 / 读数）</td><td><span class="tag warn">要真机验收</span></td>
+        <td>它是<b>逐屏全屏面板</b>，离不开真实屏幕与屏幕录制授权，无法离屏截图；冒烟入口在（<code>-marqueeSmokeOverlay</code>）</td></tr>
+    <tr><td>菜单栏下拉</td><td><span class="tag warn">要真机验收</span></td>
+        <td><code>NSMenu</code> 是系统临时面板，离屏拿不到；已按稿子实现（5 项 + 全菜单一把锁）</td></tr>
+    <tr><td>小浮层（钉图 / 倒计时 / 权限）</td><td><span class="tag warn">未出图</span></td>
+        <td>已接新色板（ticket 17a），本轮没有对照截图</td></tr>
+  </table>
+
+  <h2>① 编辑器工具条<span class="tag ok">已修：两个图标 + 缺的那一格</span></h2>
+  <p class="why">
+    上一轮出的 <code>implemented-toolbar.png</code> 里有两处一眼就不对：<b>画笔</b>用的是
+    <code>pencil.tip</code>（只画笔尖那一段，渲染出来是一个楔形），<b>模糊</b>用的是
+    <code>camera.filters</code>（两个交叠的圆，像"合并"）。稿子画的分别是一整支笔与<b>水滴</b>。
+    另外那一格「识别文字」在快照里根本没画出来 —— 因为它是 <code>if let ocr</code> 才画的，
+    而快照没传识别器。
+  </p>
+  <div class="pair">
+    <figure class="flat"><figcaption>稿子 · editor-window.html §03 整窗（工具条那一条）</figcaption>
+      <img src="draft-01-编辑器工具条.png" alt="稿子：编辑器工具条"></figure>
+    <figure class="flat"><figcaption>实装 · -marqueeSmokeEditor（1200 × 48 @2x）</figcaption>
+      <img src="impl-01-编辑器工具条.png" alt="实装：编辑器工具条"></figure>
+  </div>
+
+  <h2>升级卡片<span class="tag ok">已按稿子重做</span></h2>
+  <p class="why">
+    这是这一批改动最大的地方。原先是"标题 + 两行正文 + 两个等宽按钮"，而稿子给的是<b>五个槽</b>：
+    ① 图标（用户刚点的那个功能）② 标题 ③ 正文（<b>一行</b>）④ 按钮组（<b>一个色块 + 一个文字按钮，右对齐</b>）
+    ⑤ 微行（<code>esc</code> 键帽 + 关闭卡片，选区保留）。尺寸也从"140 一档"变成两档
+    （载体 A 140 / 载体 B 115 —— 差的正好是微行那一档）。
+  </p>
+  <div class="pair">
+    <figure class="flat"><figcaption>稿子 · pro-upgrade-card.html §03 载体 A</figcaption>
+      <img src="draft-02-升级卡片.png" alt="稿子：升级卡片"></figure>
+    <figure class="flat"><figcaption>实装 · -marqueeSmokeProCard（七种状态叠一张）</figcaption>
+      <img src="impl-02-升级卡片.png" alt="实装：升级卡片"></figure>
+  </div>
+
+  <h2>② 偏好设置 · 通用页<span class="tag ok">已修：Pro 状态区</span></h2>
+  <p class="why">
+    稿子里这一区是<b>两行</b>：状态句一行，下面一行按钮，其中「升级到 Pro」是<b>整页唯一色块</b>
+    （蓝实心、在左），「恢复购买」是<b>纯文字</b>（在右）。实装原来是两颗系统圆角按钮并排在状态句右边 —— 
+    主次反了，而且没有色块。另外那一块面板当时没有铺满整列宽（缩到内容宽并贴到右边）。
+  </p>
+  <div class="pair">
+    <figure class="flat"><figcaption>稿子 · preferences.html §03 通用页</figcaption>
+      <img src="draft-03-偏好设置通用.png" alt="稿子：偏好设置通用页"></figure>
+    <figure class="flat"><figcaption>实装 · -marqueeSmokeCompliance（四页各一张）</figcaption>
+      <img src="impl-03-偏好设置通用.png" alt="实装：偏好设置通用页"></figure>
+  </div>
+  <div class="pair" style="margin-top:14px">
+    <figure class="flat"><figcaption>实装 · 截屏页</figcaption>
+      <img src="impl-03b-偏好设置截屏.png" alt="实装：偏好设置截屏页"></figure>
+    <figure class="flat"><figcaption>实装 · 输出页</figcaption>
+      <img src="impl-03c-偏好设置输出.png" alt="实装：偏好设置输出页"></figure>
+  </div>
+  <div class="pair" style="margin-top:14px">
+    <figure class="flat"><figcaption>实装 · 快捷键页</figcaption>
+      <img src="impl-03d-偏好设置快捷键.png" alt="实装：偏好设置快捷键页"></figure>
+    <figure class="flat"><figcaption>（这一格留给真机上的实拍对照）</figcaption>
+      <div style="height:120px;border:1px dashed rgba(255,255,255,.14);border-radius:6px"></div></figure>
+  </div>
+
+  <h2>③ 最近截图面板<span class="tag ok">对齐</span></h2>
+  <p class="why">
+    结构逐项对上：标题带 34 / 行 46（缩略图 48×34、时间 + 尺寸两行、右端两个动作）/ 底部 30 /
+    空态块 120；满 12 行 <b>618</b>。一处<b>有意的不同</b>：底部那句写的是「免费版只保留最近 5 张」，
+    而稿子的示意值是 12 —— 免费额度是产品决定（5 张），稿子那张图上的数只是示意。
+  </p>
+  <div class="pair">
+    <figure class="flat"><figcaption>稿子 · recent-captures.html §02（深色）</figcaption>
+      <img src="draft-04-最近截图.png" alt="稿子：最近截图面板"></figure>
+    <figure class="flat"><figcaption>实装 · -marqueeSmokeCompliance（3 条临时历史）</figcaption>
+      <img src="impl-04-最近截图.png" alt="实装：最近截图面板"></figure>
+  </div>
+
+  <h2>④ 引导页<span class="tag ok">对齐</span></h2>
+  <p class="why">单页 440 × 336：标题 + 一句承诺 + 快捷键录制框 + 权限状态 + 两个动作。</p>
+  <div class="pair">
+    <figure class="flat"><figcaption>稿子 · first-run-onboarding.html</figcaption>
+      <img src="draft-05-引导页.png" alt="稿子：引导页"></figure>
+    <figure class="flat"><figcaption>实装 · -marqueeSmokeCompliance</figcaption>
+      <img src="impl-05-引导页.png" alt="实装：引导页"></figure>
+  </div>
+
+  <h2>⑤ 覆盖层工具条<span class="tag warn">要真机验收</span></h2>
+  <p class="why">
+    覆盖层是<b>逐屏的全屏面板</b>（<code>.screenSaver</code> 层 + 逐屏一个视图 + 冻结帧取色），
+    离开真实屏幕与屏幕录制授权就画不出来 —— 所以这一块没有离屏截图，只有稿子。
+    上一轮已经按稿子做过（15 格 / 545×40、白芯黑边、读数框三种行色、22 点提示行），
+    真机验收用 <code>Marquee -marqueeSmokeOverlay</code>。
+  </p>
+  <figure class="flat" style="max-width:720px"><figcaption>稿子 · capture-overlay.html 工具条那一条</figcaption>
+    <img src="draft-06-覆盖层工具条.png" alt="稿子：覆盖层工具条"></figure>
+
+  <div class="note">
+    <b>怎么自己复现这些图</b>
+    <ul>
+      <li><code>./scripts/build.sh</code>（默认 Dev 配置）</li>
+      <li><code>Marquee -marqueeSmokeCompliance</code> → 偏好 4 页 + 最近截图 + 引导页</li>
+      <li><code>Marquee -marqueeSmokeEditor</code> → 编辑器工具条 / 状态行 / 文字预设</li>
+      <li><code>Marquee -marqueeSmokeProCard</code> → 升级卡片七种状态</li>
+      <li><code>Marquee -marqueeSmokeRecent</code> → 最近截图面板的量尺报告（文本）</li>
+    </ul>
+    <p class="why" style="margin:10px 0 0">
+      图落在 <code>~/Library/Application Support/com.tango.Marquee.dev/reports/</code>。
+      稿子那一侧是用一个临时小工具（<code>WKWebView</code> 截图）从 HTML 里按选择器切出来的。
+      <br>⚠️ 已知失真：材质（<code>NSVisualEffectView</code>）在离屏渲染时会退化成平色 ——
+      布局 / 字号 / 控件 / 颜色可信，"毛玻璃"看着比真机平。
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

@@ -20,8 +20,9 @@ import MarqueeCore
 /// - **开机自启失败时界面必须等于系统里的真实状态**：关闭开关 + 琥珀行 + 一个能直接
 ///   点开的去处（`SystemSettingsLink.loginItems`）。指示一个方向不算数 ——
 ///   用户卡住的地方正是"跟着一句话找三级菜单"。
-/// - **恢复购买点了就一定有回话**（四种结果常驻，不自动消失）。用户主动点的动作，
-///   悄悄失败等于骗他。
+/// - **恢复购买点了就一定有回话**（五种结果常驻，不自动消失）。用户主动点的动作，
+///   悄悄失败等于骗他。而且**回话要说准原因**：只有真的连不上才提网络，
+///   用户自己按的取消既不报红也不说"失败"。
 @MainActor
 final class PreferencesWindowController: NSWindowController {
 
@@ -49,8 +50,10 @@ final class PreferencesWindowController: NSWindowController {
     // 通用页底部的 Pro 状态区（ticket 31）
     private let proStatusLabel = NSTextField(labelWithString: "")
     private let proOutcomeLabel = NSTextField(labelWithString: "")
-    private let proActionButton = NSButton()
-    private let proRestoreButton = NSButton()
+    /// 「升级到 Pro」—— 稿子偏好稿里的**唯一色块**（蓝实心、在左）。
+    private let proActionButton = ChromeFilledButton()
+    /// 「恢复购买」—— 稿子里它是**纯文字**（无底无框，在色块的右边）。
+    private let proRestoreButton = ChromeTextButton()
     private let proPanel = ChromePanel()
 
     // 截屏
@@ -95,6 +98,16 @@ final class PreferencesWindowController: NSWindowController {
 
         buildShell()
         recorder.onRecord = { [weak self] combo in self?.apply(combo) }
+        // 录制期间挂起全局快捷键：不挂起的话，用户按下的**当前那颗键**
+        // 会被 Carbon 在系统层面吃掉 —— 录制器收不到，反而真的开始截屏。
+        recorder.onRecordingChanged = { [weak self] isRecording in
+            guard let self else { return }
+            if isRecording {
+                shortcut.suspendForRecording()
+            } else {
+                shortcut.resumeAfterRecording()
+            }
+        }
         loadAll()
         // 权益一变就刷新状态区（ticket 31）。注册时会**立刻回调一次当前值**，
         // 所以不必在 `loadAll` 里再手写一遍初始渲染 —— 那两处迟早会不一致。
@@ -194,7 +207,9 @@ final class PreferencesWindowController: NSWindowController {
         select(.general)
     }
 
-    private func select(_ page: SettingsPage) {
+    /// 切到某一页。**对照材料也用它**（`ComplianceSheet` 要把四页各渲一张）——
+    /// 那条路与真机的点标签走的是**同一份代码**，专门另开一条就分叉了。
+    func select(_ page: SettingsPage) {
         currentPage = page
         tabBar.selectedIndex = SettingsPage.allCases.firstIndex(of: page) ?? 0
         container.subviews.forEach { $0.removeFromSuperview() }
@@ -220,15 +235,23 @@ final class PreferencesWindowController: NSWindowController {
         // 这一行会有第三行（注册失败时），所以先把位置留出来
         launchRow.installNoticeRow()
 
-        return page([
+        let proPanel = makeProPanel()
+        let general = page([
             ChromeRow(title: L10n.t("截图后播放提示音"),
                       subtitle: L10n.t("截成功时播一声系统音效 · 关掉适合连着截很多张的时候"),
                       control: soundSwitch),
             ChromeSeparator(),
             launchRow,
             ChromeSeparator(),
-            makeProPanel(),
+            proPanel,
         ])
+        // ⚠️ 面板要**铺满整列宽**（与上面每一行一样）。它自己撑不开 ——
+        // `NSStackView` 的 `.width` 对齐对它不生效（面板内部那几条"内容贴着边"的约束
+        // 给出了一个更小、更硬的宽度），实测下来它会缩到内容宽并**贴到右边**。
+        // 钉 `equalTo: general.widthAnchor` 而不是写一个 400 那样的数：
+        // 那个数要与窗宽、边距三处同源，而这一条自己就是"与整列同宽"的意思。
+        proPanel.widthAnchor.constraint(equalTo: general.widthAnchor).isActive = true
+        return general
     }
 
     /// 通用页底部的 Pro 状态区（ticket 31）。
@@ -241,37 +264,37 @@ final class PreferencesWindowController: NSWindowController {
         proStatusLabel.lineBreakMode = .byTruncatingTail
         proStatusLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        proRestoreButton.bezelStyle = .rounded
-        proRestoreButton.controlSize = .small
+        // 稿子偏好稿 §C：状态句在上，按钮行在它下面 ——
+        // 「升级到 Pro」是**唯一色块**（蓝实心、在左），「恢复购买」是**纯文字**（在右）。
+        // 之前是两颗系统圆角按钮并排在状态句右边：主次靠"哪个有底"说不清，
+        // 与稿子「一个色块 + 一个文字按钮」正好相反。
         proRestoreButton.title = L10n.t("恢复购买")
-        proRestoreButton.target = self
-        proRestoreButton.action = #selector(proRestoreTapped)
+        proRestoreButton.emphasis = .quiet
+        proRestoreButton.onActivate = { [weak self] in self?.proRestoreTapped() }
 
-        proActionButton.bezelStyle = .rounded
-        proActionButton.controlSize = .small
-        proActionButton.target = self
-        proActionButton.action = #selector(proActionTapped)
+        proActionButton.title = L10n.t("升级到 Pro")
+        proActionButton.onActivate = { [weak self] in self?.proActionTapped() }
 
-        let buttons = NSStackView(views: [proRestoreButton, proActionButton])
+        let buttons = NSStackView(views: [proActionButton, proRestoreButton])
         buttons.orientation = .horizontal
+        buttons.alignment = .centerY
+        buttons.spacing = ProCardLayout.buttonGap
         buttons.spacing = 8
 
-        // 状态句在左、两个按钮在右，中间那个空视图负责吃掉多余的宽度。
-        // 不给它降低 hugging 的话，中间会被压成 0，两个按钮会紧贴状态句。
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let top = NSStackView(views: [proStatusLabel, spacer, buttons])
-        top.orientation = .horizontal
-        top.alignment = .centerY
-        top.spacing = 12
-        proStatusLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        // 稿子是**两行**：状态句一行，按钮行在它下面（都不居中、都贴左）。
+        // 之前把三个挤在一行，于是状态句长一点就会把按钮挤出面板。
+        proStatusLabel.font = .systemFont(ofSize: 12)
+        let body = NSStackView(views: [proStatusLabel, buttons])
+        body.orientation = .vertical
+        body.alignment = .leading
+        body.spacing = 12
 
         // 恢复购买的结果行（常驻，四种结果都在这儿）。它在**按钮下方** ——
         // 它属于"刚才那一下"，不属于上面那句整句状态（稿子 §04）。
         proOutcomeLabel.font = .systemFont(ofSize: 11)
         proOutcomeLabel.stringValue = ""
 
-        proPanel.setContent([top, proOutcomeLabel])
+        proPanel.setContent([body, proOutcomeLabel])
         proPanel.translatesAutoresizingMaskIntoConstraints = false
         return proPanel
     }
@@ -613,6 +636,8 @@ final class PreferencesWindowController: NSWindowController {
         }
         // 「恢复购买」**永远可点**：App Review 要求可恢复，
         // 而且"我明明买过"的人第一件事就是找这个按钮。
+        // 「恢复购买」**永远可点**：App Review 要求可恢复，
+        // 而且"我明明买过"的人第一件事就是找这个按钮。
     }
 
     private static func proStatusText(_ snapshot: EntitlementSnapshot) -> String {
@@ -633,12 +658,12 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
-    @objc private func proActionTapped() {
+    private func proActionTapped() {
         // 不等结果：买成之后判定会变，状态区靠 `observe` 那条路自己更新。
         Task { _ = await ProEntitlement.shared.purchasePro() }
     }
 
-    @objc private func proRestoreTapped() {
+    private func proRestoreTapped() {
         proOutcomeLabel.stringValue = L10n.t("正在恢复…")
         proOutcomeLabel.textColor = ChromePalette.Theme.current.label2.nsColor
         Task { [weak self] in
@@ -650,7 +675,12 @@ final class PreferencesWindowController: NSWindowController {
     /// 恢复购买**必须如实回报** —— 这是用户主动点的动作，
     /// 悄悄失败等于骗他"恢复过了，确实没有记录"。
     ///
-    /// 四种结果**都常驻**（不自动消失、不需要"知道了"）——
+    /// ⚠️ **原因不许猜。** 原先只有一句"恢复失败 · 检查网络后重试"，
+    /// 而用户在系统弹框上按的取消也会走进这一档 —— 于是网络正常的人被派去查网
+    ///（2026-10-04 用户报回来的就是这个）。现在每一档对应一句**说得准**的话：
+    /// 只有真·连不上才提网络，其余一律"稍后再试"。
+    ///
+    /// 五种结果**都常驻**（不自动消失、不需要"知道了"）——
     /// 它属于"刚才那一下"，不属于上面那句整句状态。
     private func showRestoreOutcome(_ outcome: EntitlementCoordinator.RestoreOutcome) {
         let palette = ChromePalette.Theme.current
@@ -662,8 +692,19 @@ final class PreferencesWindowController: NSWindowController {
             // 中性，**不是错误**："这个账号下没有可恢复的"是一个正常结果
             proOutcomeLabel.stringValue = L10n.t("这个账号下没有可恢复的购买")
             proOutcomeLabel.textColor = palette.label2.nsColor
-        case .failed:
+        case .cancelledByUser:
+            // 用户自己按的取消：**不是错误**，不报红、不说"失败"。
+            // 也不能什么都不显示 —— 上面那行还停在"正在恢复…"，
+            // 一句不回等于让人以为它卡住了（本文件开头那条"点了就一定有回话"）。
+            proOutcomeLabel.stringValue = L10n.t("已取消，没有改动")
+            proOutcomeLabel.textColor = palette.label2.nsColor
+        case .networkFailed:
             proOutcomeLabel.stringValue = L10n.t("恢复失败 · 检查网络后重试")
+            proOutcomeLabel.textColor = palette.danger.nsColor
+        case .failed:
+            // 已经知道失败了，但**不知道原因** —— 那就只说知道的这一半。
+            // 顺手加一句"网络"是把自己没查过的事说成事实。
+            proOutcomeLabel.stringValue = L10n.t("恢复失败 · 请稍后再试")
             proOutcomeLabel.textColor = palette.danger.nsColor
         }
     }

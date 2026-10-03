@@ -604,8 +604,9 @@ public final class SelectionOverlayController {
         // 收卡片只置 `proCard = nil`：**选区与标注一个字都不动**，
         // 关掉之后用户能接着把这次截图做完（产品的硬规则，见 MAS-AND-MONETIZATION §1）。
         if proCard != nil {
-            proCard = nil
-            refresh()
+            // 与"点卡片外面"走**同一个收尾**（`dismissProCard`）——
+            // 两条路各写一遍的话，迟早会有一边顺手清掉别的东西。
+            dismissProCard()
             return
         }
         if palette != nil {
@@ -1304,7 +1305,9 @@ public final class SelectionOverlayController {
             canUndo: annotationSession.canUndo,
             canRedo: annotationSession.canRedo,
             palette: palettePresentation(barFrame: barFrame, screenFrame: visibleFrame),
-            proCard: proCardPresentation(barFrame: barFrame, screenFrame: visibleFrame),
+            proCard: proCardPresentation(barFrame: barFrame,
+                                         selection: annotationRect(),
+                                         screenFrame: visibleFrame),
             lockedFeatures: lockedFeatures,
             hoveredSlot: hoveredSlot
         )
@@ -1347,12 +1350,23 @@ public final class SelectionOverlayController {
     /// 与弹层同一个套路：位置**从工具条的矩形算**（`ProCardLayout.frame`），
     /// 不另起一套 —— 各算各的必然出现"卡片飘在离工具条半格的地方"。
     private func proCardPresentation(barFrame: CGRect,
+                                     selection: CGRect?,
                                      screenFrame: CGRect) -> ProCardPresentation? {
         guard let content = proCard else { return nil }
-        return ProCardPresentation(
-            frame: ProCardLayout.frame(toolbar: barFrame, screenFrame: screenFrame),
-            content: content
-        )
+        // 覆盖层里这张是**载体 A**：恒深色、带微行（稿子 §03）。
+        let includesMicro = true
+        let frame = ProCardLayout.frame(toolbar: barFrame,
+                                        selection: selection,
+                                        screenFrame: screenFrame,
+                                        includesMicro: includesMicro)
+        // ⚠️ `layout` 在这里算一次，**绘制与命中都用它**。
+        // 两边各算一遍的话，"看着在按钮上、点它没反应"会在某次调尺寸时悄悄出现。
+        // 量字宽要 `NSFont`，所以这一步走 `ProCardRenderer`（Core 不碰字体）。
+        let layout = ProCardRenderer.layout(for: content,
+                                            in: CGRect(origin: .zero, size: frame.size),
+                                            includesMicro: includesMicro)
+        return ProCardPresentation(frame: frame, content: content,
+                                   layout: layout, includesMicro: includesMicro)
     }
 
     /// 当前这一组的选中值。
@@ -2200,23 +2214,68 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         perform(paletteItem: item)
     }
 
+    /// 点在了卡片外面：**收卡片，别的不动**。
+    ///
+    /// 与 `Esc` 走**同一个收尾**（`proCard = nil` + 刷新）—— 稿子把它们当成同一件事：
+    /// 「卡片也没有 ✕，Esc / 点别处即是关闭」。两条路各写一遍的话，
+    /// 迟早会出现"Esc 收得掉、点别处收不掉"（或者反过来还顺手清掉了别的状态）。
+    func overlayViewDidDismissProCard(_ view: SelectionOverlayView) {
+        dismissProCard()
+    }
+
+    /// 权益判定变了（用户刚买了 / 刚恢复完）—— 覆盖层要跟着变。
+    ///
+    /// ⚠️ **重新问一次 `ProCard.content`，而不是自己判断"现在是不是解锁了"**：
+    /// 那个函数就是"该不该弹卡片"的**唯一判据**（返回 `nil` 恰好就是"该放行"）。
+    /// 在这里另写一遍的话，"某一项放开了但卡片照弹"这类不一致迟早会出现。
+    ///
+    /// 有了它，"点恢复购买 → 成功了 → 锁**当场**消失"才成立 ——
+    /// 否则用户会盯着一个已经没用的锁，以为恢复没成功。
+    public func entitlementsChanged() {
+        guard let current = proCard, let snapshot = proEntitlement?() else { return }
+        proCard = ProCard.content(for: snapshot, feature: current.feature)
+        refresh()
+    }
+
+    /// 收卡片。**只置 `proCard`**：选区与标注一个字都不动 ——
+    /// 用户中途放弃，这次截图还能接着做完。
+    private func dismissProCard() {
+        guard proCard != nil else { return }
+        proCard = nil
+        refresh()
+    }
+
     func overlayView(_ view: SelectionOverlayView, clickedProCardAt globalPoint: CGPoint) {
         guard !isFinishing, let content = proCard,
               let card = panelPresentationIfSettled()?.toolbar.proCard else { return }
         guard let action = ProCardLayout.action(at: globalPoint,
                                                 in: card.frame,
+                                                layout: card.layout,
                                                 buttons: content) else {
-            // 点在卡片的正文或空白处：**什么都不做**。
-            // 手抖一下就变成"发起购买"，是这张卡片上最贵的错误。
+            // 点在卡片的正文或空白处：**什么都不做**（那一层已经被视图吃掉了，
+            // 不会掉进拖选区）。手抖一下就变成"发起购买"，是这张卡片上最贵的错误。
             return
         }
         logger.info("升级卡片：点了 \(action.rawValue, privacy: .public)")
 
-        // 先把卡片收掉再回调：三个动作都会弹别的东西（系统购买面板 / 偏好设置），
-        // 卡片留着会正好盖在它们该出现的位置上。
-        // 收卡片不碰选区与标注 —— 用户中途放弃，这次截图还能接着做完。
-        proCard = nil
-        refresh()
+        // ⚠️ **先让开，再执行。**
+        //
+        // 覆盖层是 `.screenSaver` 层的**非激活**面板，整屏压在普通窗口之上 ——
+        // 而这两个动作都要开窗口（偏好设置 / StoreKit 的购买面板）。
+        // 覆盖层不退场的话，那个窗口会在它**底下**打开：用户看到的是"点了没反应"，
+        // 于是把整张卡片说成"点不动"。这正是 2026-10-04 用户报的那一条。
+        //
+        // `cancel()` 与 `Esc` 走同一条收尾（宿主那边对 `.cancelled` 只记一条日志），
+        // 所以这里不会顺手做别的事。代价是**选区没了** —— 而用户点的是
+        // "去了解 Pro / 开始试用"，那是一段要离开这次截图的流程。
+        if action.needsAnotherWindow {
+            cancel()
+        } else {
+            // 原地能完成的那一个（恢复购买）：只收卡片，**选区与标注一个字不动** ——
+            // 成功就当场解锁（锁跟着消失），失败就留着这次截图接着做完。
+            proCard = nil
+            refresh()
+        }
         onProCardAction?(action)
     }
 
@@ -2511,6 +2570,14 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         context.tool = annotationSession.tool
         context.toolbar = presentation.toolbar?.frame
         context.palette = presentation.toolbar?.palette?.frame
+        // 升级卡片：整块 + 两个按钮的命中区（**它排在弹层与工具条之前判**）。
+        // 两个按钮的矩形由 `card.layout` 从**卡片局部**换成全局 —— 与命中用的是同一份矩形。
+        if let card = presentation.toolbar?.proCard {
+            context.proCard = card.frame
+            context.proCardButtons = [card.layout.primary, card.layout.secondary].map {
+                $0.offsetBy(dx: card.frame.minX, dy: card.frame.minY)
+            }
+        }
 
         // 选区控制点：`handleFrame` 只跟中心点有关，所以直接拿全局矩形算，
         // 不必先换算到局部再换回来（少一次转换就少一次翻错 y 的机会）。

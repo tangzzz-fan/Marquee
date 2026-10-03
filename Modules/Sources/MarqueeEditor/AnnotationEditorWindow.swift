@@ -14,6 +14,14 @@ public final class AnnotationEditorPresenter {
         self.recognizer = recognizer
     }
 
+    /// 冒烟：把编辑器的工具条与状态行渲成 PNG，返回落盘路径。
+    ///
+    /// 只在 `-marqueeSmokeEditor` 那条路上被调用 —— 生产路径不碰它。
+    @discardableResult
+    public func renderChromeSnapshots(image: CGImage, into directory: URL) -> [String] {
+        AnnotationEditorView.renderChromeSnapshots(image: image, into: directory)
+    }
+
     /// `seed` 用来预置标注（开发演示用：`-marqueeDemoEditor`），正常流程为空。
     ///
     /// `seed` 放在闭包**前面**：尾随闭包只能匹配最后一个参数，
@@ -49,25 +57,37 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
     /// 用户当时的反馈正是"OCR 入口我不知道在哪"：不是没找到，是它压根没画出来。
     ///
     /// `minSize` 同理：窗口窄到放不下工具栏就没有意义了，所以下限也抬到工具栏宽度之上。
-    private static let defaultSize = NSSize(width: 1180, height: 760)
-    /// 图标化之后工具栏约 850 点，下限给 900 就够 ——
-    /// 但也不能再低：窄过它右边那几个动作按钮又会被挤出可视区。
-    private static let minimumSize = NSSize(width: 900, height: 540)
+    private static let defaultSize = NSSize(width: EditorChrome.defaultWindowSize.width,
+                                            height: EditorChrome.defaultWindowSize.height)
+    /// ⚠️ 下限由 **Core 算出来**（`EditorChrome.minimumWindowSize`）——
+    /// 它是整条工具条所需的最小宽度（红绿灯 + 九个工具 + 托盘 + 尺寸芯片 + 缩放 + 右簇）。
+    /// 写死一个数的话，往条上加一件东西就会让最右边那几格**被静默裁掉**
+    ///（这条路径不崩不报错，只是少了几个按钮 —— 历史上真的发生过）。
+    private static let minimumSize = NSSize(width: EditorChrome.minimumWindowSize.width,
+                                            height: EditorChrome.minimumWindowSize.height)
 
     init(image: CGImage,
          onCopyPNG: @escaping @MainActor (Data) -> Void,
          onSave: @escaping @MainActor (CGImage) -> Void,
          seed: [Annotation] = [],
          recognizer: TextRecognizing? = nil) {
+        // ⚠️ **工具条即标题栏**（设计稿 §10 的登记项之一）：
+        // `.fullSizeContentView` 让内容铺到标题栏底下，标题条透明且不画标题 ——
+        // 于是那 48 点里放的是工具，而不是"标题 + 工具"两行。
+        // 省下的那一行全部给了画布，而画布是这扇窗存在的理由。
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.defaultSize),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable,
+                                          .fullSizeContentView],
                               backing: .buffered,
                               defer: false)
         window.title = L10n.t("标注")
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.minSize = Self.minimumSize
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        window.backgroundColor = NSColor(white: 0.11, alpha: 1)
+        // 窗口底 = `--c-bg`（台面另有一块更暗的 `--c-inset`，在画布那层）。
+        window.backgroundColor = ChromePalette.dark.background.nsColor
         super.init(window: window)
         window.delegate = self
 
@@ -144,6 +164,10 @@ private struct AnnotationEditorView: View {
     @State private var session: AnnotationEditorSession
     @State private var viewport = CanvasViewport()
     @State private var didFit = false
+    /// 当前缩放**是不是**「适应窗口」那一个 —— 状态行那四个字只在它为真时出现。
+    @State private var zoomIsFitted = false
+    /// 文字预设弹层开着没有。选中文字工具时自动开；用户点别处收掉之后工具仍是文字。
+    @State private var showTextPresets = false
     @State private var dragging = false
     @State private var canvasSize = CGSize.zero
     /// 打码结果的缓存。CoreImage 一次 2.6 ms，不能每帧重算 ——
@@ -161,7 +185,7 @@ private struct AnnotationEditorView: View {
     /// 各写一份会分叉，而分叉的表现是"在覆盖层里挑的橙，进编辑器变成了另一个橙" ——
     /// 没人会往"两份常量"上面想，只会觉得颜色自己变了。
     private let colors = AnnotationPalette.colors
-    private let lineWidths = AnnotationPalette.lineWidths
+    private let lineWidths = AnnotationPalette.editorLineWidths
     /// 字号档位。文字标注的"粗细"就是字号，和线宽共用同一排控件。
     private let fontSizes: [CGFloat] = [24, 36, 56]
     /// 打码强度档位（马赛克＝块边长、模糊＝半径）。两档之间的差别要一眼看得出来。
@@ -180,7 +204,12 @@ private struct AnnotationEditorView: View {
         // 识别器只在**首次**建视图时被用一次：`State(initialValue:)` 之后重建视图不会重置它，
         // 否则识别到一半重建一次就会把结果丢掉。
         _ocr = State(initialValue: recognizer.map { TextRecognitionService(recognizer: $0) })
-        var initial = AnnotationEditorSession(pixelSize: CGSize(width: image.width, height: image.height))
+        // ⚠️ 样式用**编辑器那一套**（`editorDefaultStyle`），不是 `AnnotationStyle.default`：
+        // 后者那四个数是覆盖层的（线宽 4 点、字号 36 点、打码 12 点）。
+        // 接错的表现很具体：进编辑器时「4 px」被点亮 —— 而 4 是编辑器那三档里**最小**的一档，
+        // 于是用户第一笔就画了一根细线，还以为默认是中档。
+        var initial = AnnotationEditorSession(pixelSize: CGSize(width: image.width, height: image.height),
+                                             style: AnnotationPalette.editorDefaultStyle)
         initial.document.annotations = seed
         _session = State(initialValue: initial)
     }
@@ -189,186 +218,555 @@ private struct AnnotationEditorView: View {
         VStack(spacing: 0) {
             toolbar
             canvas
+            statusLine
         }
-        .background(Color(white: 0.11))
-        .overlay(alignment: .topTrailing) { ocrPanel }
+        .background(ChromePalette.dark.background.color)
+        .overlay(alignment: .bottomTrailing) { ocrPanel.padding(16) }
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 4) {
-            toolButton(.select, systemImage: "cursorarrow", title: L10n.t("选择"))
-            toolButton(.rectangle, systemImage: "rectangle", title: L10n.t("矩形"))
-            toolButton(.ellipse, systemImage: "circle", title: L10n.t("椭圆"))
-            toolButton(.arrow, systemImage: "arrow.up.right", title: L10n.t("箭头"))
-            toolButton(.pen, systemImage: "pencil.tip", title: L10n.t("画笔"))
-            // ⚠️ 与覆盖层**同一个图标**（`t.square`）：同一个功能在两处用不同图标，
-            // 用户会以为是两个不同的东西。也不能用 `textformat` ——
-            // 它在中文本地化下会变成两个字「格式」。
-            toolButton(.text, systemImage: "t.square", title: L10n.t("文字"))
-            toolButton(.mosaic, systemImage: "checkerboard.rectangle", title: L10n.t("马赛克"))
-            toolButton(.blur, systemImage: "camera.filters", title: L10n.t("模糊"))
-            cropButton
+    /// 把工具条与状态行各渲一张 PNG（**只在冒烟路径上跑**）。
+    ///
+    /// ## 为什么值得有它
+    ///
+    /// 工具条是 SwiftUI 拼的：Core 的首测钉住了那些数字（格 28 / 托盘 174 / 芯片 54 × 38 /
+    /// 整条放得进窗口），但"摆出来是不是那样"只有眼睛能判 ——
+    /// 而这一批恰好把整条重做了一遍（色板从弹层搬出来、尺寸加了读数、预设改住弹层）。
+    ///
+    /// `ImageRenderer` 让这一步不必靠人守在屏幕前：PNG 落在报告目录里，打开就能看。
+    /// 它与 Core 的单测是**互补**的 —— 那边答"数对不对"，这边答"看起来对不对"。
+    ///
+    /// ⚠️ 渲染用的是**固定深色**（编辑器本来就不跟系统外观），所以 ImageRenderer
+    /// 的默认环境（浅色）不会影响结果 —— 这也是"固定深色是刻意的"那条决定的副产品。
+    @MainActor
+    static func renderChromeSnapshots(image: CGImage, into directory: URL) -> [String] {
+        // ⚠️ 传一个**假的识别器**：编辑器里那一格是 `if let ocr` 才画的，
+        // 而真机上只有 Pro 用户进得来这个窗口（长截图 ⇒ Pro），
+        // 所以他看到的**一定**带那一格。不传的话这张快照会少一格，
+        // 而"少了一格"看起来就像编辑器根本没有识别文字能力。
+        let view = AnnotationEditorView(image: image,
+                                        onCopyPNG: { _ in },
+                                        onSave: { _ in },
+                                        recognizer: SnapshotRecognizer(),
+                                        onClose: {})
+        var written: [String] = []
+        func render(_ content: some View, name: String) {
+            let renderer = ImageRenderer(content: content)
+            renderer.scale = 2
+            guard let rendered = renderer.cgImage,
+                  let png = ImageEncoding.pngData(from: rendered) else { return }
+            let url = directory.appendingPathComponent(name)
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? png.write(to: url)
+            written.append(url.path)
+        }
+        render(view.toolbar.frame(width: EditorChrome.defaultWindowSize.width,
+                                  height: EditorChrome.toolbarHeight), name: "editor-toolbar.png")
+        render(view.statusLine.frame(width: EditorChrome.defaultWindowSize.width), name: "editor-status.png")
+        // 文字预设弹层那两段（它会因为「序号」多长出一截）
+        render(view.textPresetPopover.background(ChromePalette.dark.panel.color), name: "editor-presets.png")
+        return written
+    }
 
-            // 序号是**文字工具的一个预设**，不占独立工具位（PRD：工具栏 ≤ 9 个工具）
-            if session.tool == .text {
+    // MARK: - 工具条（= 标题栏）
+
+    /// 整条工具条。**位置永固定**（设计稿 §02）。
+    ///
+    /// 九个工具在窗口存在的每一秒都待在同一格 —— 这是"用鼠标找回工具的时间为零"的原因。
+    /// 所以任何"会长出来的东西"都住在弹层里：文字预设挂在文字格上（§05），
+    /// 第一行因此**永不重排**（判断 3）。
+    ///
+    /// ⚠️ 整条有一个**宽度下限**（`EditorChrome.minimumToolbarWidth`），窗口的 `minSize`
+    /// 就按它定。放不下的后果不是崩溃，而是最右边那几格**被静默裁掉** ——
+    /// 历史上有过一次，用户报的是「OCR 入口我不知道在哪」。
+    private var toolbar: some View {
+        HStack(spacing: EditorChrome.toolbarGap) {
+            // 红绿灯是**系统**画在标题栏上的（`.fullSizeContentView` 之后它们浮在工具条上），
+            // 我们只把这一段让出来 —— 72 点，与 macOS 自己那三颗所占的宽度相当。
+            Color.clear.frame(width: EditorChrome.trafficLightsWidth)
+
+            // 1–8 标注工具
+            toolButton(.select)
+            toolButton(.rectangle)
+            toolButton(.ellipse)
+            toolButton(.arrow)
+            toolButton(.pen)
+            textToolButton
+            toolButton(.mosaic)
+            toolButton(.blur)
+
+            // ｜ 9 裁切 ｜
+            // 前后各一条分隔线：它**不改标注、改画布** —— 用线承认它不同类，
+            // 但把它留在工具家族里（它与其他八个共用同一套手势：拖、Esc 退）。
+            toolbarSeparator
+            cropButton
+            toolbarSeparator
+
+            colorTray
+            toolbarSeparator
+            sizeChips
+            toolbarSeparator
+            zoomControls
+
+            Spacer(minLength: 8)
+
+            // 右簇的顺序照旧：读走东西的 → 改状态的 → 落盘的 → 离场的
+            if let ocr {
+                ocrButton(ocr)
                 toolbarSeparator
-                presetButton(L10n.t("文字"), systemImage: "text.alignleft", preset: .plain)
-                presetButton(L10n.t("序号"), systemImage: "list.number", preset: .counter)
-                if session.textPreset == .counter {
-                    // 这里只留**数字**：它是"从几开始"的当前值，本身就是内容；
-                    // 「起始」那两个字换成一个小图标，好让这一排和左右全图标对齐。
-                    HStack(spacing: 2) {
-                        Image(systemName: "number")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.55))
-                        Text("\(session.nextCounter)")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .frame(width: 18, alignment: .trailing)
-                        Stepper("", value: counterBinding, in: 1...99)
-                            .labelsHidden()
-                            .controlSize(.mini)
-                    }
-                    .help(L10n.t("序号从几开始（后续每放一个自增）"))
-                }
+            }
+            iconButton(L10n.t("撤销"), systemImage: AnnotationIcon.undo,
+                       isEnabled: session.canUndo) { session.undo() }
+            iconButton(L10n.t("重做"), systemImage: AnnotationIcon.redo,
+                       isEnabled: session.canRedo) { session.redo() }
+            toolbarSeparator
+            iconButton(L10n.t("保存到磁盘并关闭（⌘S）"), systemImage: AnnotationIcon.save) {
+                saveAndClose()
+            }
+            // ⚠️ `✗` 与 `✓` 永远压在整条最右端，`✗` 前额外让开 8（④ 的分组规则一字未改）。
+            iconButton(L10n.t("取消（丢弃刚画的标注，不改剪贴板）"),
+                       systemImage: AnnotationIcon.cancel,
+                       tint: ChromePalette.Overlay.cancel.color) {
+                onClose()
+            }
+            .padding(.leading, EditorChrome.gapBeforeCancel)
+            iconButton(L10n.t("完成（复制到剪贴板并关闭）"),
+                       systemImage: AnnotationIcon.confirm,
+                       tint: ChromePalette.Overlay.done.color) {
+                copyAndClose()
+            }
+        }
+        .padding(.horizontal, EditorChrome.toolbarPadding)
+        .frame(height: EditorChrome.toolbarHeight)
+        .background(ChromePalette.dark.panel.color)
+        .overlay(alignment: .bottom) { hairline }
+    }
+
+    /// 文字格：它与别的格**多一件事** —— 选中它时，预设弹层挂在它上面（§05）。
+    ///
+    /// ⚠️ 预设不是工具，所以它不进第一行；弹层由工具选中自动唤出，
+    /// 而用户点别处把它收掉之后**工具仍然是文字**（弹层只是便利，不是模式）。
+    private var textToolButton: some View {
+        toolButton(.text)
+            .popover(isPresented: $showTextPresets, arrowEdge: .bottom) {
+                textPresetPopover
+            }
+    }
+
+    /// 文字预设弹层：两个预设 + 「从几开始」。
+    ///
+    /// 稿子：`.pop--text{width:198px}`，两段分别是「文字」「序号」，
+    /// 选「序号」之后在**分段控件正下方**长出「从几开始」那一行。
+    /// 两段都不带解释文字 —— 「文字 / 序号」这两个词本身就是解释。
+    ///
+    /// ⚠️ 外壳用**系统 popover**（材质 / 圆角 / 舌尖 / 点外收起来都由它保证），
+    /// 与最近截图面板同一个取舍：自己画那块外壳要重新实现一整套行为。
+    /// 唯一的小差别：系统 popover 的舌尖对着格子的中点，而不是像稿子那样让弹层左缘与格左缘对齐。
+    private var textPresetPopover: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.t("预设"))
+                .font(.system(size: 11))
+                .foregroundStyle(ChromePalette.dark.label2.color)
+
+            HStack(spacing: 2) {
+                presetSegment(L10n.t("文字"), preset: .plain, systemImage: AnnotationIcon.presetText)
+                presetSegment(L10n.t("序号"), preset: .counter, systemImage: AnnotationIcon.presetCounter)
             }
 
-            toolbarSeparator
+            if session.textPreset == .counter {
+                counterRow
+                Text(L10n.t("放一个，数字 +1（1–99）"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(ChromePalette.dark.label2.color)
+            }
+        }
+        .padding(12)
+        .frame(width: 198, alignment: .leading)
+    }
+
+    private func presetSegment(_ title: String,
+                               preset: AnnotationEditorSession.TextPreset,
+                               systemImage: String) -> some View {
+        let selected = session.textPreset == preset
+        return Button {
+            session.textPreset = preset
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .medium))
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 26)
+            // 稿子：「底色 7% 的那一段 = 当前预设」（不是填充蓝 —— 蓝色在这个产品里
+            // 的含义是"当前生效的工具/颜色/档位"，预设的选中是"这一支笔现在写什么"）。
+            .background(selected ? Color.white.opacity(0.07) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selected ? ChromePalette.dark.label.color : ChromePalette.dark.label2.color)
+    }
+
+    /// 「从几开始」：− 当前值 + 。
+    ///
+    /// 它是**这支笔的一个参数**，不是"设置" —— 所以它长在预设弹层里，
+    /// 改它和改颜色是同一级动作（稿子 §05）。
+    private var counterRow: some View {
+        HStack(spacing: 6) {
+            Text(L10n.t("从几开始"))
+                .font(.system(size: 11))
+                .foregroundStyle(ChromePalette.dark.label2.color)
+            Spacer(minLength: 8)
+            counterStep(systemImage: AnnotationIcon.zoomOut, title: L10n.t("减少")) {
+                session.setCounterStart(session.nextCounter - 1)
+            }
+            Text("\(session.nextCounter)")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(ChromePalette.dark.label.color)
+                .frame(width: 26)
+            counterStep(systemImage: AnnotationIcon.zoomIn, title: L10n.t("增加")) {
+                session.setCounterStart(session.nextCounter + 1)
+            }
+        }
+    }
+
+    private func counterStep(systemImage: String, title: String,
+                             action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .medium))
+                .frame(width: 24, height: 24)
+                .background(Color.white.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(ChromePalette.dark.label.color)
+        .help(title)
+    }
+
+    /// 色板托盘：**从覆盖层的「样式」弹层搬进条上**（§10 的登记项）。
+    ///
+    /// 理由两条：brief 要求整条放大稿里看得见它；而编辑器停留最久，
+    /// 颜色与尺寸是最高频的两个控件 —— 收进弹层等于每次多一次点击。
+    /// 编辑器因此**没有「样式」格**：它的职责已经摊在条上。
+    private var colorTray: some View {
+        HStack(spacing: EditorChrome.swatchGap) {
             ForEach(colors, id: \.self) { color in
                 Button {
                     session.setStrokeColor(color)
                 } label: {
-                    Circle()
-                        .fill(swiftUI(color))
-                        .frame(width: 14, height: 14)
-                        .overlay(Circle().stroke(Color.white.opacity(session.style.stroke == color ? 0.95 : 0.25), lineWidth: 1.5))
+                    swatch(color)
                 }
                 .buttonStyle(.plain)
                 .help(L10n.t("描边颜色"))
             }
-            toolbarSeparator
-            sizeControls
-            Spacer(minLength: 8)
-
-            zoomControls
-            toolbarSeparator
-
-            // ── 动作区（右侧）──────────────────────────────────────
-            //
-            // 布局参考截图工具的通例：**工具在左、动作在右，取消与完成永远压在最右**，
-            // 而且用 ✗ / ✓ 这种不需要解释的符号。
-            // 原来这里只有一行「Esc 复制并关闭」的小字 —— 用户不会天然想到"Esc = 完成"，
-            // 而"取消"这个动作干脆没有入口。
-            if let ocr {
-                iconButton(ocr.isRunning ? L10n.t("识别中…") : L10n.t("识别文字"),
-                           systemImage: ocr.isRunning ? "hourglass" : "text.viewfinder",
-                           isActive: showOCRPanel,
-                           isEnabled: !ocr.isRunning) {
-                    showOCRPanel = true
-                    Task { await ocr.recognize(image) }
-                }
-                toolbarSeparator
-            }
-
-            iconButton(L10n.t("撤销"), systemImage: "arrow.uturn.backward",
-                       isEnabled: session.canUndo) {
-                session.undo()
-            }
-            iconButton(L10n.t("重做"), systemImage: "arrow.uturn.forward",
-                       isEnabled: session.canRedo) {
-                session.redo()
-            }
-
-            toolbarSeparator
-
-            iconButton(L10n.t("保存到磁盘并关闭（⌘S）"), systemImage: "square.and.arrow.down") {
-                saveAndClose()
-            }
-            iconButton(L10n.t("取消（丢弃刚画的标注，不改剪贴板）"), systemImage: "xmark") {
-                onClose()
-            }
-            iconButton(L10n.t("完成（复制到剪贴板并关闭）"),
-                       systemImage: "checkmark",
-                       tint: Color(red: 0.24, green: 0.82, blue: 0.42)) {
-                copyAndClose()
-            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color(white: 0.16))
+        .padding(6)
+        .background(ChromePalette.dark.inset.color)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// 一个色块。
+    ///
+    /// 当前色 = **白圈**（稿子 `.sw.is-cur`：`0 0 0 2px 面板色, 0 0 0 3.5px 白`）——
+    /// 之所以是"面板色隔一圈再描白"，是为了让白圈**不贴着色块**：
+    /// 白色色块配白圈会糊成一块，中间那圈底色把它分开了。
+    private func swatch(_ color: AnnotationColor) -> some View {
+        let selected = session.style.stroke == color
+        return RoundedRectangle(cornerRadius: 5)
+            .fill(swiftUI(color))
+            .frame(width: EditorChrome.swatchSize, height: EditorChrome.swatchSize)
+            .overlay {
+                if selected {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.white, lineWidth: 1.5)
+                        .padding(-3)
+                }
+            }
+            .overlay {
+                // 浅色块在深托盘上本来就看得出，但白块与托盘的内底只差一点 ——
+                // 补一圈极淡的描边（稿子 `.hairedge`）
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+    }
+
+    /// 尺寸三档 + **常显读数**。
+    ///
+    /// ⚠️ 读数（「8 px」）是这一批的关键件：编辑器里这三个数是**原图像素**，
+    /// 而芯片画的是"细 / 中 / 粗"（不追真值）—— 所以真值必须**一直在场**，
+    /// 否则用户永远不知道自己在调多大（§08）。
+    private var sizeChips: some View {
+        let target = sizeTarget
+        let values = target.meaning.editorValues
+        return HStack(spacing: EditorChrome.chipGap) {
+            ForEach(Array(values.enumerated()), id: \.offset) { index, value in
+                Button {
+                    switch target.meaning {
+                    case .lineWidth: session.setLineWidth(value)
+                    case .fontSize: session.setFontSize(value)
+                    case .redactionStrength: session.setEffectStrength(value)
+                    }
+                } label: {
+                    sizeSwatch(index: index, count: values.count, meaning: target.meaning,
+                               selected: isActiveSize(value, meaning: target.meaning))
+                }
+                .buttonStyle(.plain)
+                .help("\(target.label) \(Int(value)) px")
+            }
+            sizeReadout(value: target.current)
+                .padding(.leading, 2)
+        }
+    }
+
+    /// 当前档的真值读数：「8 px」——数字 12 点、单位 10 点。
+    ///
+    /// 单位小一号是有意的：它是**单位**，不是数值的一部分。
+    private func sizeReadout(value: CGFloat) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Text("\(Int(value.rounded()))")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(ChromePalette.dark.label.color)
+            Text("px")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(ChromePalette.dark.label2.color)
+        }
+    }
+
+    /// 缩放：− 百分数 + 。**点百分数回「适应窗口」**。
+    private var zoomControls: some View {
+        HStack(spacing: 0) {
+            iconButton(L10n.t("缩小"), systemImage: AnnotationIcon.zoomOut) {
+                zoom(by: 1 / 1.25)
+            }
+            .frame(width: EditorChrome.zoomStepSize)
+            Button {
+                fitToWindow()
+            } label: {
+                Text("\(zoomPercent)%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(ChromePalette.dark.label.color)
+                    .frame(width: EditorChrome.zoomLabelWidth)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(L10n.t("点一下回到「适应窗口」"))
+            iconButton(L10n.t("放大"), systemImage: AnnotationIcon.zoomIn) {
+                zoom(by: 1.25)
+            }
+            .frame(width: EditorChrome.zoomStepSize)
+        }
+    }
+
+    /// 状态行（窗口的地板）。**说真话**：这张图是什么、现在多少倍。
+    ///
+    /// 裁切进行中时左半边换成**模式动词** —— 那一会儿用户脑子里只有"现在按什么"；
+    /// 尺寸并没有消失，画布上的读数框那时正在说"裁完多大"（判断 4）。
+    private var statusLine: some View {
+        HStack(spacing: 8) {
+            Text(EditorChrome.leading(pixelSize: session.document.canvasPixelSize,
+                                      segments: nil,
+                                      mode: cropMode))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(EditorChrome.trailing(zoomPercent: zoomPercent, isFitted: zoomIsFitted))
+                .monospacedDigit()
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(ChromePalette.dark.label2.color)
+        .padding(.horizontal, EditorChrome.statusLinePadding)
+        .frame(height: EditorChrome.statusLineHeight)
+        .background(ChromePalette.dark.panel.color)
+        .overlay(alignment: .top) { hairline }
+    }
+
+    private var cropMode: EditorChrome.Mode {
+        guard session.isCropping else { return .normal }
+        return session.isCropFrameAdjusted ? .croppingAdjusting : .croppingWaitingForFrame
+    }
+
+    private var zoomPercent: Int { Int((viewport.scale * 100).rounded()) }
+
+    /// 一条发丝线。**用自绘而不是 `Divider()`**：后者的颜色由系统给，
+    /// 在深色面板上时有时无，分隔感不稳定。
+    private var hairline: some View {
+        Rectangle()
+            .fill(ChromePalette.dark.hairline.color)
+            .frame(height: 1)
+    }
+
+    private func ocrButton(_ service: TextRecognitionService) -> some View {
+        iconButton(service.isRunning ? L10n.t("识别中…") : L10n.t("识别文字"),
+                   systemImage: service.isRunning ? AnnotationIcon.recognizing
+                                                  : AnnotationIcon.recognizeText,
+                   isActive: showOCRPanel,
+                   isEnabled: !service.isRunning) {
+            showOCRPanel = true
+            Task { await service.recognize(image) }
+        }
     }
 
     // MARK: - 文字识别（ticket 13）
 
-    /// 识别结果面板。
+    /// 识别结果面板：**三态四张脸**（设计稿 §07）。
     ///
-    /// 三条刻意的做法：
-    /// 1. 用 `Text` + `textSelection` 而不是可编辑控件 —— 用户要的是「能划、能 ⌘C」，
-    ///    不需要改。可编辑会多出"改了但没生效"这一整类疑惑。
-    /// 2. 状态文案**必须有**（识别中 / 没有文字 / 失败原因）—— 留白会让人以为是坏了。
-    /// 3. 面板浮在画布上，不挤占画布宽度 —— 识别结果只是"顺手看一眼"的东西。
+    /// ## 为什么是四张脸
+    ///
+    /// 「没有文字」与「识别失败」是**两件事**：前者要换地方，后者可以重试。
+    /// 合成一张的话，用户在一张纯截图上会去点"重试" —— 而重试会得到同一个答案，
+    /// 给一个注定没用的按钮比不给更让人恼火。
+    ///
+    /// ## 三条刻意的做法
+    ///
+    /// 1. **只读**（`textSelection` 而不是可编辑控件）：用户要的是「能划、能 ⌘C」，
+    ///    不需要改。可编辑会多出"改了但没生效"这一整类疑惑 ——
+    ///    而那个「只读」标签是**能力声明**，不是限制声明，所以它常显。
+    /// 2. **四张脸都不留白**：每种情况第一行说发生了什么，第二行说下一步。
+    ///    留白会让人以为坏了，而"正在识别"那一刻用户已经在等了。
+    /// 3. **浮在画布上、不挤画布宽度**（判断 5）：识别结果只是"顺手看一眼"的东西。
+    ///    侧栏会永久吃掉 260 宽 —— 而画布宽度是这扇窗存在的全部理由。
     @ViewBuilder
     private var ocrPanel: some View {
         if showOCRPanel, let service = ocr {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text(L10n.t("识别文字"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Spacer()
-                    Button {
-                        showOCRPanel = false
-                        service.reset()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.55))
-                    .help(L10n.t("关闭"))
-                }
-
-                if let message = service.message {
-                    Text(message)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if case .ready(let result) = service.state {
-                    ScrollView {
-                        Text(result.fullText)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.white)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(6)
-                    }
-                    .frame(maxHeight: 240)
-                    .background(Color.black.opacity(0.28))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                    Button {
-                        copyText(result.fullText)
-                    } label: {
-                        Text(L10n.t("全部复制"))
-                            .font(.system(size: 12, weight: .medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.white.opacity(0.16))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white)
+                ocrHeader(service)
+                switch service.state {
+                case .idle, .running:
+                    ocrFace(symbol: AnnotationIcon.recognizing,
+                            title: L10n.t("正在识别…"),
+                            body: L10n.t("首次识别可能要十几秒，之后会快。"))
+                case .empty:
+                    // 颜色是**安静**的（次要色，无红）：没字不是错误，是这张图的属性。
+                    // 也没有「重试」—— 重试会得到同一个答案。
+                    ocrFace(symbol: "rectangle.dashed",
+                            title: L10n.t("这张图里没有文字"),
+                            body: L10n.t("纯图或图形界面都可能这样；识别只看整张图。"))
+                case .failed:
+                    // 红是给"坏了"的：图标（警告三角）+ 标题**双通道**，
+                    // 而它比「没有文字」那张多一行按钮 —— 有路可走的和没路可走的不该一样高。
+                    ocrFace(symbol: "exclamationmark.triangle",
+                            title: L10n.t("识别失败了"),
+                            body: L10n.t("重试不会影响已经画好的标注。"),
+                            tint: ChromePalette.dark.danger.color,
+                            retry: { Task { await service.recognize(image) } })
+                case .ready(let result):
+                    ocrResult(result, service: service)
                 }
             }
             .padding(12)
-            .frame(width: 320)
-            .background(Color(white: 0.17))
+            .frame(width: Self.ocrPanelWidth, alignment: .leading)
+            .background(ChromePalette.dark.panel.color)
             .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
-            .padding(12)
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .shadow(color: .black.opacity(0.42), radius: 18, y: 8)
+        }
+    }
+
+    /// 面板宽。稿子 §07：「260 宽 · 高 90–172」—— 三张脸只差高度。
+    private static let ocrPanelWidth: CGFloat = 260
+
+    private func ocrHeader(_ service: TextRecognitionService) -> some View {
+        HStack(spacing: 6) {
+            Text(L10n.t("识别文字"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ChromePalette.dark.label.color)
+            if case .ready = service.state {
+                // 「只读」常显。它是**能力声明**（能划、能 ⌘C），不是限制声明 ——
+                // 藏起来反而让人以为"这里是能改的，只是我没找到入口"。
+                Text(L10n.t("只读"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(ChromePalette.dark.label2.color)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.white.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            Spacer(minLength: 8)
+            Button {
+                showOCRPanel = false
+                service.reset()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(ChromePalette.dark.label2.color)
+            .help(L10n.t("关闭"))
+        }
+    }
+
+    /// 那个空/失败/进行中的形状：一行图标 + 一句"发生了什么" + 一句"下一步"。
+    @ViewBuilder
+    private func ocrFace(symbol: String,
+                         title: String,
+                         body: String,
+                         tint: Color? = nil,
+                         retry: (() -> Void)? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(tint ?? ChromePalette.dark.label2.color)
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(tint ?? ChromePalette.dark.label.color)
+            }
+            Text(body)
+                .font(.system(size: 11))
+                .foregroundStyle(ChromePalette.dark.label2.color)
+                .fixedSize(horizontal: false, vertical: true)
+            if let retry {
+                Button(action: retry) {
+                    Text(L10n.t("重试"))
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.white.opacity(0.16))
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(ChromePalette.dark.label.color)
+                .padding(.top, 2)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func ocrResult(_ result: TextRecognitionResult,
+                           service: TextRecognitionService) -> some View {
+        ScrollView {
+            Text(result.fullText)
+                .font(.system(size: 12))
+                .foregroundStyle(ChromePalette.dark.label.color)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(6)
+        }
+        .frame(maxHeight: 96)
+        .background(ChromePalette.dark.inset.color)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+
+        HStack(spacing: 8) {
+            // 「4 行 · 41 字」——让你知道手里这段有多长（要粘到别处之前，这个数有用）。
+            Text(L10n.t("\(result.lines.count) 行 · \(result.characterCount) 字"))
+                .font(.system(size: 11))
+                .foregroundStyle(ChromePalette.dark.label2.color)
+            Spacer(minLength: 8)
+            Button {
+                copyText(result.fullText)
+            } label: {
+                Text(L10n.t("全部复制"))
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.white.opacity(0.16))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(ChromePalette.dark.label.color)
         }
     }
 
@@ -380,73 +778,67 @@ private struct AnnotationEditorView: View {
         pasteboard.setString(text, forType: .string)
     }
 
-    /// 这一排控件按**当前上下文**决定改的是哪个参数：线宽 / 字号 / 打码强度。
+    /// 尺寸三档改的是**哪一个参数**：线宽 / 字号 / 打码强度。
     ///
     /// 三者互斥（文字没有线宽、打码没有字号），而工具栏已经很挤 ——
     /// 与其摆三排按钮，不如让同一排按钮改"当前真正相关的那个"。
-    /// 三档尺寸。
-    ///
-    /// **画出来而不是写数字**：原来这三格直接写「2 / 4 / 8」，夹在一排图标里很突兀，
-    /// 而且数字本身也不说明"这是在调什么"。现在按 `SizeSwatchGeometry` 画成
-    /// 圆点 / 方块 / 字母 A —— **与覆盖层共用同一份规则**（同功能同画法）。
-    /// 原来的数值仍在 `help` 里（"线宽 4"），要好精确数字的人鼠标停一下就有。
-    private var sizeControls: some View {
-        let target = sizeTarget
-        let count = target.values.count
-        return ForEach(Array(target.values.enumerated()), id: \.offset) { index, value in
-            Button {
-                switch target.meaning {
-                case .lineWidth: session.setLineWidth(value)
-                case .fontSize: session.setFontSize(value)
-                case .redactionStrength: session.setEffectStrength(value)
-                }
-            } label: {
-                sizeSwatch(index: index,
-                           count: count,
-                           meaning: target.meaning,
-                           selected: isActiveSize(value, meaning: target.meaning))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .help("\(target.label) \(Int(value))")
-        }
+    private struct SizeTarget {
+        var meaning: OverlaySizeMeaning
+        var label: String
+        /// 当前生效的那个值 —— **常显读数**用它。
+        var current: CGFloat
+        var values: [CGFloat] { meaning.editorValues }
     }
 
-    /// 一格尺寸的样子。
+    private var sizeTarget: SizeTarget {
+        if session.tool == .mosaic || session.tool == .blur || selectionContainsRedaction {
+            return SizeTarget(meaning: .redactionStrength, label: L10n.t("打码强度"),
+                              current: session.style.effectStrength)
+        }
+        if session.tool == .text || selectionContainsText {
+            return SizeTarget(meaning: .fontSize, label: L10n.t("字号"),
+                              current: session.style.fontSize)
+        }
+        return SizeTarget(meaning: .lineWidth, label: L10n.t("线宽"),
+                          current: session.style.lineWidth)
+    }
+
+    /// 一张尺寸芯片。
     ///
-    /// 边长给 20：格子本身 26×22，20 点已经能容下三档明显的差距，
-    /// 再大就会挤到相邻格子上。
-    @ViewBuilder
+    /// 画的是"细 / 中 / 粗"，**不追真值** —— 88 px 的字装不进 38 高的芯片里。
+    /// 真值交给旁边那个常显读数（§08：「芯片画法不追真值，真值交给读数与 1:1 预览」）。
+    ///
+    /// ⚠️ 大小按**档位序号**均分（`SizeSwatchGeometry`），不按数值线性映射 ——
+    /// 打码那三档是 8 / 16 / 32，线性映射会画出 9.6 / 15.2 / 16，
+    /// **后两档几乎一样大**，用户点了"最强"看不出变化。
+    ///
+    /// 字母那一支的**基准比圆点大一截**（40 对 21）：A 的可见高度只有字号的七成，
+    /// 用同一个基准会让三个字母明显比三个圆点小一圈，而它们本该是"一样粗"的三档。
     private func sizeSwatch(index: Int,
                             count: Int,
                             meaning: OverlaySizeMeaning,
                             selected: Bool) -> some View {
-        let side = 20 * SizeSwatchGeometry.relativeSide(index: index, of: count)
-        ZStack {
-            switch SizeSwatchGeometry.shape(for: meaning) {
+        let shape = SizeSwatchGeometry.shape(for: meaning)
+        let base: CGFloat = shape == .letter ? 40 : 21
+        let side = base * SizeSwatchGeometry.relativeSide(index: index, of: count)
+        return ZStack {
+            switch shape {
             case .circle:
                 Circle().fill(.white).frame(width: side, height: side)
             case .square:
                 Rectangle().fill(.white).frame(width: side, height: side)
             case .letter:
-                Text("A").font(.system(size: max(8, side), weight: .semibold))
+                Text("A").font(.system(size: side, weight: .semibold))
             }
         }
-        .frame(width: 26, height: 22)
-        .background(selected ? Color.white.opacity(0.18) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        // 命中区就是整个格子：不写这句的话，圆点周围那圈空白点不动
+        .frame(width: EditorChrome.chipSize.width, height: EditorChrome.chipSize.height)
+        // 稿子：`.sz.is-cur{background:var(--c-fill);color:#fff}` ——
+        // 芯片的"当前档"用**填充蓝**（与工具格、色板同一条规则：全条同类只许一个）。
+        .background(selected ? ChromePalette.dark.fill.color : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .foregroundStyle(selected ? Color.white : ChromePalette.dark.icon.color)
+        // 命中区就是整张芯片：不写这句的话，圆点周围那一圈空白点不动
         .contentShape(Rectangle())
-    }
-
-    private var sizeTarget: (meaning: OverlaySizeMeaning, values: [CGFloat], label: String) {
-        if session.tool == .mosaic || session.tool == .blur || selectionContainsRedaction {
-            return (.redactionStrength, redactionStrengths, L10n.t("打码强度"))
-        }
-        if session.tool == .text || selectionContainsText {
-            return (.fontSize, fontSizes, L10n.t("字号"))
-        }
-        return (.lineWidth, lineWidths, L10n.t("线宽"))
     }
 
     private func isActiveSize(_ value: CGFloat, meaning: OverlaySizeMeaning) -> Bool {
@@ -466,34 +858,6 @@ private struct AnnotationEditorView: View {
             session.selection.contains(annotation.id)
                 && (annotation.kind == .mosaic || annotation.kind == .blur)
         }
-    }
-
-    private var counterBinding: Binding<Int> {
-        Binding(get: { session.nextCounter },
-                set: { session.setCounterStart($0) })
-    }
-
-    /// 文字的两个预设（普通文字 / 序号）。
-    ///
-    /// **图标而不是文字**：这一条工具栏上其余二十来个控件全是图标，
-    /// 中间夹着两个汉字按钮会显得很突兀（用户的原话）。名称改挂 `help` ——
-    /// 鼠标停一下就能看到，而"文字 / 序号"这两个词本身也仍然在文案目录里，
-    /// 不必为了图标化把它们删掉。
-    private func presetButton(_ title: String,
-                              systemImage: String,
-                              preset: AnnotationEditorSession.TextPreset) -> some View {
-        Button {
-            session.textPreset = preset
-        } label: {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 26, height: 22)
-                .background(session.textPreset == preset ? Color.white.opacity(0.18) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.white)
-        .help(title)
     }
 
     private var canvas: some View {
@@ -523,8 +887,14 @@ private struct AnnotationEditorView: View {
                     onDelete: { session.deleteSelection() },
                     onUndo: { session.undo() },
                     onRedo: { session.redo() },
-                    onPan: { dx, dy in viewport.pan(by: CGPoint(x: dx, y: dy)) },
-                    onZoom: { factor, point in viewport.zoom(by: factor, around: point) },
+                    onPan: { dx, dy in
+                        zoomIsFitted = false
+                        viewport.pan(by: CGPoint(x: dx, y: dy))
+                    },
+                    onZoom: { factor, point in
+                        zoomIsFitted = false
+                        viewport.zoom(by: factor, around: point)
+                    },
                     onCommitCrop: { _ = session.commitCrop() })
                     .allowsHitTesting(false)
             }
@@ -532,6 +902,11 @@ private struct AnnotationEditorView: View {
             .onAppear {
                 fitIfNeeded(in: geo.size)
                 rebuildRedactionCache()
+            }
+            // 选中文字格 → 预设弹层自动出现（稿子 §05：「与 ④ 表情弹层的出现机制同一件事」）。
+            // 用户点别处把它收掉之后**工具仍然是文字** —— 弹层只是便利，不是模式。
+            .onChange(of: session.tool) { _, tool in
+                showTextPresets = (tool == .text)
             }
             .onChange(of: redactionSignature) { _, _ in
                 rebuildRedactionCache()
@@ -591,6 +966,9 @@ private struct AnnotationEditorView: View {
                     if let pending = session.pendingTextEditID {
                         editingID = pending
                         editingText = ""
+                        // 正在输入时把预设弹层让开 —— 它挂的就是刚点过的那一格，
+                        // 不收掉会正好压在输入框上。
+                        showTextPresets = false
                     }
                     dragging = true
                 } else {
@@ -862,49 +1240,64 @@ private struct AnnotationEditorView: View {
 
     // MARK: - 工具栏按钮
 
-    /// 工具栏按钮的统一形态：**图标 + tooltip（中文标签进 `help`）**。
+    /// 工具条上**一个格子**的形态：28 × 28 · 圆角 6 · 图标 14 点 · 中文标签进 `help`。
     ///
-    /// ## 为什么从文字改成图标
+    /// ## 三条点亮规则（与 ④ 同表）
     ///
-    /// 原来每个工具是一个文字按钮（"选择""矩形"…），整排实测约 **1110 点**，
-    /// 而窗口默认只有 960 —— `HStack` 空间不足时 `Spacer()` 缩成 0，
-    /// **右边那几个控件被直接挤出可视区**。用户报的"OCR 入口我不知道在哪"、
-    /// "工具栏我没有看到"，根子都在这里：不是没找到，是压根没画出来。
-    ///
-    /// 图标按钮约 30 点一个，同样的功能占用不到一半宽度，还顺手腾出了右侧动作区。
-    /// 悬停提示保留了全部中文说明，可发现性不降。
+    /// 1. **填充蓝 = 当前生效的那个**（工具、色板、尺寸档同类只许一个）；
+    /// 2. **动作不亮** —— 撤销 / 重做 / 保存 / ✗ / ✓ 按下即执行，没有选中态；
+    /// 3. **撤销与重做是全条唯一允许变灰的两格**（`isEnabled == false`）——
+    ///    它们变了灰才是"真的没得撤"。识别文字那格带 Pro 小锁但**永不灰**：
+    ///    能买的东西不许看起来像坏的。
     private func iconButton(_ title: String,
                             systemImage: String,
                             isActive: Bool = false,
                             isEnabled: Bool = true,
-                            tint: Color = .white,
+                            tint: Color? = nil,
+                            cellSize: CGFloat = EditorChrome.cellSize,
                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 14, weight: .medium))
-                .frame(width: 30, height: 26)
-                .background(isActive ? Color.white.opacity(0.20) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .frame(width: cellSize, height: cellSize)
+                .background(isActive ? ChromePalette.dark.fill.color : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: EditorChrome.cellCornerRadius))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isEnabled ? tint : tint.opacity(0.3))
+        .foregroundStyle(cellTint(tint: tint, isActive: isActive, isEnabled: isEnabled))
         .disabled(!isEnabled)
         .help(title)
     }
 
-    /// 分组线。用自绘的细线而不是 `Divider()`：后者的颜色由系统给，
-    /// 在深色工具栏上时有时无，分隔感不稳定。
-    private var toolbarSeparator: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.14))
-            .frame(width: 1, height: 20)
-            .padding(.horizontal, 2)
+    /// 格子里那枚图标的颜色。
+    ///
+    /// ⚠️ 默认是 **82% 的白**而不是纯白：一排十几个纯白图标会**糊成一片亮**，
+    /// 压低一档之后"亮起来"才有地方可亮（④ 的同一条理由）。
+    /// 置灰（白 30%）只属于撤销 / 重做，而且**对比度无下限**是刻意的 ——
+    /// 那个状态本来就该看起来"不活跃"。
+    private func cellTint(tint: Color?, isActive: Bool, isEnabled: Bool) -> Color {
+        if !isEnabled { return ChromePalette.dark.disabled.color }
+        if isActive { return ChromePalette.dark.label.color }
+        return tint ?? ChromePalette.dark.icon.color
     }
 
-    /// 裁切是**模式**不是工具：它不改文档，只是让你调好框再回车。
+    /// 分组竖线：1 × 18，两侧各让开 6（`EditorChrome.separatorWidth` 算的是同一件事）。
+    private var toolbarSeparator: some View {
+        Rectangle()
+            .fill(ChromePalette.dark.hairline.color)
+            .frame(width: EditorChrome.separatorSize.width,
+                   height: EditorChrome.separatorSize.height)
+            .padding(.horizontal, EditorChrome.separatorMargin)
+    }
+
+    /// 裁切是**模式**不是工具：它不改文档，只是让你调好框再 `⏎`。
+    ///
+    /// 但它在**工具组里**（第九格、前面一条分隔线）：工具组的分界不是"画东西"，
+    /// 是**模式** —— 同一时刻只亮一个，都在画布上用同一套手势（拖、Esc 退）。
+    /// 挪到缩放旁边会把"有代价的破坏性操作"和"随手来回的视图控制"混成一堆（判断 2）。
     private var cropButton: some View {
         iconButton(session.isCropping ? L10n.t("裁切中：回车应用 · Esc 取消") : L10n.t("裁切"),
-                   systemImage: "crop",
+                   systemImage: AnnotationIcon.crop,
                    isActive: session.isCropping) {
             if session.isCropping {
                 session.cancelCrop()
@@ -914,30 +1307,44 @@ private struct AnnotationEditorView: View {
         }
     }
 
-    private var zoomControls: some View {
-        HStack(spacing: 0) {
-            iconButton(L10n.t("缩小"), systemImage: "minus.magnifyingglass") { zoom(by: 1 / 1.25) }
-            Text("\(Int((viewport.scale * 100).rounded()))%")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.75))
-                .frame(width: 40)
-            iconButton(L10n.t("放大"), systemImage: "plus.magnifyingglass") { zoom(by: 1.25) }
+    /// 一个工具格。图标名**从 Core 取**（`AnnotationIcon`）—— 与覆盖层同一枚。
+    private func toolButton(_ tool: AnnotationEditorTool) -> some View {
+        let toolName = Self.title(for: tool)
+        return iconButton(session.tool == tool ? L10n.t("\(toolName)（当前工具）") : toolName,
+                          systemImage: AnnotationIcon.symbol(for: tool),
+                          isActive: session.tool == tool) {
+            session.tool = tool
         }
+        .popover(isPresented: .constant(false)) { EmptyView() }
     }
 
-    private func toolButton(_ tool: AnnotationEditorTool,
-                            systemImage: String,
-                            title: String) -> some View {
-        iconButton(session.tool == tool ? L10n.t("\(title)（当前工具）") : title,
-                   systemImage: systemImage,
-                   isActive: session.tool == tool) {
-            session.tool = tool
+    private static func title(for tool: AnnotationEditorTool) -> String {
+        switch tool {
+        case .select: L10n.t("选择")
+        case .rectangle: L10n.t("矩形")
+        case .ellipse: L10n.t("椭圆")
+        case .arrow: L10n.t("箭头")
+        case .pen: L10n.t("画笔")
+        case .text: L10n.t("文字")
+        case .mosaic: L10n.t("马赛克")
+        case .blur: L10n.t("模糊")
         }
     }
 
     private func zoom(by factor: CGFloat) {
+        // ⚠️ 手动缩过之后就不再是"适应窗口"了 —— 状态行那四个字要跟着摘掉，
+        // 否则它会替一个已经过去的状态说话（用户明明缩过了，而它还说"适应窗口"）。
+        zoomIsFitted = false
         let anchor = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
         viewport.zoom(by: factor, around: anchor)
+    }
+
+    /// 回到「适应窗口」。**点缩放的百分数**就走这里。
+    private func fitToWindow() {
+        guard canvasSize.width > 1, canvasSize.height > 1 else { return }
+        viewport = CanvasViewport.fitted(pixelSize: session.document.canvasPixelSize,
+                                         in: canvasSize)
+        zoomIsFitted = true
     }
 
     private func fitIfNeeded(in size: CGSize) {
@@ -945,6 +1352,8 @@ private struct AnnotationEditorView: View {
         guard !didFit, size.width > 1, size.height > 1 else { return }
         viewport = CanvasViewport.fitted(pixelSize: session.document.canvasPixelSize, in: size)
         didFit = true
+        // 首次进入就是"适应窗口"那一档 —— 状态行因此一进来就说真话。
+        zoomIsFitted = true
     }
 
     /// 执行 Core 的梯子算出来的那一步。
@@ -1171,4 +1580,20 @@ private final class EditorEventMonitorView: NSView {
     private func location(of event: NSEvent) -> CGPoint {
         convert(event.locationInWindow, from: nil)
     }
+}
+
+/// `RGB`（Core 的 sRGB 值）→ SwiftUI 的 `Color`。
+///
+/// 走 `nsColor`：那一条已经保证 **alpha 带上、sRGB 而不是 deviceRGB** 两条都对
+///（`AppKitBridging` 里有完整理由）。在这里再写一遍 `Color(red:green:blue:)`
+/// 等于把那份说理抄一份、并且忘掉其中一半。
+private extension RGB {
+    var color: Color { Color(nsColor: nsColor) }
+}
+
+/// 只给版面快照用的**空识别器**：它永远不会真的被调用
+/// （快照只渲染视图，不跑识别），存在的意义只是让那一格画出来。
+@MainActor
+private struct SnapshotRecognizer: TextRecognizing {
+    func recognize(in image: CGImage, languages: [String]) async throws -> [RecognizedTextLine] { [] }
 }

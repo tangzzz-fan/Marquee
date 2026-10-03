@@ -99,6 +99,16 @@ final class CaptureCoordinator {
         // `historyLimit()` 返回 nil 就是"不淘汰"。
         ProEntitlement.shared.observe { [weak self] snapshot in
             self?.history.limit = snapshot.historyLimit()
+            // ⚠️ **覆盖层也要跟着变**（2026-10-04 补）。
+            //
+            // 缺这一句的时候有一条很具体的坏体验：在覆盖层里点「恢复购买」，
+            // 恢复**成功了**，而格子上的锁还在 —— 用户以为没成功，又点一次。
+            //
+            // 为什么要 `async`：判定可能在后台线程上完成（StoreKit 的回调），
+            // 而覆盖层是主线程的东西。多绕一次主队列是这里最便宜的正确做法。
+            DispatchQueue.main.async {
+                self?.overlay?.entitlementsChanged()
+            }
         }
 
         // 启动只**记录**权限状态，不弹任何东西。
@@ -298,6 +308,23 @@ final class CaptureCoordinator {
     }
 
     /// 截图已经进了剪贴板。编辑器里 `Esc` 会把带标注的成品再写回去。
+    /// 「设计稿 vs 实装」的对照材料（**只在 `-marqueeSmokeCompliance` 那条路用**）。
+    func renderComplianceSheet(into directory: URL) -> [String] {
+        ComplianceSheet.render(shortcut: shortcut,
+                               preferences: preferences,
+                               output: outputStore,
+                               currentPermission: { [permission] in permission.currentPermission() },
+                               into: directory)
+    }
+
+    /// 编辑器的版面快照（**只在 `-marqueeSmokeEditor` 那条路用**）。
+    ///
+    /// 与 `-marqueeDiagnostics` 同一类：这类"看起来对不对"的东西没法进单测，
+    /// 而它一旦错，是每个用户都会看到的。渲成 PNG 落在报告目录里，看一眼就有结论。
+    func renderEditorChromeSnapshots(into directory: URL) -> [String] {
+        editor.renderChromeSnapshots(image: Self.smokeImage(0), into: directory)
+    }
+
     func presentEditor(image: CGImage, seed: [Annotation] = []) {
         // 先记一条再开窗：用户说"编辑器窗口没出来"时，第一件要确认的是
         // **我们到底有没有走到这一步** —— 这与"点了没反应先验入口通不通"是同一条教训，

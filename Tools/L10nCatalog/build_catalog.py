@@ -43,7 +43,9 @@ STRINGY = ("localizedDescription", ".path", "displayString", "reason", "detail",
 #   RecentCapturesPanelController: size 是拼好的 String   → %@
 #   ShortcutService:              status 是 Int32/OSStatus → %d
 #   ScreenCaptureKitCapturer:     id 是 UInt32             → %u
-SPEC_OVERRIDES = {"size": "%@", "status": "%d", "id": "%u"}
+#   EditorChrome:               summary 是拼好的 String       → %@
+#   AnnotationEditorWindow:     toolName 是 String              → %@
+SPEC_OVERRIDES = {"size": "%@", "status": "%d", "id": "%u", "summary": "%@", "toolName": "%@"}
 
 
 def spec_for(expr: str) -> str:

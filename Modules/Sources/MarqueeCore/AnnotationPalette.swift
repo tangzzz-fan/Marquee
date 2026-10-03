@@ -23,8 +23,13 @@ public enum AnnotationPalette {
         AnnotationColor(red: 1, green: 1, blue: 1),
     ]
 
-    /// 线宽档位（点）。两档之间要一眼看得出来 —— 2 / 4 / 8 之间是翻倍关系。
-    public static let lineWidths: [CGFloat] = [2, 4, 8]
+    /// 覆盖层里的线宽档位（**点**）。两档之间要一眼看得出来 —— 2 / 4 / 8 之间是翻倍关系。
+    ///
+    /// ⚠️ 名字里的 `overlay` 是 2026-10-03 补上的：原先叫 `lineWidths`，
+    /// 而它其实**只属于覆盖层**。编辑器里那三档是原图像素（4 / 8 / 16），
+    /// 两组数字刻意不同 —— 同一个数字在 2x 屏上差一倍。
+    /// 名字看着像共用的，迟早会有人把编辑器也接过来（那正是设计稿 §08 要防的）。
+    public static let overlayLineWidths: [CGFloat] = [2, 4, 8]
 
     /// 覆盖层里打码强度的三档（**点**）。
     ///
@@ -69,6 +74,46 @@ public enum AnnotationPalette {
         "✅", "❌", "❓", "❗️", "🎯", "📌",
     ]
 
+    // MARK: - 编辑器那三组（**原图像素**，与覆盖层刻意不是同一组数）
+
+    /// 编辑器里的线宽档位（**原图像素**）。
+    ///
+    /// 三档仍取翻倍关系（4 / 8 / 16），与覆盖层同构 ——
+    /// 变的只是**单位**：那边描述"屏幕上的笔"，这边描述"图里的笔"。
+    /// 2x 屏上同一个视觉粗细，在覆盖层里是 4 点、在编辑器里就是 8 px。
+    public static let editorLineWidths: [CGFloat] = [4, 8, 16]
+
+    /// 编辑器里的打码强度（**原图像素**）：马赛克＝格边长、模糊＝半径。
+    ///
+    /// 数值按"能不能盖住字"定：一张 1440 px 宽的长图里，汉字大约 24–32 px 高，
+    /// 要让格子密到认不出来，格边长得在 1/4 字高上下 —— 也就是 8 px 起。
+    public static let editorRedactionStrengths: [CGFloat] = [8, 16, 32]
+
+    /// 编辑器里的字号（**原图像素**）。
+    ///
+    /// 长图动辄 1440 px 宽，而字号是**按图**定的：36 px 相当于正文注释，
+    /// 88 px 相当于给整张图盖个头。覆盖层那三档（18 / 28 / 44 点）在编辑器里
+    /// 会显得像蚂蚁 —— 这也是"两组不能共用"最直观的证据。
+    public static let editorFontSizes: [CGFloat] = [36, 56, 88]
+
+    /// 编辑器里的默认档（都是**中间那一档**）。
+    ///
+    /// ⚠️ 它们**必须落在上面那三组里**：不落进去的话，一进编辑器三档芯片全不高亮 ——
+    /// 用户看到的是"当前尺寸未知"，而那个状态在界面上长得像"坏了"。
+    /// 这一条由 `AnnotationSizeScaleTests` 对**两套**（覆盖层 / 编辑器）一起钉住。
+    public static var defaultEditorLineWidth: CGFloat { editorLineWidths[1] }
+    public static var defaultEditorRedactionStrength: CGFloat { editorRedactionStrengths[1] }
+    public static var defaultEditorFontSize: CGFloat { editorFontSizes[1] }
+
+    /// 编辑器的默认样式。宿主建会话时用它，而不是 `AnnotationStyle.default` ——
+    /// 后者那四个数是**覆盖层的**（线宽 4 点、字号 36 点、打码 12 点）。
+    public static var editorDefaultStyle: AnnotationStyle {
+        AnnotationStyle(stroke: defaultColor,
+                        lineWidth: defaultEditorLineWidth,
+                        fontSize: defaultEditorFontSize,
+                        effectStrength: defaultEditorRedactionStrength)
+    }
+
     /// 默认描边色。与 `AnnotationStyle.default` 保持一致。
     public static var defaultColor: AnnotationColor { .red }
 
@@ -78,8 +123,8 @@ public enum AnnotationPalette {
     /// 取最接近 `value` 的档位下标（`AnnotationStyle` 里存的线宽可能来自别处）。
     public static func lineWidthIndex(nearest value: CGFloat) -> Int {
         var best = 0
-        for (index, candidate) in lineWidths.enumerated()
-        where abs(candidate - value) < abs(lineWidths[best] - value) {
+        for (index, candidate) in overlayLineWidths.enumerated()
+        where abs(candidate - value) < abs(overlayLineWidths[best] - value) {
             best = index
         }
         return best

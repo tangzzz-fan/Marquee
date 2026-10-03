@@ -84,6 +84,18 @@ public struct OverlayCursorContext: Equatable, Sendable {
     public var annotationFrames: [CGRect] = []
     public var toolbar: CGRect?
     public var palette: CGRect?
+    /// 升级卡片整块（**Cocoa 全局点**）。`nil` = 没弹。
+    ///
+    /// ⚠️ 卡片在本类型里**必须排在弹层与工具条之前**判 —— 它是最晚弹出来的那一层，
+    /// 与 `mouseDown` 那条路的分派顺序一致。顺序不一致的表现是
+    /// "光标说这里是按钮、点下去却在动工具条"。
+    public var proCard: CGRect?
+    /// 卡片上**两个按钮**的命中区（**Cocoa 全局点**）。
+    ///
+    /// 单独给这一条是为了让"卡片里只有这两个按钮能点"这件事**看得见**：
+    /// 卡片的正文与空白处点了什么都不做，那里就该是普通箭头 ——
+    /// 整张卡都给手型的话，用户会在正文上点几下然后说"这个卡片点不动"。
+    public var proCardButtons: [CGRect] = []
     /// 正在编辑的文字输入框（**Cocoa 全局点**）。`nil` = 没在输入。
     public var textField: CGRect?
     /// 当前选中的标注工具。`nil` = 没选（那时拖拽是改几何 / 挪标注）。
@@ -105,14 +117,19 @@ public enum OverlayCursor {
 
     /// 某个位置该显示哪种光标。
     ///
-    /// 分派顺序与 `mouseDown` 那条路**一致**（弹层 → 工具条 → 控制点 → 画布）。
+    /// 分派顺序与 `mouseDown` 那条路**一致**（卡片 → 弹层 → 工具条 → 控制点 → 画布）。
     /// 两者不一致的话，会出现"手型光标压在按钮上、点下去却在重画选区"这种
     /// 说不清哪里不对的状态。
     public static func kind(at point: CGPoint, in context: OverlayCursorContext) -> OverlayCursorKind {
         // ① 拖拽中：只看"在拖什么"
         if let dragging = kind(for: context.drag) { return dragging }
 
-        // ② 浮在最上面的两块面板（弹层压在工具条外侧，必须先判）
+        // ② 升级卡片：**最晚弹出来的那一层**，必须排在弹层与工具条之前
+        if let card = context.proCard, card.contains(point) {
+            return context.proCardButtons.contains { $0.contains(point) } ? .pointingHand : .arrow
+        }
+
+        // ③ 浮在最上面的两块面板（弹层压在工具条外侧，必须先判）
         if let palette = context.palette, palette.contains(point) { return .pointingHand }
         if let toolbar = context.toolbar, toolbar.contains(point) {
             // 格与格之间的空隙仍是"面板"，但不给手型 —— 按下去什么都不发生
@@ -121,12 +138,12 @@ public enum OverlayCursor {
             return .pointingHand
         }
 
-        // ③ 正在输入文字：除了输入框自己，别处**按一下就只是结束输入** —— 说实话
+        // ④ 正在输入文字：除了输入框自己，别处**按一下就只是结束输入** —— 说实话
         if let field = context.textField {
             return field.contains(point) ? .iBeam : .arrow
         }
 
-        // ④ 控制点。两个来源共用一条规则：拖选区与拖标注，手感本来就该一样
+        // ⑤ 控制点。两个来源共用一条规则：拖选区与拖标注，手感本来就该一样
         for region in context.annotationHandles where region.frame.contains(point) {
             return .resize(region.handle)
         }
@@ -134,16 +151,16 @@ public enum OverlayCursor {
             return .resize(region.handle)
         }
 
-        // ⑤ 长截图抓帧期间鼠标没有语义
+        // ⑥ 长截图抓帧期间鼠标没有语义
         if context.isScrollCapturing { return .arrow }
 
-        // ⑥ 选了工具 = 在画东西。选区内是画布，选区外按下会被忽略
+        // ⑦ 选了工具 = 在画东西。选区内是画布，选区外按下会被忽略
         if context.tool != nil {
             guard let canvas = context.canvas else { return .crosshair }
             return canvas.contains(point) ? .crosshair : .arrow
         }
 
-        // ⑦ 没选工具 = 改已有的东西
+        // ⑧ 没选工具 = 改已有的东西
         guard context.isSettled, let canvas = context.canvas else { return .crosshair }
         // 标注可能被拖到选区之外，所以先单独判一次
         if context.annotationFrames.contains(where: { $0.contains(point) }) { return .openHand }

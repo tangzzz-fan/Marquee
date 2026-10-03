@@ -604,7 +604,7 @@ struct OverlayAnnotationSessionTests {
     func defaultRedactionStrengthIsOneOfTheSlots() {
         let subject = OverlayAnnotationSession()
         #expect(subject.style.effectStrength == AnnotationPalette.overlayRedactionStrengths[1])
-        #expect(subject.style.lineWidth == AnnotationPalette.lineWidths[1])
+        #expect(subject.style.lineWidth == AnnotationPalette.overlayLineWidths[1])
     }
 
     // MARK: - 文字输入（ticket 22）

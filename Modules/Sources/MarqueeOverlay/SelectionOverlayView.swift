@@ -236,8 +236,19 @@ struct OverlayHintLinePresentation: Equatable {
 struct ProCardPresentation: Equatable {
     /// 卡片矩形，**Cocoa 全局坐标**
     var frame: CGRect
-    /// 有哪两个按钮、分别是什么动作（标题与正文由视图按 `reason` 取）
+    /// 有哪两个按钮、分别是什么动作（标题与正文由视图按 `reason` 与 `feature` 取）
     var content: ProCardContent
+    /// 五个槽排好的矩形（**卡片局部坐标**，左下角为原点）。
+    ///
+    /// ⚠️ **绘制与命中用同一份**（`ProCardLayout.action(at:in:layout:buttons:)`）——
+    /// 两边各算一遍的话，"看着在按钮上、点它没反应"会在某次调尺寸时悄悄出现，
+    /// 而那属于"不崩不报错、只让用户觉得卡片点不动"。
+    var layout: ProCardLayout.Content
+    /// 这一张是载体 A（有微行）还是载体 B（无微行）。
+    ///
+    /// 高度已经烘在 `frame` 里，这里留着是因为**绘制**要按它决定画不画微行 ——
+    /// 靠 `layout.micro == nil` 判断也行，但那样"有没有微行"就有了两个来源。
+    var includesMicro: Bool
 }
 
 /// 工具条上展开的弹层要画什么。
@@ -316,7 +327,16 @@ protocol SelectionOverlayViewDelegate: AnyObject {
     /// 点在了升级卡片上（ticket 31）。坐标同样是 **Cocoa 全局点**，
     /// 语义判断（点到哪个按钮、点到空白该怎么办）留给控制层 ——
     /// 视图只回答"这一下点在卡片里"。
+    ///
+    /// ⚠️ 它在 `mouseUp` 上发（按下只记状态），而且**松手时必须还压在同一个按钮上**。
     func overlayView(_ view: SelectionOverlayView, clickedProCardAt globalPoint: CGPoint)
+    /// 点在了卡片**外面**（稿子：「卡片也没有 ✕，Esc / **点别处**即是关闭」）。
+    ///
+    /// 单独一条消息而不是复用上面那条：那一条的语义是"点在卡片里"，
+    /// 而"点在卡片外"要做的事完全不同（收卡片，且不执行任何动作）。
+    /// 合成一条的话，`clickedProCardAt` 里就得自己再判一次"这点到底在不在卡片里"，
+    /// 而那个矩形只有视图这一层有。
+    func overlayViewDidDismissProCard(_ view: SelectionOverlayView)
 
     // 文字输入框（ticket 22）。三条都来自那个真的 `NSTextField`：
     /// 框里的内容变了（每次击键）
@@ -414,6 +434,23 @@ final class SelectionOverlayView: NSView {
     /// 升级卡片的材质底与前景。同上。
     private var proCardChrome: NSView?
     private var proCardForeground: ChromeForegroundView?
+
+    /// 鼠标此刻压在卡片上的哪个按钮上（`nil` = 不在按钮上）。
+    ///
+    /// ## 为什么它是**视图局部**状态，而不是像 `hoveredSlot` 那样走呈现
+    ///
+    /// 工具条的悬停烘进呈现，是因为"哪一格在哪"的真相在 Core 的 `layout()` 手里，
+    /// 视图不该自己拿 `bounds` 推一遍。而卡片这里，**命中的依据（`layout`）
+    /// 已经在呈现里了**，视图只是把"当前压在哪个动作上"这个纯视觉状态拿在手上 ——
+    /// 走呈现的话，鼠标每划过一次按钮都要问控制层要一份新呈现，
+    /// 而控制层会**重算整个工具条与卡片的几何**，换来的只是同一个答案。
+    private var cardHoveredAction: ProCardAction?
+    /// 此刻**按着**卡片上的哪个按钮。`nil` = 没按。
+    ///
+    /// ⚠️ 它与"悬停"分开：稿子 §06 给了**默认 / 悬停 / 按下**三档（按下更深一档），
+    /// 而"按着"这件事只有这里知道 —— 松手在按钮上才算执行，
+    /// 拖出去再松手什么都不做（与所有按钮的通行行为一致）。
+    private var cardPressedAction: ProCardAction?
 
     /// 上一次同步过去的工具条 / 提示行 / 弹层内容（含位置）。
     ///
@@ -573,6 +610,10 @@ final class SelectionOverlayView: NSView {
         guard let card else {
             if syncedProCard != nil {
                 syncedProCard = nil
+                // 卡片收了，悬停与按下**一起清** —— 留着的话，下一次弹出卡片时
+                // 会有一格已经是"按下"的样子（而手根本没在它上面）。
+                cardHoveredAction = nil
+                cardPressedAction = nil
                 proCardChrome?.isHidden = true
                 proCardForeground?.isHidden = true
             }
@@ -617,14 +658,26 @@ final class SelectionOverlayView: NSView {
         window?.makeFirstResponder(self)
 
         let point = cocoaPoint(of: event)
-        // 升级卡片最优先：它是最晚弹出来的那一层。
+        // 升级卡片最优先：它是最晚弹出来的那一层，而且它的矩形**整块吃掉点击**。
         //
-        // 而且它的矩形**整块吃掉点击**（不像工具条还要再判格子）—— 卡片里只有两个按钮，
-        // 点在正文或空白处该做什么由控制层决定（现在是什么都不做，见
-        // `overlayView(_:clickedProCardAt:)`）。这一条与"手抖一下不能变成买了"直接相关：
-        // 判定放在视图里的话，以后加一个"点空白关掉卡片"就得同时改两处。
-        if let card = presentation.toolbar?.proCard?.frame, card.contains(point) {
-            delegate?.overlayView(self, clickedProCardAt: point)
+        // ## 三件事，顺序不能换
+        //
+        // 1. **按在按钮上** → 只记下"按着它"，**不执行**。执行放在 `mouseUp` ——
+        //    与所有按钮一样：按下去后悔、把鼠标拖出去再松手，那一下就不算数。
+        //    原先按下即执行，于是"手抖一下"就是一次购买/一次跳转。
+        // 2. **按在卡片的正文或空白处** → 什么都不做，但**吃掉这一下**
+        //    （它不该掉进拖选区那条路：用户以为自己在跟卡片打交道）。
+        // 3. **按在卡片外面** → 关掉卡片（稿子：「卡片也没有 ✕，Esc / **点别处**即是关闭」）。
+        //    同样吃掉这一下：菜单就是这样，先收起来、不接受第二个意图。
+        if let card = presentation.toolbar?.proCard {
+            if card.frame.contains(point) {
+                setCardPressed(ProCardLayout.action(at: point,
+                                                    in: card.frame,
+                                                    layout: card.layout,
+                                                    buttons: card.content))
+                return
+            }
+            delegate?.overlayViewDidDismissProCard(self)
             return
         }
         // 弹层次之：它压在工具条外侧，判定要排在工具条前面 ——
@@ -660,14 +713,64 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        delegate?.overlayView(self, endedDragAt: cocoaPoint(of: event),
+        let point = cocoaPoint(of: event)
+
+        // 卡片上的按钮：**松手才执行**，而且松手时还得**压在同一个按钮上**。
+        // 拖出去再松手什么都不做 —— 那是"我改主意了"的通行说法。
+        //
+        // ⚠️ 这一句必须在 `endedDragAt` **之前**：卡片是按在工具条外面的一层，
+        // 如果先走拖拽收尾，那一下会被当成"结束了一次选区拖拽"而把选区改掉。
+        if let pressed = cardPressedAction, let card = presentation.toolbar?.proCard {
+            setCardPressed(nil)
+            let released = ProCardLayout.action(at: point,
+                                               in: card.frame,
+                                               layout: card.layout,
+                                               buttons: card.content)
+            if released == pressed {
+                delegate?.overlayView(self, clickedProCardAt: point)
+            }
+            return
+        }
+
+        delegate?.overlayView(self, endedDragAt: point,
                               optionDown: event.modifierFlags.contains(.option))
     }
 
     override func mouseMoved(with event: NSEvent) {
         let point = cocoaPoint(of: event)
+        updateCardHover(at: point)
         delegate?.overlayView(self, movedTo: point)
         applyCursor(at: point)
+    }
+
+    /// 鼠标压在卡片的哪个按钮上。
+    ///
+    /// 与工具条的悬停同一个道理（那也是"这一下按下去会碰到什么"的预告），
+    /// 差别只在状态住在哪一层 —— 见 `cardHoveredAction` 的文档。
+    private func updateCardHover(at globalPoint: CGPoint) {
+        guard let card = presentation.toolbar?.proCard,
+              card.frame.contains(globalPoint) else {
+            setCardHover(nil)
+            return
+        }
+        setCardHover(ProCardLayout.action(at: globalPoint,
+                                          in: card.frame,
+                                          layout: card.layout,
+                                          buttons: card.content))
+    }
+
+    /// 改悬停态。**只让卡片那一层重画** —— 整屏重绘是每秒几十次的浪费，
+    /// 而卡片只有 300 × 140。
+    private func setCardHover(_ action: ProCardAction?) {
+        guard cardHoveredAction != action else { return }
+        cardHoveredAction = action
+        proCardForeground?.needsDisplay = true
+    }
+
+    private func setCardPressed(_ action: ProCardAction?) {
+        guard cardPressedAction != action else { return }
+        cardPressedAction = action
+        proCardForeground?.needsDisplay = true
     }
 
     /// 鼠标离开这块屏（走到别块屏、或者移出屏幕）。
@@ -676,6 +779,12 @@ final class SelectionOverlayView: NSView {
     /// **不会**由 `mouseMoved` 告诉任何人 —— 光标走了就再没有坐标可算。
     /// 少了它，被高亮的那一格会一直亮着，直到用户又把它扫一遍。
     override func mouseExited(with event: NSEvent) {
+        // 手走了，卡片上的悬停与"按着"都得清 —— 它们都没有坐标可以表达
+        // （见 `OverlayCursorContext` 里那条"手不在了"的注释）。
+        // 特别是"按着"：鼠标拖出屏幕再松手，`mouseUp` 收不到，
+        // 留着的话那个按钮会一直是深色的按下态。
+        setCardHover(nil)
+        setCardPressed(nil)
         delegate?.overlayViewDidExit(self)
     }
 
@@ -1132,24 +1241,24 @@ final class SelectionOverlayView: NSView {
             // 稿子 §07 限定「置灰只属于撤销与重做」，而这里原先还额外 `dimmed: true` ——
             // 同一个意思（"现在忙"）用两处说，还破了那条"全工具条唯一允许变灰的地方"的约束。
             // 沙漏图标本身就是那个状态，它不需要再暗一档。
-            drawSymbol(state.isRecognizing ? "hourglass" : "text.viewfinder",
+            drawSymbol(state.isRecognizing ? AnnotationIcon.recognizing : AnnotationIcon.recognizeText,
                        in: rect,
                        tint: Self.nsColor(iconTint))
         case .pin:
-            drawSymbol("pin", in: rect, tint: Self.nsColor(iconTint))
+            drawSymbol(AnnotationIcon.pin, in: rect, tint: Self.nsColor(iconTint))
         case .undo:
-            drawSymbol("arrow.uturn.backward", in: rect, tint: Self.nsColor(iconTint), dimmed: !enabled)
+            drawSymbol(AnnotationIcon.undo, in: rect, tint: Self.nsColor(iconTint), dimmed: !enabled)
         case .redo:
-            drawSymbol("arrow.uturn.forward", in: rect, tint: Self.nsColor(iconTint), dimmed: !enabled)
+            drawSymbol(AnnotationIcon.redo, in: rect, tint: Self.nsColor(iconTint), dimmed: !enabled)
         case .save:
-            drawSymbol("square.and.arrow.down", in: rect, tint: Self.nsColor(iconTint))
+            drawSymbol(AnnotationIcon.save, in: rect, tint: Self.nsColor(iconTint))
         case .cancel:
             // ⚠️ **红**，不是白。参考工具条里 ✗ 是红的、✓ 是绿的 ——
             // 这两个是"结束这次截图"的两种结果，一眼分得出才有意义。
             // 对比度是算过的（`ChromePalette` + 单测），不是挑个好看的颜色。
-            drawSymbol("xmark", in: rect, tint: Self.nsColor(ChromePalette.Overlay.cancel))
+            drawSymbol(AnnotationIcon.cancel, in: rect, tint: Self.nsColor(ChromePalette.Overlay.cancel))
         case .confirm:
-            drawSymbol("checkmark", in: rect, tint: Self.nsColor(ChromePalette.Overlay.done))
+            drawSymbol(AnnotationIcon.confirm, in: rect, tint: Self.nsColor(ChromePalette.Overlay.done))
         }
     }
 
@@ -1164,22 +1273,13 @@ final class SelectionOverlayView: NSView {
     /// 所以这里不需要 `ChromePalette.resolved(isDark:)` —— 那个是给常规窗口用的。
     static var theme: ChromePalette.Theme { ChromePalette.dark }
 
-    /// 图标名与编辑器**保持一致** —— 同一个功能在两处用不同图标，
-    /// 用户会以为是两个不同的东西。
+    /// 图标名**从 Core 取**（`AnnotationIcon`）—— 全项目唯一一份。
+    ///
+    /// 原先这里是覆盖层自己的一张表，编辑器另有一张。两张表靠"记得写一样"维持一致，
+    /// 而它们**不会报错**，只会某天悄悄分叉成两个不同的「文字」图标。
+    /// 现在两边都走 `AnnotationIcon.symbol(for:)`，"同一功能同一图标"是结构上成立的。
     private static func symbol(for tool: OverlayTool) -> String {
-        switch tool {
-        case .rectangle: "rectangle"
-        case .ellipse: "circle"
-        case .emoji: "face.smiling"
-        case .arrow: "arrow.up.right"
-        case .pen: "pencil.tip"
-        case .mosaic: "checkerboard.rectangle"
-        // ⚠️ **不能用 `textformat`** —— 它有中文本地化变体，中文环境下
-        // 系统会自动换成 `textformat.zh`，而那个变体渲染出来是**两个字「格式」**，
-        // 夹在一排图标里非常突兀（用户的原话就是"格式这个文字还在"）。
-        // `t.square` 是"方框里的 T"，两种语言下都长一样，也正是参考工具条那一格的画法。
-        case .text: "t.square"
-        }
+        AnnotationIcon.symbol(for: tool)
     }
 
     // MARK: - 弹层（色板/尺寸、表情）
@@ -1226,8 +1326,15 @@ final class SelectionOverlayView: NSView {
     private func drawProCardForeground(in box: NSRect) {
         guard let card = presentation.toolbar?.proCard else { return }
         // 画法在 `ProCardRenderer` —— 菜单入口那张独立面板用的是同一份。
-        // 两处各写一遍的话，改一个错别字就会让同一张卡片长得不一样。
-        ProCardRenderer.draw(card.content, in: box)
+        // 两处各写一遍的话，改一个别字就会让同一张卡片长得不一样。
+        //
+        // ⚠️ `box` 是卡片在这一层的矩形，而 `card.layout` 里的矩形是**卡片局部坐标** ——
+        // 渲染器内部把两者相加，所以这里传的 box 必须就是 layout 量出来的那个尺寸。
+        ProCardRenderer.draw(card.content,
+                             layout: card.layout,
+                             in: box,
+                             hovered: cardHoveredAction,
+                             pressed: cardPressedAction)
     }
 
     /// 表情用字符串直接画（系统自带 emoji 字体），不找图片资源。

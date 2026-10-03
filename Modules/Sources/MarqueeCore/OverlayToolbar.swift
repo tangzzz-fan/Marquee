@@ -90,12 +90,36 @@ public enum OverlaySizeMeaning: String, CaseIterable, Sendable {
     /// 文字与表情的字号
     case fontSize
 
-    /// 这一组的值（点）。
+    /// 覆盖层里的这一组值（**点**）。
     public var values: [CGFloat] {
         switch self {
-        case .lineWidth: AnnotationPalette.lineWidths
+        case .lineWidth: AnnotationPalette.overlayLineWidths
         case .redactionStrength: AnnotationPalette.overlayRedactionStrengths
         case .fontSize: AnnotationPalette.overlayFontSizes
+        }
+    }
+
+    /// 编辑器里的这一组值（**原图像素**）。
+    ///
+    /// ⚠️ **与 `values` 不是同一组数，也不是换算关系** —— 它们是两套数的**根**：
+    /// 覆盖层的数字描述"屏幕上的笔"，编辑器的数字描述"图里的笔"。
+    /// 同一个 4（点）在 2x 屏上就是 8（原图像素）。
+    /// 所以两组都要有，而不是让编辑器去乘一个 scale —— 乘出来的数不在档位上，
+    /// 表现是"点一下尺寸芯片，当前档不亮"。
+    public var editorValues: [CGFloat] {
+        switch self {
+        case .lineWidth: AnnotationPalette.editorLineWidths
+        case .redactionStrength: AnnotationPalette.editorRedactionStrengths
+        case .fontSize: AnnotationPalette.editorFontSizes
+        }
+    }
+
+    /// 编辑器里的默认值。**同样必须落在 `editorValues` 里**（理由见 `defaultValue`）。
+    public var editorDefaultValue: CGFloat {
+        switch self {
+        case .lineWidth: AnnotationPalette.defaultEditorLineWidth
+        case .redactionStrength: AnnotationPalette.defaultEditorRedactionStrength
+        case .fontSize: AnnotationPalette.defaultEditorFontSize
         }
     }
 

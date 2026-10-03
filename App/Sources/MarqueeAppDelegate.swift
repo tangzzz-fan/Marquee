@@ -88,8 +88,34 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         // 存在的理由：覆盖层的行为依赖真实屏幕与 TCC 授权，无法在自动化测试里验证，
         // 但"创建逐屏面板 → 绘制 → 拆解"这条路一旦崩，是每次按快捷键都会立刻撞上的。
         // 这个开关让这条路径至少能被冒烟一次（自动退出 = 不留残影）。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeProCard") {
+            // 升级卡片的几种状态渲成一张对照图（Core 答"数对不对"，这张图答"看起来对不对"）。
+            let url = ProCardSheet.render(into: AppIdentity().logDirectory())
+            print("升级卡片对照图：\(url?.path ?? "生成失败")")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                NSApplication.shared.terminate(nil)
+            }
+            return
+        }
+
+        if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeCompliance") {
+            // 「设计稿 vs 实装」的对照材料：把 AppKit 拼的那三块窗口离屏渲成 PNG。
+            let urls = coordinator.renderComplianceSheet(into: AppIdentity().logDirectory())
+            print("对照材料：")
+            urls.forEach { print("  " + $0) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                NSApplication.shared.terminate(nil)
+            }
+            return
+        }
+
         if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeEditor") {
             coordinator.presentEditor(image: Self.sampleEditorImage())
+            // 顺手把工具条 / 状态行 / 文字预设弹层离屏渲成 PNG 落到报告目录：
+            // Core 的单测管"数对不对"，这几张图管"看起来对不对"。
+            let urls = coordinator.renderEditorChromeSnapshots(into: AppIdentity().logDirectory())
+            print("编辑器版面快照：")
+            urls.forEach { print("  " + $0) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 NSApplication.shared.terminate(nil)
             }

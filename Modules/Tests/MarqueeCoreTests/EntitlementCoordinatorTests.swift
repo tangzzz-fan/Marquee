@@ -73,7 +73,7 @@ private final class FakePurchaser: ProductPurchasing, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _next: PurchaseOutcome = .failed
-    private var _restoreThrows = false
+    private var _restoreError: Error?
     private var _restoreCalls = 0
     private var _askedIDs: [String] = []
 
@@ -82,9 +82,13 @@ private final class FakePurchaser: ProductPurchasing, @unchecked Sendable {
         set { lock.withLock { _next = newValue } }
     }
 
-    var restoreThrows: Bool {
-        get { lock.withLock { _restoreThrows } }
-        set { lock.withLock { _restoreThrows = newValue } }
+    /// 恢复这一步要抛什么。`nil` = 成功。
+    ///
+    /// 用 `Error?` 而不是 `Bool`：**抛什么决定了界面说什么话**
+    ///（取消 / 连不上 / 其它），只有能选具体错误才测得出这一层。
+    var restoreError: Error? {
+        get { lock.withLock { _restoreError } }
+        set { lock.withLock { _restoreError = newValue } }
     }
 
     var restoreCalls: Int { lock.withLock { _restoreCalls } }
@@ -100,11 +104,11 @@ private final class FakePurchaser: ProductPurchasing, @unchecked Sendable {
     }
 
     func restore() async throws {
-        let shouldThrow = lock.withLock {
+        let error = lock.withLock {
             _restoreCalls += 1
-            return _restoreThrows
+            return _restoreError
         }
-        if shouldThrow { throw Boom() }
+        if let error { throw error }
     }
 }
 
@@ -452,11 +456,82 @@ struct EntitlementCoordinatorTests {
         #expect(nothing == .nothingToRestore)
 
         let callsBeforeFailure = reader.calls
-        purchaser.restoreThrows = true
+        purchaser.restoreError = FakePurchaser.Boom()
         let failed = await coordinator.restorePurchases()
         #expect(failed == .failed,
                 "用户主动点的动作，失败必须如实回报 —— 悄悄失败等于骗他「确实没有记录」")
         #expect(reader.calls == callsBeforeFailure, "恢复这一步就失败了，不该再去问商店")
+    }
+
+    // MARK: - 恢复失败的分档（2026-10-04 用户报回来的那条）
+
+    /// 用户原话：「恢复购买后取消，提示网络失败，但是我的网络是好的」。
+    ///
+    /// 根因是 `AppStore.sync()` **在用户按取消时也会抛错**，而编排把所有抛出来的错
+    /// 都归成"失败"，界面又只有一句"检查网络后重试" —— 于是网络正常的人被派去查网。
+    @Test("用户取消恢复 → 单独一档，**不是**失败、也不是网络问题")
+    func restoreCancelledByUser() async {
+        let (coordinator, reader, purchaser, _) = make(cached: nil)
+        coordinator.primeFromCache()
+        let before = coordinator.snapshot.entitlement
+        purchaser.restoreError = StorefrontRestoreFailure.cancelledByUser
+
+        let outcome = await coordinator.restorePurchases()
+
+        #expect(outcome == .cancelledByUser, "他自己按的取消 —— 报成失败会让下一步变成「再试一次」")
+        #expect(outcome != .networkFailed)
+        #expect(outcome != .failed)
+        #expect(reader.calls == 0, "取消什么都没发生，不该再去问一次商店")
+        // ⚠️ 断言"没变"，不是"等于 free"：还没核实过时判定就是 `.unknown`（按放行处理）。
+        // 写成 `.free` 会把"取消不乱动状态"这条错测成"取消会把状态清成免费"。
+        #expect(coordinator.snapshot.entitlement == before, "取消不改动判定")
+    }
+
+    @Test("连不上商店 → 只有这一档配说「检查网络」")
+    func restoreNetworkFailure() async {
+        let (coordinator, _, purchaser, _) = make(cached: nil)
+        coordinator.primeFromCache()
+        purchaser.restoreError = StorefrontRestoreFailure.network
+
+        let outcome = await coordinator.restorePurchases()
+
+        #expect(outcome == .networkFailed)
+    }
+
+    @Test("其它失败 → 只说「失败」，**不许**冒充网络问题")
+    func restoreOtherFailure() async {
+        let (coordinator, _, purchaser, _) = make(cached: nil)
+        coordinator.primeFromCache()
+
+        let errors: [Error] = [StorefrontRestoreFailure.other,
+                               UnavailableStorefront.StoreUnavailable()]
+        for error in errors {
+            purchaser.restoreError = error
+            let outcome = await coordinator.restorePurchases()
+            #expect(outcome == .failed,
+                    "认不出来的原因一律「稍后再试」—— 猜成网络就是让用户去修一个没坏的东西")
+            #expect(outcome != .networkFailed)
+        }
+    }
+
+    @Test("三档失败互不相同 —— 混成一档，界面就必然对其中一种说错话")
+    func restoreFailureReasonsAreDistinct() async {
+        let (coordinator, _, purchaser, _) = make(cached: nil)
+        coordinator.primeFromCache()
+
+        purchaser.restoreError = StorefrontRestoreFailure.cancelledByUser
+        let cancelled = await coordinator.restorePurchases()
+        purchaser.restoreError = StorefrontRestoreFailure.network
+        let network = await coordinator.restorePurchases()
+        purchaser.restoreError = StorefrontRestoreFailure.other
+        let other = await coordinator.restorePurchases()
+
+        #expect(cancelled != network)
+        #expect(network != other)
+        #expect(cancelled != other)
+        #expect(cancelled == .cancelledByUser)
+        #expect(network == .networkFailed)
+        #expect(other == .failed)
     }
 
     @Test("价格文案来自商店，不是我们拼的")

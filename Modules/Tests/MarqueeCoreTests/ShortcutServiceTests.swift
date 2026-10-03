@@ -251,6 +251,151 @@ struct ShortcutServiceTests {
     }
 }
 
+// MARK: - 录制期间挂起
+
+/// 2026-10-04 用户报的 bug：在「快捷键」页录制时按下**当前正在用的那颗键**，
+/// 结果是"设置没反应 + 真的开始截屏"。
+///
+/// 根因是 Carbon 的全局注册会在按键到达响应链之前把它吃掉 —— 录制器根本收不到。
+/// 修法是录制期间把全局注册摘下来。这一组用例锁住"摘得掉、装得回、不重复装、
+/// 两个录制器并存时也不提前装"。
+@Suite("快捷键服务：录制期间挂起全局注册")
+@MainActor
+struct ShortcutRecordingSuspensionTests {
+
+    @Test("开始录制 → 立刻注销全局注册（否则录制器收不到自己的键）")
+    func suspendUnregisters() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+        let before = harness.registrar.unregisterCount
+
+        harness.service.suspendForRecording()
+
+        #expect(harness.registrar.unregisterCount == before + 1)
+    }
+
+    @Test("重复挂起只注销一次 —— 挂了两次却只恢复一次会把键留在「没注册」的状态")
+    func suspendIsIdempotent() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+        let before = harness.registrar.unregisterCount
+
+        harness.service.suspendForRecording()
+        harness.service.suspendForRecording()
+
+        #expect(harness.registrar.unregisterCount == before + 1)
+    }
+
+    @Test("两个录制器同时录（设置窗 + 引导窗）：先结束的那个不能把全局注册提前装回来")
+    func twoRecordersKeepSuspendedUntilLastOneLeaves() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+
+        harness.service.suspendForRecording()
+        harness.service.suspendForRecording()
+        harness.service.resumeAfterRecording()
+
+        #expect(harness.registrar.registeredCombos.count == 1,
+                "还有一个录制器在录 —— 这时候装回去，它又会按不动自己的键")
+
+        harness.service.resumeAfterRecording()
+        #expect(harness.registrar.registeredCombos.last == .fullScreenCapture)
+    }
+
+    @Test("录制结束（Esc / 关窗 / 失焦）→ 把当前组合装回去")
+    func resumeRegistersCurrent() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+
+        harness.service.suspendForRecording()
+        harness.service.resumeAfterRecording()
+
+        #expect(harness.registrar.registeredCombos.last == .fullScreenCapture)
+        #expect(harness.service.current == .fullScreenCapture)
+    }
+
+    @Test("恢复注册**不做**独占探测：探测说「被占用」也不能把键弄丢")
+    func resumeDoesNotProbe() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+        // 此后系统对任何探测都说"被占用"（模拟"这个键别的应用也在用"的共存情况）
+        harness.registrar.probeOutcome = { _ in .conflict }
+        let probesBefore = harness.registrar.probedCombos.count
+
+        harness.service.suspendForRecording()
+        harness.service.resumeAfterRecording()
+
+        #expect(harness.registrar.probedCombos.count == probesBefore, "恢复注册不该再问一次系统")
+        #expect(harness.registrar.registeredCombos.last == .fullScreenCapture,
+                "非独占注册在别的应用也占着同一个键时本来就成功，挂起一次不该把它变成「被占用」")
+    }
+
+    @Test("录制中按下**当前那颗键** → 能正常改键（挂起之后 Carbon 不再吃掉它）")
+    func recordingTheCurrentComboApplies() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+
+        harness.service.suspendForRecording()
+        let result = harness.service.change(to: .fullScreenCapture)
+
+        #expect(result == .applied(.fullScreenCapture))
+        #expect(harness.registrar.registeredCombos.last == .fullScreenCapture)
+        #expect(harness.store.stored == .fullScreenCapture)
+    }
+
+    @Test("录制里改键成功后收尾 → 不重复注册（同一组合注册两遍会被 Carbon 判成冲突）")
+    func resumeAfterSuccessfulChangeIsNoOp() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+
+        harness.service.suspendForRecording()
+        _ = harness.service.change(to: comboB)
+        let registersAfterChange = harness.registrar.registeredCombos.count
+
+        harness.service.resumeAfterRecording()
+
+        #expect(harness.registrar.registeredCombos.count == registersAfterChange)
+        #expect(harness.registrar.registeredCombos.last == comboB)
+    }
+
+    @Test("录制里改键**失败**（组合非法）→ 收尾仍然把当前组合装回去，不能留下「没有快捷键」")
+    func resumeAfterRejectedChangeRestores() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+
+        harness.service.suspendForRecording()
+        #expect(harness.service.change(to: comboNoModifier) == .rejected(.missingModifier))
+
+        harness.service.resumeAfterRecording()
+
+        #expect(harness.registrar.registeredCombos.last == .fullScreenCapture)
+    }
+
+    @Test("没挂起时收尾是空操作 —— 免得凭白多注册一次")
+    func resumeWithoutSuspendDoesNothing() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+        let before = harness.registrar.registeredCombos.count
+
+        harness.service.resumeAfterRecording()
+
+        #expect(harness.registrar.registeredCombos.count == before)
+    }
+
+    @Test("停用服务也会清掉挂起状态 —— 之后那次收尾不该把键复活")
+    func stopClearsSuspension() {
+        let harness = makeService(stored: nil)
+        _ = harness.service.activate()
+        harness.service.suspendForRecording()
+
+        harness.service.stop()
+        let afterStop = harness.registrar.registeredCombos.count
+        harness.service.resumeAfterRecording()
+
+        #expect(harness.registrar.registeredCombos.count == afterStop)
+    }
+}
+
 // MARK: - 落盘
 
 @Suite("快捷键偏好的落盘与读回")

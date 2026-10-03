@@ -207,7 +207,10 @@ public enum RecentPanel {
     /// "卡片露在面板外面"是这里唯一不能接受的结果：它会盖住旁边的窗口内容，
     /// 而那看起来像渲染出错。
     public static var upgradeCardMinimumPanelHeight: CGFloat {
-        upgradeCardBottomInset + ProCardLayout.size.height + upgradeCardTopMargin
+        // 最近截图面板里那处「就地升起」用的是**载体 B**（无微行，115 高）：
+        // 那时没有选区，微行那句「选区保留」不成立。
+        let card = ProCardLayout.size(includesMicro: false)
+        return upgradeCardBottomInset + card.height + upgradeCardTopMargin
     }
 
     /// 「升级到 Pro」点下去之后就地升起的卡片放在哪（**面板局部坐标**）。
@@ -218,7 +221,7 @@ public enum RecentPanel {
     /// 面板意外地矮时**向下让**（宁可盖住标题带，也不出面板）——
     /// 调用方本该先按 `upgradeCardMinimumPanelHeight` 把面板撑够，这里是那条不变量的兜底。
     public static func upgradeCardFrame(inPanel panel: CGRect) -> CGRect {
-        let size = CGSize(width: ProCardLayout.width, height: ProCardLayout.size.height)
+        let size = ProCardLayout.size(includesMicro: false)
         let ideal = panel.minY + upgradeCardBottomInset
         let lowest = panel.maxY - upgradeCardTopMargin - size.height
         let y = max(panel.minY + borderWidth, min(ideal, lowest))

@@ -23,6 +23,8 @@ struct OverlayCursorTests {
                          annotationHandles: [OverlayCursorContext.HandleRegion] = [],
                          toolbar bar: CGRect? = nil,
                          palette panel: CGRect? = nil,
+                         proCard card: CGRect? = nil,
+                         proCardButtons buttons: [CGRect] = [],
                          disabled: Set<OverlayToolbarSlot> = [],
                          drag: OverlayCursorContext.Drag = .none) -> OverlayCursorContext {
         var context = OverlayCursorContext()
@@ -33,6 +35,8 @@ struct OverlayCursorTests {
         context.tool = tool
         context.toolbar = bar
         context.palette = panel
+        context.proCard = card
+        context.proCardButtons = buttons
         context.annotationFrames = annotationFrames
         context.annotationHandles = annotationHandles
         context.disabledSlots = disabled
@@ -187,5 +191,49 @@ struct OverlayCursorTests {
         for point in everywhere {
             #expect(kind(point, .empty) == .crosshair)
         }
+    }
+
+    // MARK: - 升级卡片（2026-10-04）
+
+    /// 卡片上**只有那两个按钮**能给手型 —— 这正是一条断言的价值所在：
+    /// 整张卡都给手型的话，用户会在正文上点几下，然后说"这张卡片点不动"。
+    @Test("卡片上只有按钮是手型；正文与空白处是箭头")
+    func onlyCardButtonsAreClickable() {
+        let card = CGRect(x: 400, y: 500, width: 300, height: 140)
+        // 两个按钮的命中区（按稿子：右对齐、高 24、贴右下角）
+        let primary = CGRect(x: 400 + 300 - 16 - 96, y: 500 + 16, width: 96, height: 24)
+        let secondary = CGRect(x: primary.minX - 10 - 72, y: primary.minY, width: 72, height: 24)
+        let context = context(proCard: card, proCardButtons: [primary, secondary])
+
+        #expect(kind(CGPoint(x: primary.midX, y: primary.midY), context) == .pointingHand)
+        #expect(kind(CGPoint(x: secondary.midX, y: secondary.midY), context) == .pointingHand)
+
+        // 正文那一行（卡片上半部）与卡片右下角的空白：都不是按钮
+        #expect(kind(CGPoint(x: card.midX, y: card.midY + 30), context) == .arrow)
+        #expect(kind(CGPoint(x: card.minX + 8, y: card.minY + 8), context) == .arrow)
+    }
+
+    @Test("卡片**压过**弹层与工具条 —— 它是最晚弹出来的那一层")
+    func proCardBeatsEverythingBelow() {
+        // 卡片与工具条、弹层三个矩形重叠在同一个点上（现实中贴得近时会这样）
+        let overlapped = toolbar
+        let buttons = [CGRect(x: overlapped.midX - 10, y: overlapped.midY - 10,
+                              width: 20, height: 20)]
+        let point = CGPoint(x: overlapped.midX, y: overlapped.midY)
+
+        // 只有卡片时代：按钮上当然是手型
+        #expect(kind(point, context(toolbar: toolbar, palette: palette,
+                                    proCard: overlapped, proCardButtons: buttons)) == .pointingHand)
+        // ⚠️ 去掉卡片那一支（变异）时，这里会落到"工具条说了算" —— 也是手型，
+        // 所以**必须再补一条卡片正文的断言**才能把那一支钉住。
+        // 卡片的正文处（不是按钮）：必须是箭头，而工具条那一支会给出……要看格子。
+        // ⚠️ 这一点必须落在**某一格**上（工具条最左边那格）：落在格与格的空隙里的话，
+        // 工具条那一支本来就给箭头，"拿掉卡片也该给手型"这个前提就不成立了 ——
+        // 那样这条断言只是在测"空隙是箭头"，与卡片无关。
+        let bodyPoint = CGPoint(x: overlapped.minX + 20, y: overlapped.midY)
+        #expect(kind(bodyPoint, context(toolbar: overlapped, palette: nil,
+                                        proCard: overlapped, proCardButtons: buttons)) == .arrow)
+        #expect(kind(bodyPoint, context(toolbar: overlapped, palette: nil)) != .arrow,
+                "前提变了：拿掉卡片之后这一点本来就该给手型（它是工具条） —— 那这条断言就没在测卡片")
     }
 }
