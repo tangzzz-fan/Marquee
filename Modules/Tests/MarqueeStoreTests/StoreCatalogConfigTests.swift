@@ -142,7 +142,13 @@ struct StoreCatalogConfigTests {
     func bothProductsAreLocalized() throws {
         for product in try config().products {
             let locales = Set(product.localizations.map(\.locale))
-            #expect(locales.contains("zh_CN"), "\(product.productID) 缺中文名称")
+            // ⚠️ 中文 locale 有两种写法：`zh_CN`（旧）与 `zh-Hans`（Apple 的规范形式 ——
+            // Xcode 打开一次 `.storekit` 就会把它规范化成后者）。
+            // 断言钉的是「**中文用户不会看到英文或空白**」这个意图，不是某一种拼法。
+            // 写死 `zh_CN` 的话，任何人用 Xcode 打开一次商品文件，这条就会红 ——
+            // 而它红得**看起来像"商品缺了中文"**，与真实原因（只是个拼法）差很远。
+            let hasChinese = locales.contains { $0.hasPrefix("zh") }
+            #expect(hasChinese, "\(product.productID) 缺中文名称（现有：\(locales.sorted())）")
             #expect(locales.contains("en_US"), "\(product.productID) 缺英文名称")
         }
     }
