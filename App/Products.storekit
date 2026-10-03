@@ -1,4 +1,14 @@
 {
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
   "identifier" : "3D9A1C40",
   "nonRenewingSubscriptions" : [
 
@@ -12,7 +22,7 @@
         {
           "description" : "滚动截屏、识别文字、钉图，以及不限数量的最近截图。一次买断，永久可用。",
           "displayName" : "Marquee Pro",
-          "locale" : "zh_CN"
+          "locale" : "zh_Hans"
         },
         {
           "description" : "Scrolling capture, text recognition, pinning, and unlimited recent captures. One-time purchase.",
@@ -32,7 +42,7 @@
         {
           "description" : "免费试用全部 Pro 能力 7 天。试用结束不会自动收费。",
           "displayName" : "Marquee 7 天试用",
-          "locale" : "zh_CN"
+          "locale" : "zh_Hans"
         },
         {
           "description" : "Try every Pro feature free for 7 days. Nothing is charged when it ends.",
@@ -46,14 +56,30 @@
     }
   ],
   "settings" : {
-    "_locale" : "zh_CN",
-    "_storefront" : "CHN"
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "zh_Hans",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "CHN",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
   },
+  "subscriptionBundleGroups" : [
+
+  ],
   "subscriptionGroups" : [
 
   ],
+  "subscriptionSuiteGroups" : [
+
+  ],
   "version" : {
-    "major" : 4,
-    "minor" : 0
+    "major" : 6,
+    "minor" : 3
   }
 }

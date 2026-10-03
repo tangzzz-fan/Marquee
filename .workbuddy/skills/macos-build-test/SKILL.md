@@ -1,6 +1,6 @@
 ---
 name: macos-build-test
-description: This skill should be used for any macOS-side build or test task on this machine — building/testing a macOS app or command-line target with `xcodebuild`, running a SwiftPM package's `swift build|test`, choosing a build configuration (Debug/Dev/Release), or diagnosing "Xcode 编不过 / 构建失败" when the cause is the sandboxed environment rather than the code (e.g. `swift-plugin-server ... produced malformed response`, `sandbox_apply: Operation not permitted`). Trigger it on requests like "build 一下"、"编译看看"、"跑一下测试"、"跑一遍 test.sh", or when a repo such as Marquee's needs its scheme built. It carries the sandbox-escape parameters this environment requires and the configuration semantics that make performance numbers meaningful.
+description: This skill should be used for any macOS-side build or test task on this machine — building/testing a macOS app or command-line target with `xcodebuild`, running a SwiftPM package's `swift build|test`, choosing a build configuration (Debug/Dev/Release), or diagnosing "Xcode 编不过 / 构建失败" when the cause is the sandboxed environment rather than the code (e.g. `swift-plugin-server ... produced malformed response`, `sandbox_apply: Operation not permitted`). Trigger it on requests like "build 一下"、"编译看看"、"跑一下测试"、"跑一遍 test.sh", or when a repo such as Marquee's needs its scheme built. It carries the configuration semantics that make performance numbers meaningful; the sandbox-escape parameters and the macro-failure signature live in `apple-build-sandbox`.
 agent_created: true
 ---
 
@@ -22,34 +22,16 @@ $M spm test --package-dir Modules                 # SwiftPM 包（最快的一�
 
 ## 1. 第一原则：这个环境是**嵌套沙箱**
 
-本 agent 会话的 shell 通常已在受限 profile 里，macOS 不允许在受限进程里再 apply 一层
-deny-default 沙箱。凡是"会自己再套沙箱"的工具都会失败 —— 最典型的是 **Swift 宏**
-（`swift-plugin-server` 跑 `@State` 这类宏）。
+**这段知识的正文只有一份，在独立技能 `apple-build-sandbox` 里**（用户级 `~/.workbuddy/skills/`
+或项目级 `.workbuddy/skills/`）：判据命令、逃逸参数、「社区常推的三个参数为什么无效」、
+以及**宏报错的失败签名**都在那儿。**别在这里重写一份。**
 
-**判据（一条命令，别猜）**：
+本技能只留三条够用的：
 
-```bash
-sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok
-# ✅ 可 apply → 不需要参数
-# ❌ 本环境实测：sandbox_apply: Operation not permitted，退出码 71 → 需要逃逸
-```
-
-**逃逸参数（只加在命令行上）**：
-
-| 工具 | 参数 |
-| --- | --- |
-| `xcodebuild` | `OTHER_SWIFT_FLAGS=-disable-sandbox` |
-| `swift build` / `swift test` | `--disable-sandbox` |
-
-`macos-run.sh` 在需要时**自动加上**。
-
-> ⚠️ Xcode 社区常推的那三个 —— `-IDEPackageSupportDisableManifestSandbox=1`、
-> `-IDEPackageSupportDisablePluginExecutionSandbox=1`、`ENABLE_USER_SCRIPT_SANDBOXING=NO`
-> —— **本环境实测无效**：它们关的是**内层**沙箱，外层那次 apply 本身就被拒。
-> 有效的是 `swiftc` 自己的 `-disable-sandbox`（`xcrun swiftc -help-hidden | grep sandbox`）。
->
-> ⚠️ **绝不把它写进工程文件**（`project.yml` / `.pbxproj` / `Package.swift` / scheme）：
-> 那会削弱正常终端与发版构建的隔离。它只属于"这一次命令"。
+- **先跑判据再动手**：`sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok`
+- `macos-run.sh` 在需要时**自动加上**：`xcodebuild` → `OTHER_SWIFT_FLAGS=-disable-sandbox`；
+  `swift build` / `swift test` → `--disable-sandbox`
+- 看到宏的 `produced malformed response` → **先往上翻一行找 `sandbox_apply`**，别去查插件路径
 
 ## 2. 配置（configuration）：**性能数字只在优化构建下才有意义**
 
@@ -109,41 +91,27 @@ open -a Foo.app --args -someFlag
 | 改了 bundle id 后屏幕录制授权留不住 | TCC 按「bundle id + 签名身份」记账 | **预期行为**，重新授权即可（换身份就是新的一条） |
 | 产物在 `~/Library/Developer/Xcode/DerivedData/<带哈希>` 找不到 | 默认 DerivedData 位置 | 用 `-derivedDataPath` 固定（脚本默认钉到 `<cwd>/DerivedData`） |
 
-## 6. 写脚本 / 解析输出时的环境坑（本机实测）
+## 6. 写脚本 / 解析输出时的环境坑
 
-**先记住一件事：`grep` / `sed` 在这个环境有两套实现。** agent 会话的 PATH 首部是
-WorkBuddy 的 shim 目录，`grep sed find ls head tail cat wc …` 被换成 **toybox 0.8.13**；
-你自己的终端里是 BSD grep 2.6.0。shim **只在 stderr 出现 `Unknown option` 时
-才回退**到真工具 ⇒ **语义差异不触发回退，而是静默失配**。
+**这段知识的正文只有一份，在独立技能 `shell-portability` 里**（项目 `.workbuddy/skills/`
+或用户级 `~/.workbuddy/skills/`）：两套 `grep` 语义、三条硬规则、`sed -i` 的两套语义、
+`$var` 后紧跟全角字符、heredoc 配 `set -e` 的写法、逃生舱、以及自查命令。
 
-| 写法 | toybox（agent 会话） | BSD（你的终端） |
-| --- | --- | --- |
-| BRE 交替 `grep 'a\|b'` | ❌ **静默 rc=1** | ✅ 命中 |
-| ERE 交替 `grep -E` + 裸竖线 | ✅ | ✅ |
-| `\s` 简写 `grep -E 'a\sb'` | ❌ **静默 rc=1** | ✅ 命中 |
-| POSIX 类 `grep -E 'a[[:space:]]b'` | ✅ | ✅ |
-| `sed -i 's/a/b/' f` | ✅ | ❌ unterminated substitute |
-| `sed -i '' 's/a/b/' f` | ❌ 把 `''` 当文件名 | ✅ |
-
-**三条硬规则（跨环境唯一安全写法）：**
-
-1. 永远 `grep -E`，交替用裸竖线 —— **永不写 BRE 的 `\|`**
-2. 字符类只用 POSIX（`[[:space:]]` / `[[:digit:]]`）—— **永不写 `\s` `\d` `\w`**
-3. **`sed -i` 两边语义相反 ⇒ 一律不用**：写临时文件再 `mv`，或用 python3
-
-**逃生舱**（只对只读命令）：`CODEBUDDY_TOYBOX_BIN= grep 'a\|b' file` → 本条走真 BSD 工具。
-⚠️ 它同时绕开 shim 的分发层，**别用于写 / 删命令**（safe-delete 与写入前备份会失效）。
-本技能的 `scripts/*-run.sh` **已在开头把 shim 目录从 PATH 摘掉**，脚本内语义恒定 —— 自己写脚本时照抄那段。
+本技能只留两条与**构建日志**直接相关的：
 
 | 坑 | 正解 |
 | --- | --- |
-| `set -u` + 可能为空的数组 | bash 3.2 下 `"${arr[@]}"` 会报 unbound → 写 `${arr[@]+"${arr[@]}"}` |
 | 想"只看关键行" | `grep -E "error:|warning:|\*\* .* \*\*" \| tail -40`；**别把上千行日志整段贴回来** |
 | 失败时的读法 | **先看第一条 `error:`**，不要先看最后一条（后面常是级联噪声） |
+
+本技能的 `scripts/*-run.sh` 已在开头把 shim 目录从 PATH 摘掉，脚本内语义恒定 ——
+自己写脚本时照抄那段，或直接看 `shell-portability` 的 §2。
 
 ## 7. 与其他技能的分工
 
 - **iOS**（模拟器 / 真机）→ 用 `ios-build-test`
-- 本技能只管 macOS host 与 SwiftPM；两者共享同一套"嵌套沙箱"判据，但各自自包含，可单独使用。
+- **沙箱判据与逃逸参数** → 用 `apple-build-sandbox`（两个 build 技能共用同一份，不各自重写）
+- **shell 两套语义** → 用 `shell-portability`
+- 本技能只管 macOS host 与 SwiftPM 的**流程与失败签名**。
 
 平台细节见 `references/macos.md`。

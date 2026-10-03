@@ -127,7 +127,14 @@ report() {
     fi
   else
     echo "✗ 失败（exit ${code}）—— 只列前几条："
-    grep -nE "error:|fatal error:|Unable to find a destination|sandbox_apply|Code ?Sign(ing)? error|✘|Expectation failed|Test run with .*failed|BUILD FAILED" "$LOG" | head -20
+    hits=$(grep -nE "error:|fatal error:|Unable to find a destination|sandbox_apply|Code ?Sign(ing)? error|✘|Expectation failed|Test run with .*failed|BUILD FAILED" "$LOG" | head -20)
+    if [ -z "$hits" ]; then
+      # 匹配不到已知签名时**必须**给点东西 —— 否则「✗ 失败」后面是一片空白
+      echo "  （未匹配到已知失败签名，下面是日志末尾 10 行）"
+      tail -10 "$LOG" | sed 's/^/  /'
+    else
+      printf '%s\n' "$hits"
+    fi
   fi
   [ -n "$RESULT_BUNDLE" ] && echo "  测试报告：$RESULT_BUNDLE"
   echo "  完整日志：$LOG"
