@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marquee · ⑦ 菜单栏下拉菜单 · 高保真稿（深/浅）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   0. 方向种子 —— modern-minimal（Linear / Vercel），逐字绑定（仅文档层）
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
+  --accent:  oklch(58% 0.18 255);
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+:root{
+  --stage: oklch(96.6% 0.003 260);
+  --ink:   oklch(32% 0.01 260);
+  --ink2:  oklch(52% 0.008 260);
+  --ink3:  oklch(84% 0.006 260);
+  --dim:   oklch(53% 0.16 32);
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   1. 宿主 token —— 与 ①②③④⑤⑥ 逐项相同
+   ══════════════════════════════════════════════════════════════════ */
+.host-dark{
+  --c-bg:      oklch(26.5% 0 0);
+  --c-panel:   oklch(31.5% 0 0);
+  --c-inset:   oklch(22.5% 0 0);
+  --c-cap:     oklch(38% 0 0);
+  --c-capbd:   oklch(46% 0 0);
+  --c-border:  oklch(43% 0 0);
+  --c-borderh: oklch(50% 0 0);
+  --c-hair:    rgba(255,255,255,.10);
+  --c-label:   #ffffff;
+  --c-label2:  rgba(255,255,255,.64);
+  --c-fill:    oklch(55% 0.19 254);
+  --c-fill-h:  oklch(56% 0.19 254);
+  --c-fill-p:  oklch(48% 0.19 254);
+  --c-glyph:   oklch(72% 0.14 254);
+  --c-warn:    oklch(84% 0.17 88);
+  --c-ring:    oklch(62% 0.17 254);
+  --c-soft:    rgba(255,255,255,.07);
+  --c-soft-h:  rgba(255,255,255,.11);
+  --c-soft-p:  rgba(255,255,255,.15);
+  --c-ghost:   rgba(255,255,255,.10);
+  --c-ghost-p: rgba(255,255,255,.16);
+  --c-menubar: oklch(28.5% 0 0);
+  --c-mbartx:  rgba(255,255,255,.82);
+  --c-err:     oklch(72% 0.15 25);
+  --c-cau:     oklch(84% 0.17 88);
+}
+.host-light{
+  --c-bg:      oklch(92.8% 0 0);
+  --c-panel:   oklch(99% 0 0);
+  --c-inset:   #ffffff;
+  --c-cap:     oklch(96.5% 0 0);
+  --c-capbd:   oklch(80% 0 0);
+  --c-border:  oklch(80% 0 0);
+  --c-borderh: oklch(72% 0 0);
+  --c-hair:    rgba(0,0,0,.10);
+  --c-label:   rgba(0,0,0,.85);
+  --c-label2:  rgba(0,0,0,.58);
+  --c-fill:    oklch(52% 0.19 254);
+  --c-fill-h:  oklch(56% 0.19 254);
+  --c-fill-p:  oklch(45% 0.19 254);
+  --c-glyph:   oklch(52% 0.19 254);
+  --c-warn:    oklch(56% 0.13 62);
+  --c-ring:    oklch(60% 0.18 254);
+  --c-soft:    rgba(255,255,255,.92);
+  --c-soft-h:  #ffffff;
+  --c-soft-p:  oklch(95% 0 0);
+  --c-ghost:   rgba(0,0,0,.06);
+  --c-ghost-p: rgba(0,0,0,.10);
+  --c-menubar: oklch(96.5% 0 0);
+  --c-mbartx:  rgba(0,0,0,.78);
+  --c-err:     oklch(45% 0.19 27);
+  --c-cau:     oklch(42% 0.11 62);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2. 文档层
+   ══════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:400 14px/1.75 var(--font-body);-webkit-text-size-adjust:100%}
+.wrap{max-width:1248px;margin:0 auto;padding:56px 24px 120px}
+.doc__n{font:600 12px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+h1{margin:12px 0 0;font:600 30px/1.25 var(--font-display);letter-spacing:-.02em;color:var(--fg)}
+.doc__lede{margin:14px 0 0;max-width:76ch;color:var(--ink2);font-size:14px}
+.doc__lede strong{color:var(--ink);font-weight:600}
+.doc__meta{margin:18px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.tag{font:500 11px/1 var(--mono);color:var(--ink2);background:var(--stage);border:1px solid var(--border);
+     border-radius:999px;padding:6px 10px}
+section{margin-top:72px;border-top:1px solid var(--border);padding-top:32px}
+h2{margin:0;font:600 19px/1.3 var(--font-display);letter-spacing:-.01em;color:var(--fg);display:flex;align-items:baseline;gap:12px}
+h2 .n{font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.08em}
+h3{margin:32px 0 0;font:600 14px/1.4 var(--font-display);color:var(--fg)}
+p{margin:12px 0 0;max-width:78ch;color:var(--ink2)}
+.lead{margin-top:14px;color:var(--ink)}
+ul.rules{margin:14px 0 0;padding:0;list-style:none;max-width:84ch}
+ul.rules li{position:relative;padding:8px 0 8px 22px;color:var(--ink2);border-top:1px dashed var(--border)}
+ul.rules li:first-child{border-top:0}
+ul.rules li::before{content:'';position:absolute;left:2px;top:18px;width:7px;height:7px;background:var(--dim);border-radius:1px}
+ul.rules b{color:var(--ink);font-weight:600}
+code{font:500 12px/1 var(--mono);background:var(--stage);border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:var(--ink)}
+table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px 10px 0;border-bottom:1px solid var(--border)}
+th{font:600 11px/1.4 var(--mono);color:var(--ink2);letter-spacing:.04em;white-space:nowrap}
+td{color:var(--ink2)} td b{font-weight:600;color:var(--ink)}
+td .mono{font:500 11.5px/1.6 var(--mono);color:var(--ink2)}
+figure{margin:0}
+figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin:0 0 10px;letter-spacing:.02em}
+.planfoot{margin-top:22px;font:500 11px/1.9 var(--mono);color:var(--ink2)}
+
+/* ══════════════════════════════════════════════════════════════════
+   3. 控件层 —— .mbar / .menu / .mi / .msep 逐字来自 ③；.lk 的图形来自 ④
+   ══════════════════════════════════════════════════════════════════ */
+.sc{position:relative;width:calc(var(--w)*2px);height:calc(var(--h)*2px)}
+.sc>*{position:absolute;left:0;top:0;transform:scale(2);transform-origin:0 0}
+
+.mbar{width:460px;height:24px;display:flex;align-items:center;gap:13px;padding:0 10px;
+      background:var(--c-menubar);color:var(--c-mbartx);border-bottom:1px solid var(--c-hair);
+      font:400 11px/1 var(--font-body)}
+.mbar__sp{flex:1}
+.mbar__mb{width:24px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+      background:var(--c-ghost)}
+.mbar svg{width:14px;height:12px;stroke:currentColor;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.mbar__st{width:9px;text-align:center;flex:none;opacity:.62}
+
+.menu{width:260px;padding:5px;border-radius:10px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);
+      box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32);font-family:var(--font-body);
+      -webkit-font-smoothing:antialiased}
+.host-light .menu{border-color:rgba(0,0,0,.10);box-shadow:0 12px 28px rgba(16,18,22,.16),0 1px 4px rgba(16,18,22,.10)}
+.mi{display:flex;align-items:center;height:22px;padding:0 8px;border-radius:4px;
+      font:400 13px/1 var(--font-body);color:var(--c-label)}
+.mi i{margin-left:auto;font:500 10.5px/1 var(--mono);font-style:normal;color:var(--c-label2)}
+.mi.is-hover,.mi:hover{background:var(--c-fill);color:#fff}
+.mi.is-hover i,.mi:hover i{color:#fff}
+.mi .lk{display:inline-flex;align-items:center;margin-left:auto}
+.mi .lk svg{width:9px;height:9px;stroke:currentColor;fill:none;stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round}
+.msep{height:1px;margin:4px 8px;background:var(--c-hair)}
+
+/* 三处同一个键（02 节的证据条） */
+.key3{display:flex;gap:14px;margin-top:18px;flex-wrap:wrap}
+.key3 figure{margin:0}
+.key3 .kbox{border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:12px 14px;min-width:200px}
+.key3 .kbox.host-dark{background:var(--c-panel);border-color:transparent}
+.key3 .klab{font:600 10.5px/1 var(--mono);color:var(--ink2);margin-bottom:10px;letter-spacing:.02em}
+.key3 .krow{display:flex;align-items:center;height:22px;padding:0 8px;border-radius:4px;width:200px}
+.key3 .krow span{font:400 13px/1 var(--font-body);color:var(--c-label)}
+.key3 .krow i{margin-left:auto;font:500 10.5px/1 var(--mono);font-style:normal;color:var(--c-label2)}
+.key3 .ktx{font:400 11px/1.6 var(--font-body);color:var(--ink2)}
+.key3 .ktx b{font-weight:600;color:var(--ink)}
+.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 8px;
+     border-radius:5px;background:var(--c-cap);border:1px solid var(--c-capbd);
+     font:500 13px/1 var(--font-body);color:var(--c-label)}
+
+/* ══════════════════════════════════════════════════════════════════
+   4. 稿面与红样
+   ══════════════════════════════════════════════════════════════════ */
+.dim{position:absolute;height:1px;background:var(--dim)}
+.dim::before,.dim::after{content:'';position:absolute;top:-3px;width:1px;height:7px;background:var(--dim)}
+.dim::before{left:0}.dim::after{right:0}
+.dim span{position:absolute;left:50%;top:-9px;transform:translate(-50%,-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v{position:absolute;width:1px;background:var(--dim)}
+.dim--v::before,.dim--v::after{content:'';position:absolute;left:-3px;width:7px;height:1px;background:var(--dim)}
+.dim--v::before{top:0}.dim--v::after{bottom:0}
+.dim--v span{position:absolute;left:12px;top:50%;transform:translateY(-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v.l span{left:auto;right:12px}
+.grid{display:grid;gap:18px;margin-top:20px}
+.grid--2{grid-template-columns:repeat(2,560px)}
+.stg{margin:0;display:flex;flex-direction:column}
+.stg figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin-bottom:8px;letter-spacing:.04em}
+.stage{border-radius:10px;display:flex;align-items:center;justify-content:center;padding:28px;
+       flex:1 1 auto;border:1px solid var(--border);background:var(--stage)}
+.stage--dark{background:oklch(26.5% 0 0);border-color:transparent}
+.stage--light{background:oklch(92.8% 0 0);border-color:transparent}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-lock" viewBox="0 0 9 9"><rect x="1.5" y="3.9" width="6" height="4.1" rx="1.1"/><path d="M2.9 3.9V3a1.6 1.6 0 0 1 3.2 0v.9"/></symbol>
+</svg>
+<div class="wrap" data-od-id="doc-head">
+
+  <div class="doc__n">① / ② / ③ / ④ / ⑤ / ⑥ / ⑦　MARQUEE DESIGN SPEC · 窗口类 E</div>
+  <h1>菜单栏下拉 — 五扇门，一把锁</h1>
+  <p class="doc__lede">本文件是窗口类三块的 <b>E 块</b>。C 块（偏好设置）在 <code>preferences.html</code>，
+     D 块（最近截图面板）在 <code>recent-captures.html</code>。菜单的材质与排版逐字沿用 ③ 的
+     <code>.menu / .mi / .msep</code>；锁的图形逐字沿用 ④ 的 <code>#i-lock</code>（同一个 9 × 9 的图形）。</p>
+  <p class="doc__lede"><strong>结构结论先讲：</strong>菜单是<b>全部全局入口的完整名单</b>，不是"功能的目录" ——
+     所以"未实现的项直接不出现"不是省事，而是让这五个名字<b>每一个都可信</b>。
+     它是本产品里唯一一处<b>不解释、只指路</b>的界面：只有名字、键位和一把锁。</p>
+  <div class="doc__meta">
+    <span class="tag">5 项 + 1 分隔线（上限 6 项）</span>
+    <span class="tag">宽 260 · 行 22 · 文字 13</span>
+    <span class="tag">无舌尖（菜单不是 popover）</span>
+    <span class="tag">深浅两套</span>
+    <span class="tag">标注单位 pt · 文案为示意</span>
+  </div>
+
+  <!-- ══════════ 01 共用语言 ══════════ -->
+  <section data-od-id="shared-language">
+    <h2><span class="n">01</span>共用语言</h2>
+    <p class="lead">这一块<b>没有新造任何东西</b>：菜单从 ③ 来，锁从 ④ 来，菜单栏条从 ⑥ 来。
+      唯一新增的是 <code>.mi .lk</code> —— 让那把锁能坐在右列（快捷键列）里而不是叠在图标角上。</p>
+
+    <h3>这一块的形态，逐件量出来</h3>
+    <table>
+      <thead><tr><th>形态</th><th>尺寸</th><th>材质 / 圆角</th><th>字阶</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>菜单</b></td><td class="mono">260 宽 · 5 + 5 × 22 + 9 + 5 = 131 高</td>
+          <td class="mono">--c-panel + 1px 12% · 10 pt</td><td class="mono">—</td>
+          <td>右缘贴屏幕右缘（macOS 的钳制规则），上缘贴菜单栏；<b>无舌尖</b></td></tr>
+        <tr><td><b>菜单项</b></td><td class="mono">22 高 · 内边距 0 / 8</td><td class="mono">悬停 = --c-fill · 4 pt</td><td class="mono">13 / 400</td>
+          <td>行圆角 4 + 面板内边距 5 ⇒ 悬停底距面板边 5</td></tr>
+        <tr><td><b>右列（快捷键列）</b></td><td class="mono">右缘距面板右缘 5 + 8 = 13</td><td class="mono">—</td><td class="mono">10.5 / 500 mono</td>
+          <td>一列只有一类内容：有键写键，没有就空着，或坐一把锁</td></tr>
+        <tr><td><b>分隔线</b></td><td class="mono">1 高 · 上 4 / 下 4 · 左 8 / 右 8</td><td class="mono">--c-hair</td><td class="mono">—</td>
+          <td>两端落在 13 / 13 上 —— 与左列文字、右列键位的边对齐（见 04）</td></tr>
+        <tr><td><b>锁</b></td><td class="mono">9 × 9（与 ④ 完全同尺寸）</td><td class="mono">--c-label2（= 右列的灰）</td><td class="mono">—</td>
+          <td>坐在右列、垂直居中；绝不影响文字颜色</td></tr>
+        <tr><td><b>菜单栏条</b></td><td class="mono">24 高 · 逐字来自 ③ / ⑥</td><td class="mono">--c-menubar · 1px --c-hair 下边</td><td class="mono">11 / 400</td>
+          <td>打开菜单的图标用 --c-ghost 底高亮（24 × 18 · 4 pt）</td></tr>
+      </tbody>
+    </table>
+    <p class="planfoot">高度算式：面板内边距 5 × 2 + 行 22 × 5 = 110 + 分隔线 1 + 上下 4 × 2 = 9 ⇒ 内容 129，加 1pt 描边 × 2 = 131。</p>
+  </section>
+
+  <!-- ══════════ 02 结构 ══════════ -->
+  <section data-od-id="structure">
+    <h2><span class="n">02</span>结构：五个名字都必须是真的</h2>
+    <ul class="rules">
+      <li><b>菜单是"全局入口的完整名单"。</b>进这张名单的判据只有三条：① 在任何前台都能用（全局性）；
+        ② 一点就跑、不需要参数；③ 不属于覆盖层工具条（那是"框选之后"的位置）。三条全过才有资格 ——
+        这一轮 5 项全过，所以 5 项就是全部。<b>未实现的项直接不出现</b>，不放"点了没反应"的假入口。</li>
+      <li><b>③ 里那两项（识别文字 / 钉图）在这一轮从菜单里拿掉了。</b>钉图只在编辑器里有意义 —— 它不满足第 ③ 条；
+        识别文字还不存在 —— 它不满足"每个名字都要是真的"。它们将来要进菜单，走的是上面同一套判据，而不是"有空位就填"。</li>
+      <li><b>顺序是"用到的顺序"，不是"重要性的顺序"：</b>截屏（主）→ 滚动截屏（第二个截法）→ 最近截图（回头看）→
+        设置…（改配置）。分隔线放在设置…与退出之间：<b>上面四件都是"关于截图的事"，下面那件是"关于进程的事"</b> ——
+        这条线分的是话题，不是重要性。</li>
+      <li><b>右列一列只有一类内容。</b>有快捷键就写快捷键；没有就空着；免费版的滚动截屏在那一格坐一把锁。
+        三类内容从不并排 —— 挤在一起时右列就变成"信息堆"，而不是"键位列"。</li>
+      <li><b>锁是路标，不是惩罚（对 ③ 的一处决定改写）。</b>③ 当时定的是"Pro 用灰字标记，不用锁图标"——
+        那是对的，因为当时右列要同时标 <b>3 个</b> Pro 项，3 把锁会变成 3 次责备。现在全菜单<b>只有一把锁</b>，
+        它做的事也不同了：它标记的是<b>唯一的那个"点了会先给你一张解释卡"的入口</b>。并且本轮 brief 明确：
+        <b>只换图标，不动可用性</b> —— 条目文字保持 --c-label 全亮、悬停底照常、点了照常给出 ② 的卡片。
+        锁自己用的是右列的灰（--c-label2，对面板 6.30:1）—— 与快捷键同一个颜色：<b>没人会把快捷键读成"禁用"</b>。</li>
+      <li><b>键位是"告知"，不是"触发"。</b>菜单里那行 ⌃Q 不绑定任何东西 —— 全局触发由系统级热键负责。
+        它出现在这里，只是回答"现在是哪个键"。</li>
+      <li><b>不因为"读"的节奏而加高。</b>行 22 / 字 13 是 macOS 菜单的实际尺寸，用户的肌肉记忆就在这个高度上。
+        菜单是唯一一块<b>改了尺寸就会被立刻察觉"不像系统"</b>的界面，所以它保持原样，排版任务交给对齐（04 节）。</li>
+    </ul>
+
+    <h3>「未实现的项直接不出现」—— 这条规则的边界</h3>
+    <table>
+      <thead><tr><th>它现在在哪</th><th>为什么不进菜单</th></tr></thead>
+      <tbody>
+        <tr><td><b>钉图、标注、保存</b></td><td>只在覆盖层/编辑器里有意义（框选之后才知道往哪钉）。菜单是全局名单，装不下有前提的动作</td></tr>
+        <tr><td><b>识别文字</b></td><td>还没实现。菜单里不放"敬请期待"占位 —— 那会让另外五个名字也可疑</td></tr>
+        <tr><td><b>删除/保留策略、格式、质量</b></td><td>有参数，属于"设置…"里；菜单一点就跑的语法装不下选项</td></tr>
+        <tr><td><b>检查更新、帮助、关于</b></td><td>本轮不实现。它们出现时会挤掉余量里的那一格，走同一套判据（见 06 未决）</td></tr>
+      </tbody>
+    </table>
+
+    <h3>同一个 ⌃Q，出现在三个地方，只有一个来源</h3>
+    <p>这三处不是三个键，是同一个值的三个视图。用户改了 ⑤ 的录制器，菜单这行和空态那句一起变 ——
+      因为它们都读同一份配置，没有一处是"再写一遍"。</p>
+    <div class="key3">
+      <figure><div class="kbox host-dark" data-od-id="key3-source">
+        <div class="klab">菜单里（告知）</div>
+        <div class="krow"><span>截屏</span><i>⌃Q</i></div>
+      </div></figure>
+      <figure><div class="kbox" data-od-id="key3-empty">
+        <div class="klab">最近截图 · 空态里（教学）</div>
+        <div class="ktx">还没有截图<br><b>按 ⌃Q 截第一张</b></div>
+      </div></figure>
+      <figure><div class="kbox host-dark" data-od-id="key3-rec">
+        <div class="klab">⑤ 录制器里（可改）</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="kbd">⌃</span><span class="kbd">Q</span>
+          <span style="font:400 11px/1 var(--font-body);color:var(--c-label2);margin-left:4px">当前</span>
+        </div>
+      </div></figure>
+    </div>
+  </section>
+
+  <!-- ══════════ 03 两种展开态 ══════════ -->
+  <section data-od-id="expanded">
+    <h2><span class="n">03</span>两种展开态：免费版带锁 / 已购买不带锁</h2>
+    <p class="lead">两态<b>只差一个图形</b>：滚动截屏右列的那把锁。其余五处（名字、顺序、键位、分隔线、悬停行为）逐字相同 ——
+      这样"买了以后变了什么"就是一眼可见的。</p>
+    <div class="grid grid--2">
+      <figure class="stg" data-od-id="menu-free">
+        <figcaption>免费版 · 滚动截屏右列坐一把 9 × 9 的锁（可点，文字全亮）</figcaption>
+        <div class="stage stage--dark">
+          <div class="host-dark" style="position:relative;width:420px;height:190px">
+            <div class="mbar" style="width:420px">
+              <span>Marquee</span><span style="opacity:.62">访达</span>
+              <span class="mbar__sp"></span>
+              <span class="mbar__mb" style="background:var(--c-ghost-p)">
+                <svg viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2" stroke-dasharray="2.4 2"/></svg>
+              </span>
+              <span class="mbar__st">◔</span>
+            </div>
+            <div class="dim--v l" style="left:150px;top:30px;height:22px"><span>22</span></div>
+            <div class="dim--v l" style="left:150px;top:118px;height:9px"><span>9</span></div>
+            <div class="dim--v" style="left:407px;top:16px;height:139px"><span>13</span></div>
+            <div class="dim" style="left:160px;top:165px;width:260px"><span>260</span></div>
+            <div class="menu" style="position:absolute;left:160px;top:24px" data-od-id="menu-free-list">
+              <div class="mi"><span>截屏</span><i>⌃Q</i></div>
+              <div class="mi"><span>滚动截屏</span><i class="lk"><svg><use href="#i-lock"/></svg></i></div>
+              <div class="mi"><span>最近截图</span><i></i></div>
+              <div class="mi"><span>设置…</span><i>⌘,</i></div>
+              <div class="msep"></div>
+              <div class="mi"><span>退出 Marquee</span><i>⌘Q</i></div>
+            </div>
+          </div>
+        </div>
+      </figure>
+      <figure class="stg" data-od-id="menu-pro">
+        <figcaption>已购买 · 同一份菜单，锁消失（其余一个像素都不动）</figcaption>
+        <div class="stage stage--dark">
+          <div class="host-dark" style="position:relative;width:420px;height:190px">
+            <div class="mbar" style="width:420px">
+              <span>Marquee</span><span style="opacity:.62">访达</span>
+              <span class="mbar__sp"></span>
+              <span class="mbar__mb" style="background:var(--c-ghost-p)">
+                <svg viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2" stroke-dasharray="2.4 2"/></svg>
+              </span>
+              <span class="mbar__st">◔</span>
+            </div>
+            <div class="menu" style="position:absolute;left:160px;top:24px" data-od-id="menu-pro-list">
+              <div class="mi"><span>截屏</span><i>⌃Q</i></div>
+              <div class="mi"><span>滚动截屏</span><i></i></div>
+              <div class="mi"><span>最近截图</span><i></i></div>
+              <div class="mi"><span>设置…</span><i>⌘,</i></div>
+              <div class="msep"></div>
+              <div class="mi"><span>退出 Marquee</span><i>⌘Q</i></div>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+    <p class="planfoot">菜单右缘与菜单栏右端齐平 —— 这是 macOS 对靠近屏幕右缘的菜单的钳制规则，左缘由此反推为 160
+      （= 420 − 260）。菜单栏里那个虚框图标就是 Marquee，它的高亮底说明"这个菜单是它开的"。<br>
+      这里只量四个数（行 22 · 分隔带 9 · 宽 260 · 右列距右缘 13）；<b>两条文字缘怎么对齐</b>是 04 节的主角。</p>
+  </section>
+
+  <!-- ══════════ 04 对齐 ══════════ -->
+  <section data-od-id="alignment">
+    <h2><span class="n">04</span>对齐：两条文字缘 + 一把锁</h2>
+    <p class="lead">菜单里没有网格、没有卡片、没有分组 —— 它只有<b>两条垂直的文字缘</b>在管住全部内容：
+      左缘（13）是名字开始的地方，右缘（13）是键位结束的地方。分隔线的两端、锁的位置，都钉在这两条线上。</p>
+    <div class="grid grid--2">
+      <figure class="stg" data-od-id="rail">
+        <figcaption>1× 实尺 · 四个常量：13 / 22 / 13 / 9</figcaption>
+        <div class="stage stage--dark">
+          <div class="host-dark" style="position:relative;width:400px;height:230px">
+            <div class="dim--v l" style="left:60px;top:40px;height:22px"><span>22</span></div>
+            <div class="dim--v l" style="left:60px;top:128px;height:9px"><span>9</span></div>
+            <div class="dim" style="left:70px;top:26px;width:13px"><span>13</span></div>
+            <div class="dim" style="left:83px;top:26px;width:234px"><span>名字的缘 ↔ 键位的缘 = 234</span></div>
+            <div class="dim" style="left:317px;top:26px;width:13px"><span>13</span></div>
+            <div class="dim" style="left:83px;top:132px;width:234px"><span>两端同缘（13 / 13）</span></div>
+            <div class="menu" style="position:absolute;left:70px;top:34px">
+              <div class="mi"><span>截屏</span><i>⌃Q</i></div>
+              <div class="mi"><span>滚动截屏</span><i class="lk"><svg><use href="#i-lock"/></svg></i></div>
+              <div class="mi"><span>最近截图</span><i></i></div>
+              <div class="mi is-hover"><span>设置…</span><i>⌘,</i></div>
+              <div class="msep"></div>
+              <div class="mi"><span>退出 Marquee</span><i>⌘Q</i></div>
+            </div>
+          </div>
+        </div>
+      </figure>
+      <figure class="stg" data-od-id="lock-zoom">
+        <figcaption>2× · 锁的常态与悬停：同一个 9 × 9 图形，只换颜色</figcaption>
+        <div class="stage stage--dark" style="flex-direction:column;gap:26px;padding:14px">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font:600 10.5px/1 var(--mono);color:rgba(255,255,255,.5)">常态 · 锁 9 × 9 · 距右缘 13 · 颜色 = 右列的灰（--c-label2）</span>
+            <div class="sc" style="--w:260;--h:34">
+              <div class="menu host-dark" style="width:260px">
+                <div class="mi"><span>滚动截屏</span><i class="lk"><svg><use href="#i-lock"/></svg></i></div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font:600 10.5px/1 var(--mono);color:rgba(255,255,255,.5)">悬停 · 整行反白，锁跟着变白（可点这件事要看得见）</span>
+            <div class="sc" style="--w:260;--h:34">
+              <div class="menu host-dark" style="width:260px">
+                <div class="mi is-hover"><span>滚动截屏</span><i class="lk"><svg><use href="#i-lock"/></svg></i></div>
+              </div>
+            </div>
+          </div>
+          <p style="margin:0;max-width:52ch;font-size:12.5px;line-height:1.7;color:rgba(255,255,255,.6)">
+            锁与快捷键<b style="color:#fff">共用同一条右缘、同一档灰度</b>；条目名字始终是全亮的 --c-label。
+            点下去不是"被拦住"，而是 ② 的卡片原地出现并解释 —— 这就是"只换图标，不动可用性"。</p>
+        </div>
+      </figure>
+    </div>
+    <p class="planfoot">两条缘的算式：左缘 = 面板内边距 5 + 行内边距 8 = <b>13</b>；右缘 = 面板右缘 5 + 行内边距 8 = <b>13</b>；
+      两者之间 260 − 26 = <b>234</b>，正好是分隔线的宽度（<code>.msep{margin:4px 8px}</code> 落在内边距 5 里）。
+      菜单项没有按下态 —— 按下去菜单就收了，用户最后看见的就是那行蓝色悬停底。</p>
+  </section>
+
+  <!-- ══════════ 05 浅色 ══════════ -->
+  <section data-od-id="light">
+    <h2><span class="n">05</span>浅色</h2>
+    <p class="lead">菜单跟随系统外观。浅色下只有三处材质需要单独交代（菜单描边、投影、菜单栏条），
+      悬停底、锁、分隔线都由 token 自动跟随 —— 它们本来就没有写死的颜色。</p>
+    <figure class="stg" data-od-id="light-menu">
+      <figcaption>浅色 · 免费版展开态（第三行演示悬停：那一格是"最近截图"）</figcaption>
+      <div class="stage stage--light" style="justify-content:flex-start;padding:40px 60px">
+        <div class="host-light" style="position:relative;width:420px;height:190px">
+          <div class="mbar" style="width:420px">
+            <span>Marquee</span><span style="opacity:.62">访达</span>
+            <span class="mbar__sp"></span>
+            <span class="mbar__mb" style="background:var(--c-ghost-p)">
+              <svg viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2" stroke-dasharray="2.4 2"/></svg>
+            </span>
+            <span class="mbar__st">◔</span>
+          </div>
+          <div class="menu" style="position:absolute;left:160px;top:24px">
+            <div class="mi"><span>截屏</span><i>⌃Q</i></div>
+            <div class="mi"><span>滚动截屏</span><i class="lk"><svg><use href="#i-lock"/></svg></i></div>
+            <div class="mi is-hover"><span>最近截图</span><i></i></div>
+            <div class="mi"><span>设置…</span><i>⌘,</i></div>
+            <div class="msep"></div>
+            <div class="mi"><span>退出 Marquee</span><i>⌘Q</i></div>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="planfoot">浅色下：菜单描边换成 <code>rgba(0,0,0,.10)</code>、投影换成偏灰的一套（与 ⑥ 的面板一致）；
+      菜单栏条换成浅色（--c-menubar / --c-mbartx 已有浅色值）。<b>悬停底仍是同一个蓝</b>（--c-fill 的浅色档 oklch(52%)），
+      白字在它上面 4.93:1 —— 深浅两套下悬停行是同一个外观。</p>
+  </section>
+
+  <!-- ══════════ 06 备注 ══════════ -->
+  <section data-od-id="notes">
+    <h2><span class="n">06</span>备注</h2>
+    <ul class="rules">
+      <li><b>与 ③ 的接缝（两处决定被本轮改写，均已说明理由）：</b>① 名单换成了本轮的 5 项（去掉识别文字/钉图，见 02）；
+        ②「Pro 用灰字标记，不用锁图标」改成"唯一的那一项带一把锁"。名字也以本轮 brief 为准：
+        <b>截屏</b>（③ 写的「截图」）、<b>设置…</b>（③ 写的「偏好设置…」）。③ 那份是教学 mock，本轮这份才是菜单的规格。</li>
+      <li><b>与 ④ 的接缝：</b>锁是<b>同一个图形、同一个 9 × 9</b>（<code>#i-lock</code> 逐字复制）。
+        变的只有两件事：位置（④ 叠在图标右下角当角标；这里坐在右列）和颜色（④ 跟图标同色；这里跟键位同灰）。</li>
+      <li><b>与 ⑤ 的接缝：</b>「设置…」打开的就是 ⑤ 的四页窗口，两处名字建议统一（见未决）。
+        菜单里的 ⌃Q 与 ⑤ 录制器读的是同一个值（02 节）。</li>
+      <li><b>与 ⑥ 的接缝：</b>「最近截图」点开的是 ⑥ 的面板。这一对刚好演示了 macOS 的固有分工：
+        <b>菜单没有舌尖、popover 有舌尖</b> —— 照抄系统的分工，用户不用学"这是什么控件"。</li>
+      <li><b>浅色菜单是本轮第一次画：</b>③ 的 <code>.menu</code> 只写死了深色描边与投影，本轮补上了 `.host-light .menu` 一条。
+        若 ③ 将来要出浅色版，直接复用这一条。</li>
+      <li><b>未决：</b>① 窗口标题「偏好设置」与菜单项「设置…」不一致 —— macOS 13+ 两处都叫"设置"，
+        建议把 ⑤ 的窗口标题也改成「设置」，本轮不动 ⑤，只登记。② 余量里的第 6 项：见答复第 5 题。</li>
+      <li><b>稿面统一：</b>03 / 05 节 1× 实尺（含菜单栏条），04 节 1× 红样 + 2× 局部（放大锁）；单位 pt；对比度沿用 01 节两张表。</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marquee · ② 升级卡片 · 载体 A / B · 高保真稿</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   0. 方向种子 —— modern-minimal（Linear / Vercel），逐字绑定（仅文档层）
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
+  --accent:  oklch(58% 0.18 255);
+
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+:root{
+  --stage: oklch(96.6% 0.003 260);
+  --ink:   oklch(32% 0.01 260);
+  --ink2:  oklch(52% 0.008 260);
+  --ink3:  oklch(84% 0.006 260);
+  --dim:   oklch(53% 0.16 32);
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   1. 宿主 token —— 与 first-run-onboarding.html 逐项相同
+   ══════════════════════════════════════════════════════════════════ */
+.host-dark{
+  --c-bg:      oklch(26.5% 0 0);      /* #252525 */
+  --c-panel:   oklch(31.5% 0 0);      /* #313131 卡片/面板材质 */
+  --c-inset:   oklch(22.5% 0 0);      /* #1c1c1c */
+  --c-cap:     oklch(38% 0 0);        /* #424242 键帽 */
+  --c-capbd:   oklch(46% 0 0);        /* #585858 */
+  --c-border:  oklch(43% 0 0);        /* #505050 */
+  --c-borderh: oklch(50% 0 0);
+  --c-hair:    rgba(255,255,255,.10);
+  --c-label:   #ffffff;               /* 15.3:1 */
+  --c-label2:  rgba(255,255,255,.64); /* 窗底 7.10:1 / 卡片材质 6.30:1 */
+  --c-fill:    oklch(55% 0.19 254);   /* #006fdc 白字 4.93:1 */
+  --c-fill-h:  oklch(56% 0.19 254);   /* #0072df 4.73:1 */
+  --c-fill-p:  oklch(48% 0.19 254);   /* #0059c4 6.69:1 */
+  --c-glyph:   oklch(72% 0.14 254);   /* #62a7fa 对卡片材质 5.2:1 */
+  --c-warn:    oklch(84% 0.17 88);    /* #f8c20d */
+  --c-ring:    oklch(62% 0.17 254);
+  --c-soft:    rgba(255,255,255,.07);
+  --c-soft-h:  rgba(255,255,255,.11);
+  --c-soft-p:  rgba(255,255,255,.15);
+  --c-ghost:   rgba(255,255,255,.10); /* 文字按钮悬停底 */
+  --c-ghost-p: rgba(255,255,255,.16);
+  --c-menubar: oklch(28.5% 0 0);
+  --c-mbartx:  rgba(255,255,255,.82);
+}
+.host-light{
+  --c-bg:      oklch(92.8% 0 0);      /* #e7e7e7 */
+  --c-panel:   oklch(99% 0 0);        /* #fcfcfc */
+  --c-inset:   #ffffff;
+  --c-cap:     oklch(96.5% 0 0);      /* #f3f3f3 */
+  --c-capbd:   oklch(80% 0 0);        /* #bebebe */
+  --c-border:  oklch(80% 0 0);
+  --c-borderh: oklch(72% 0 0);
+  --c-hair:    rgba(0,0,0,.10);
+  --c-label:   rgba(0,0,0,.85);       /* 12.8:1 */
+  --c-label2:  rgba(0,0,0,.58);       /* 5.0:1 / 面板 5.3:1 */
+  --c-fill:    oklch(52% 0.19 254);   /* #0065d2 白字 5.62:1 */
+  --c-fill-h:  oklch(56% 0.19 254);   /* #0072df 4.73:1 */
+  --c-fill-p:  oklch(45% 0.19 254);   /* #004fba 7.64:1 */
+  --c-glyph:   oklch(52% 0.19 254);
+  --c-warn:    oklch(56% 0.13 62);    /* #a96000 */
+  --c-ring:    oklch(60% 0.18 254);
+  --c-soft:    rgba(255,255,255,.92);
+  --c-soft-h:  #ffffff;
+  --c-soft-p:  oklch(95% 0 0);
+  --c-ghost:   rgba(0,0,0,.06);
+  --c-ghost-p: rgba(0,0,0,.10);
+  --c-menubar: oklch(96.5% 0 0);
+  --c-mbartx:  rgba(0,0,0,.78);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2. 文档层
+   ══════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:400 14px/1.75 var(--font-body);-webkit-text-size-adjust:100%}
+.wrap{max-width:1248px;margin:0 auto;padding:56px 24px 120px}
+.doc__n{font:600 12px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+h1{margin:12px 0 0;font:600 30px/1.25 var(--font-display);letter-spacing:-.02em;color:var(--fg)}
+.doc__lede{margin:14px 0 0;max-width:76ch;color:var(--ink2);font-size:14px}
+.doc__lede strong{color:var(--ink);font-weight:600}
+.doc__meta{margin:18px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.tag{font:500 11px/1 var(--mono);color:var(--ink2);background:var(--stage);border:1px solid var(--border);
+     border-radius:999px;padding:6px 10px}
+
+section{margin-top:72px;border-top:1px solid var(--border);padding-top:32px}
+h2{margin:0;font:600 19px/1.3 var(--font-display);letter-spacing:-.01em;color:var(--fg);display:flex;align-items:baseline;gap:12px}
+h2 .n{font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.08em}
+h3{margin:32px 0 0;font:600 14px/1.4 var(--font-display);color:var(--fg)}
+p{margin:12px 0 0;max-width:78ch;color:var(--ink2)}
+.lead{margin-top:14px;color:var(--ink)}
+ul.rules{margin:14px 0 0;padding:0;list-style:none;max-width:84ch}
+ul.rules li{position:relative;padding:8px 0 8px 22px;color:var(--ink2);border-top:1px dashed var(--border)}
+ul.rules li:first-child{border-top:0}
+ul.rules li::before{content:'';position:absolute;left:2px;top:18px;width:7px;height:7px;background:var(--dim);border-radius:1px}
+ul.rules b{color:var(--ink);font-weight:600}
+code{font:500 12px/1 var(--mono);background:var(--stage);border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:var(--ink)}
+
+table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px 10px 0;border-bottom:1px solid var(--border)}
+th{font:600 11px/1.4 var(--mono);color:var(--ink2);letter-spacing:.04em;white-space:nowrap}
+td{color:var(--ink2)} td b{font-weight:600;color:var(--ink)}
+td .mono{font:500 11.5px/1.6 var(--mono);color:var(--ink2)}
+.k{display:inline-block;font:600 11px/1 var(--mono);color:var(--dim);margin-right:2px}
+
+.toks{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px;margin-top:18px}
+.tok{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.tok__chip{height:52px}
+.tok__b{padding:10px 12px 12px}
+.tok__n{font:600 12px/1.3 var(--font-body);color:var(--ink)}
+.tok__v{font:500 10.5px/1.6 var(--mono);color:var(--ink2);margin-top:3px}
+
+/* ══════════════════════════════════════════════════════════════════
+   3. 控件层 —— 只读 --c-*
+   ══════════════════════════════════════════════════════════════════ */
+.sc{position:relative;width:calc(var(--w)*2px);height:calc(var(--h)*2px)}
+.sc>*{position:absolute;left:0;top:0;transform:scale(2);transform-origin:0 0}
+
+/* 卡片：300 宽；A = 140 高（含微行），B = 115 高（无微行） */
+.card{width:300px;padding:16px;border-radius:10px;background:var(--c-panel);color:var(--c-label);
+      font-family:var(--font-body);-webkit-font-smoothing:antialiased}
+.card--a,.card--bd{border:1px solid rgba(255,255,255,.12);
+      box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32)}
+.card--bl{border:1px solid rgba(0,0,0,.10);
+      box-shadow:0 12px 28px rgba(16,18,22,.16),0 1px 4px rgba(16,18,22,.10)}
+.card__head{display:flex;align-items:center;gap:8px}
+.card__glyph{width:16px;height:16px;flex:none;color:var(--c-glyph)}
+.card__title{font:600 13px/18px var(--font-body)}
+.card__body{margin:6px 0 0;font:400 12px/18px var(--font-body);color:var(--c-label2)}
+.card__acts{margin-top:17px;display:flex;justify-content:flex-end;gap:10px}
+.card__micro{margin-top:11px;display:flex;align-items:center;gap:5px;
+      font:400 11px/14px var(--font-body);color:var(--c-label2)}
+.kbd--x{min-width:16px;height:15px;padding:0 4px;border-radius:3.5px;background:var(--c-cap);
+      border:1px solid var(--c-capbd);display:inline-flex;align-items:center;justify-content:center;
+      font:500 10px/1 var(--font-body);color:var(--c-label)}
+.host-dark .kbd--x{box-shadow:0 1px 0 rgba(0,0,0,.3)}
+
+.btn--pri{height:24px;padding:0 12px;border:0;border-radius:6px;background:var(--c-fill);color:#fff;
+      font:600 12px/1 var(--font-body);display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.btn--pri:hover,.btn--pri.is-hover{background:var(--c-fill-h);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
+.btn--pri:active,.btn--pri.is-press{background:var(--c-fill-p);box-shadow:inset 0 1.5px 2px rgba(0,0,0,.24)}
+.btn--txt{height:24px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--c-label2);
+      font:500 12px/1 var(--font-body);display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.btn--txt:hover,.btn--txt.is-hover{color:var(--c-label);background:var(--c-ghost)}
+.btn--txt:active,.btn--txt.is-press{color:var(--c-label);background:var(--c-ghost-p)}
+
+/* 菜单栏（载体 B 的语境，示意） */
+.mbar{width:460px;height:24px;display:flex;align-items:center;gap:13px;padding:0 10px;
+      background:var(--c-menubar);color:var(--c-mbartx);border-bottom:1px solid var(--c-hair);
+      font:400 11px/1 var(--font-body)}
+.mbar__sp{flex:1}
+.mbar__mb{width:24px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+      background:var(--c-ghost)}
+.mbar em{font:500 10px/1 var(--mono);font-style:normal;opacity:.75;margin-left:4px}
+
+/* 材质板（覆盖层示意） */
+.mat{position:relative;width:460px;height:228px;font-family:var(--font-body);overflow:hidden}
+.mat--dark{background:oklch(22% 0 0);color:rgba(255,255,255,.55)}
+.mat--light{background:oklch(88% 0 0);color:rgba(0,0,0,.58)}
+.mat__lb{position:absolute;left:16px;top:13px;font:500 10.5px/1.5 var(--mono)}
+.mat__edge{position:absolute;left:120px;top:44px;bottom:22px;width:1px;border-left:1px dashed currentColor;opacity:.75}
+.mat__edgelb{position:absolute;left:16px;top:36px;width:96px;text-align:right;font:500 10.5px/1.5 var(--mono)}
+.mat .card{position:absolute;left:128px;top:44px}
+
+/* ══════════════════════════════════════════════════════════════════
+   4. 稿面与红样
+   ══════════════════════════════════════════════════════════════════ */
+.plan{position:relative;width:1222px}
+.plan .sc{position:absolute;left:var(--ox);top:var(--oy)}
+.plan--card{height:612px;--ox:132px;--oy:96px}
+.plan--bare{height:504px;--ox:132px;--oy:24px}
+figure{margin:0}
+figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin:0 0 10px;letter-spacing:.02em}
+.dim{position:absolute;height:1px;background:var(--dim)}
+.dim::before,.dim::after{content:'';position:absolute;top:-3px;width:1px;height:7px;background:var(--dim)}
+.dim::before{left:0}.dim::after{right:0}
+.dim span{position:absolute;left:50%;top:-9px;transform:translate(-50%,-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v{position:absolute;width:1px;background:var(--dim)}
+.dim--v::before,.dim--v::after{content:'';position:absolute;left:-3px;width:7px;height:1px;background:var(--dim)}
+.dim--v::before{top:0}.dim--v::after{bottom:0}
+.dim--v span{position:absolute;left:12px;top:50%;transform:translateY(-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+/* 槽位标注（卡片左侧） */
+.slots{position:absolute;left:0;top:var(--oy);width:372px;height:456px}
+.slot{position:absolute;left:0;right:0;transform:translateY(-50%);display:flex;align-items:center;
+      justify-content:flex-end;gap:6px}
+.slot b{font:600 11.5px/1.3 var(--font-body);color:var(--ink);background:var(--bg);padding:2px 6px;border-radius:4px}
+.slot i{font:500 10.5px/1.4 var(--mono);font-style:normal;color:var(--ink2);background:var(--bg);padding:2px 6px;border-radius:4px}
+.slot::after{content:'';width:16px;height:1px;background:var(--ink3);margin-right:-16px;flex:none}
+
+/* ══════════════════════════════════════════════════════════════════
+   5. 舞台
+   ══════════════════════════════════════════════════════════════════ */
+.grid{display:grid;gap:18px;margin-top:20px}
+.grid--3{grid-template-columns:repeat(3,256px)}
+.stage{border-radius:10px;display:flex;align-items:center;justify-content:center;
+      padding:32px;border:1px solid var(--border)}
+.stage--matdark{background:oklch(22% 0 0);border-color:transparent}
+.stage--card{padding:32px}
+.stg{margin:0}
+.stg figcaption{font:600 10.5px/1 var(--mono);color:var(--ink2);margin-bottom:8px;letter-spacing:.04em}
+.vrow{display:grid;grid-template-columns:280px 664px;gap:28px;align-items:center;margin-top:26px}
+.vcap b{display:block;font:600 13px/1.5 var(--font-body);color:var(--ink)}
+.vcap span{display:block;margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--ink2)}
+.vcap .mono{font:500 11px/1.7 var(--mono);color:var(--ink2)}
+.glyphs{display:flex;gap:34px;margin-top:18px;align-items:flex-start}
+.glyphs figure{text-align:center}
+.glyphs svg{width:26px;height:26px;color:var(--ink)}
+.glyphs figcaption{text-align:center;margin-top:8px;font:500 11px/1.5 var(--mono);color:var(--ink2)}
+.planfoot{margin-top:22px;font:500 11px/1.9 var(--mono);color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="wrap" data-od-id="doc-head">
+
+  <div class="doc__n">① / ②　MARQUEE DESIGN SPEC</div>
+  <h1>Marquee 升级卡片 — 载体 A / 载体 B</h1>
+  <p class="doc__lede">本文件是两块稿的第 ② 块。第 ① 块（首次启动引导页）在 <code>first-run-onboarding.html</code>，
+     两块共用下面 01 节那一张 token 表。</p>
+  <p class="doc__lede"><strong>结构结论先讲：</strong>它是<b>说明</b>，不是广告 —— 第一眼回答"刚才发生了什么"，
+     而不是"你现在该买什么"；两个按钮不做成色块对色块，只有一个色块，且没有一个是"关闭"。
+     载体 A 与 B 共用同一个骨架，只在"宿主材质"上分开：A 恒深色，B 跟随系统外观。</p>
+  <div class="doc__meta">
+    <span class="tag">载体 A 300 × 140 pt（深色，落在覆盖层材质上）</span>
+    <span class="tag">载体 B 300 × 115 pt（系统面板，跟随外观）</span>
+    <span class="tag">稿面 2×</span>
+    <span class="tag">标注单位 pt</span>
+    <span class="tag">不新开窗口 / 不新开页面</span>
+    <span class="tag">文案为示意</span>
+  </div>
+
+  <!-- ══════════ 01 共用语言 ══════════ -->
+  <section data-od-id="shared-language">
+    <h2><span class="n">01</span>共用语言</h2>
+    <p class="lead">这张表两个文件共用（第 ① 块里是同一张）。控件 CSS 只读 <code>--c-*</code>，不写死任何颜色：
+      换宿主就换一套值，卡片本身一行不改 —— 这就是载体 A / B "长得一样"的实现方式。</p>
+
+    <h3>宿主材质 · 深色（窗口 / 覆盖层）</h3>
+    <div class="toks">
+      <div class="tok"><div class="tok__chip" style="background:oklch(26.5% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">窗口底 --c-bg</div><div class="tok__v">oklch(26.5% 0 0) · #252525</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">卡片 / 面板材质 --c-panel</div><div class="tok__v">oklch(31.5% 0 0) · #313131</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(22.5% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">录制框内底 --c-inset</div><div class="tok__v">oklch(22.5% 0 0) · #1c1c1c</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(38% 0 0);box-shadow:inset 0 0 0 1px oklch(46% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">键帽 --c-cap</div><div class="tok__v">oklch(38% 0 0) · #424242<br>描边 oklch(46%) · #585858</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(55% 0.19 254)"></div>
+        <div class="tok__b"><div class="tok__n">强调填充 --c-fill</div><div class="tok__v">oklch(55% 0.19 254) · #006fdc<br>白字 4.93:1（悬停 4.73 / 按下 6.69）</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0);color:rgba(255,255,255,.64);
+        display:flex;align-items:center;justify-content:center;font:500 12px/1 var(--font-body)">次要文字</div>
+        <div class="tok__b"><div class="tok__n">次要文字 --c-label2</div><div class="tok__v">白 64%<br>窗底 7.10:1 / 材质 6.30:1</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0);display:flex;align-items:center;justify-content:center">
+        <i style="width:8px;height:8px;border-radius:50%;background:oklch(84% 0.17 88)"></i></div>
+        <div class="tok__b"><div class="tok__n">状态点（未授权）--c-warn</div><div class="tok__v">oklch(84% 0.17 88) · #f8c20d<br>对底 9.3:1</div></div></div>
+    </div>
+
+    <h3>宿主材质 · 浅色（窗口 / 系统面板）</h3>
+    <div class="toks">
+      <div class="tok"><div class="tok__chip" style="background:oklch(92.8% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">窗口底 --c-bg</div><div class="tok__v">oklch(92.8% 0 0) · #e7e7e7</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(99% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">面板材质 --c-panel</div><div class="tok__v">oklch(99% 0 0) · #fcfcfc</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:#fff;box-shadow:inset 0 0 0 1px oklch(80% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">录制框内底 --c-inset</div><div class="tok__v">#ffffff · 描边 oklch(80%) #bebebe</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(96.5% 0 0);box-shadow:inset 0 0 0 1px oklch(80% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">键帽 --c-cap</div><div class="tok__v">oklch(96.5% 0 0) · #f3f3f3<br>描边 oklch(80%) · #bebebe</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(52% 0.19 254)"></div>
+        <div class="tok__b"><div class="tok__n">强调填充 --c-fill</div><div class="tok__v">oklch(52% 0.19 254) · #0065d2<br>白字 5.62:1（悬停 4.73 / 按下 7.64）</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(92.8% 0 0);color:rgba(0,0,0,.58);
+        display:flex;align-items:center;justify-content:center;font:500 12px/1 var(--font-body)">次要文字</div>
+        <div class="tok__b"><div class="tok__n">次要文字 --c-label2</div><div class="tok__v">黑 58%<br>窗底 5.01:1 / 面板 5.28:1</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(92.8% 0 0);display:flex;align-items:center;justify-content:center">
+        <i style="width:8px;height:8px;border-radius:50%;background:oklch(56% 0.13 62)"></i></div>
+        <div class="tok__b"><div class="tok__n">状态点（未授权）--c-warn</div><div class="tok__v">oklch(56% 0.13 62) · #a96000<br>对底 3.9:1</div></div></div>
+    </div>
+
+    <h3>文字与尺寸阶</h3>
+    <table>
+      <thead><tr><th>角色</th><th>字号 / 行高</th><th>字重</th><th>字体</th></tr></thead>
+      <tbody>
+        <tr><td><b>页面标题</b></td><td class="mono">21 / 26 pt</td><td class="mono">Semibold 600</td><td>SF Pro Display · 中文回落 PingFang SC</td></tr>
+        <tr><td><b>副标题（承诺句）</b></td><td class="mono">13 / 18 pt</td><td class="mono">Regular 400</td><td>SF Pro Text</td></tr>
+        <tr><td><b>目录行</b></td><td class="mono">12 / 16 pt</td><td class="mono">Regular 400</td><td>SF Pro Text</td></tr>
+        <tr><td><b>标签 · 权限行 · 小按钮</b></td><td class="mono">11 / 14 pt</td><td class="mono">Medium 500</td><td>SF Pro Text（系统 small 尺寸对应字号）</td></tr>
+        <tr><td><b>键帽 / 主按钮</b></td><td class="mono">13 pt</td><td class="mono">Medium 500 / Semibold 600</td><td>SF Pro Text</td></tr>
+      </tbody>
+    </table>
+    <p class="planfoot">卡片的四个字号 = 同一套字阶向下取两档：标题 13 / 正文 12 / 按钮 12 / 微行 11。</p>
+
+    <h3>圆角与控件高度</h3>
+    <table>
+      <thead><tr><th>对象</th><th>尺寸</th><th>圆角</th><th>备注</th></tr></thead>
+      <tbody>
+        <tr><td>窗口</td><td class="mono">440 × 336 pt</td><td class="mono">10 pt</td><td>第 ① 块</td></tr>
+        <tr><td>录制框</td><td class="mono">220 × 34 pt</td><td class="mono">6 pt</td><td>第 ① 块</td></tr>
+        <tr><td>键帽</td><td class="mono">22 高 · 最小 22 宽</td><td class="mono">5 pt</td><td>第 ① 块</td></tr>
+        <tr><td>卡片主按钮</td><td class="mono">高 24 pt</td><td class="mono">6 pt</td><td>12pt semibold；宽度随文案（示意 96 pt）</td></tr>
+        <tr><td>卡片文字按钮</td><td class="mono">高 24 pt</td><td class="mono">6 pt</td><td>12pt medium；无边框无底（示意 72 pt）</td></tr>
+        <tr><td>卡片 / 面板</td><td class="mono">300 × 140 / 115 pt</td><td class="mono">10 pt</td><td>见本文件 03 / 04 节</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ══════════ 02 结构 ══════════ -->
+  <section data-od-id="structure">
+    <h2><span class="n">02</span>结构：骨架与规则</h2>
+    <p class="lead">卡片只有五个槽，任何一个状态（可试用 / 试用结束 / 购买撤销）都只换填充，不换骨架。</p>
+    <table>
+      <thead><tr><th>槽</th><th>内容</th><th>规则与理由</th></tr></thead>
+      <tbody>
+        <tr><td><span class="k">①</span>图标 16pt</td><td>用户刚点的那个功能</td>
+          <td>这一槽证明"这张卡在回答你刚才的动作"——广告没有这一槽，因为它不关心你刚才点了什么。</td></tr>
+        <tr><td><span class="k">②</span>标题 13pt semibold</td><td>「识别文字是 Pro 能力」</td>
+          <td>先陈述事实，再给选项。标题里不出现价格，"升级"也不做主语。</td></tr>
+        <tr><td><span class="k">③</span>正文 12pt · 一行</td><td>一句后果陈述</td>
+          <td>≤ 22 字。陈述后果（试用结束自动回免费版），不承诺收益。</td></tr>
+        <tr><td><span class="k">④</span>按钮组 24pt</td><td>主（唯一色块）+ 次（纯文字）</td>
+          <td>两个按钮都不是"关闭"，所以主次只是推荐顺序，不是"同意 / 拒绝"。</td></tr>
+        <tr><td><span class="k">⑤</span>微行 11pt（可选）</td><td>[esc] 关闭卡片，选区保留</td>
+          <td>只在载体 A 出现：它承诺"这张卡不会吃掉你手上的截图"。B 无此槽，高度随之 140 → 115。</td></tr>
+      </tbody>
+    </table>
+
+    <h3>图标槽的三个成员</h3>
+    <div class="glyphs">
+      <figure><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2.6 5.6v-3h3M10.4 2.6h3v3M13.4 10.4v3h-3M5.6 13.4h-3v-3"/>
+        <path d="M5.4 6.4h5.2M5.4 8.6h3M5.4 10.8h5.2"/></svg>
+        <figcaption>识别文字</figcaption></figure>
+      <figure><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2.6 5.6v-3h3M10.4 2.6h3v3M13.4 10.4v3h-3M5.6 13.4h-3v-3"/>
+        <path d="M8 5.2v5.4M5.7 8.4 8 10.7l2.3-2.3"/></svg>
+        <figcaption>滚动截屏</figcaption></figure>
+      <figure><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5.7 2.8h4.6l-.7 2.6v3.2H6.4V5.4z"/><path d="M8 8.6v4.6"/></svg>
+        <figcaption>钉图</figcaption></figure>
+    </div>
+
+    <h3>四条规则：它是说明，不是广告</h3>
+    <ul class="rules">
+      <li><b>它回答"刚才发生了什么"，不回答"你现在该买什么"。</b>第一眼的信息是"这个能力属于 Pro"，不是优惠、不是价格。</li>
+      <li><b>没有任何紧迫感元件：</b>没有倒计时、划线价、限时、"仅剩"，全卡只提一次价格相关的事（试用天数）。</li>
+      <li><b>两个按钮都不是"关闭"。</b>不存在"拒绝"按钮 —— 于是主次只是推荐顺序，用户不会被做成一道同意 / 拒绝的选择题。卡片也没有 ✕，Esc / 点别处即是关闭。</li>
+      <li><b>只有一个色块。</b>全卡只有主按钮一处强调色、一处圆角填充。这是它不像弹窗广告的机械原因，也是 06 节按钮态的全部依据。</li>
+    </ul>
+
+    <h3>三种文案结构（同一骨架的三种填充）</h3>
+    <table>
+      <thead><tr><th>状态</th><th>标题</th><th>正文（示意 ≤ 22 字）</th><th>主按钮（唯一色块）</th><th>次按钮（纯文字）</th></tr></thead>
+      <tbody>
+        <tr><td><b>从未购买 · 可试用</b></td><td>识别文字是 Pro 能力</td><td>试用 7 天，结束后自动回到免费版。</td><td>7 天免费试用</td><td>了解 Pro</td></tr>
+        <tr><td><b>试用已结束</b></td><td>识别文字是 Pro 能力</td><td>试用已结束，免费版仍可截图与标注。</td><td>了解 Pro</td><td>恢复购买</td></tr>
+        <tr><td><b>购买被撤销</b></td><td>识别文字是 Pro 能力</td><td>购买已撤销，可点恢复购买重新获取。</td><td>恢复购买</td><td>了解 Pro</td></tr>
+      </tbody>
+    </table>
+    <p class="planfoot">三种结构对载体 A 与 B 同样适用：只替换标题里的功能名、正文一句、两个按钮的文案，其余槽位不动。</p>
+  </section>
+
+  <!-- ══════════ 03 载体 A ══════════ -->
+  <section data-od-id="carrier-a">
+    <h2><span class="n">03</span>载体 A · 覆盖层内的卡片 · 300 × 140 pt</h2>
+    <p class="lead">用户在覆盖层里点了「识别文字」或「钉图」，卡片原地弹在工具条旁边。
+      左侧是五个槽，右侧是外框尺寸。卡片不覆盖选区、不改动任何已画内容 —— Esc 只收卡片。</p>
+
+    <figure data-od-id="plan-carrier-a">
+      <figcaption>载体 A · 深色 · 落在覆盖层材质上 · 稿面 2×</figcaption>
+      <div class="plan plan--card">
+        <div class="sc" style="--w:460;--h:228">
+          <div class="mat mat--dark">
+            <span class="mat__lb">覆盖层材质（示意）</span>
+            <span class="mat__edgelb">工具条外缘 →</span>
+            <i class="mat__edge"></i>
+            <div class="card card--a host-dark" data-od-id="card-a">
+              <div class="card__head">
+                <svg class="card__glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2.6 5.6v-3h3M10.4 2.6h3v3M13.4 10.4v3h-3M5.6 13.4h-3v-3"/>
+                  <path d="M5.4 6.4h5.2M5.4 8.6h3M5.4 10.8h5.2"/></svg>
+                <span class="card__title">识别文字是 Pro 能力</span>
+              </div>
+              <p class="card__body">试用 7 天，结束后自动回到免费版。</p>
+              <div class="card__acts">
+                <button class="btn--txt">了解 Pro</button>
+                <button class="btn--pri" data-od-id="card-a-primary">7 天免费试用</button>
+              </div>
+              <div class="card__micro"><span class="kbd--x">esc</span>关闭卡片，选区保留</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dim" style="left:388px;top:156px;width:600px"><span>300 pt</span></div>
+        <div class="dim--v" style="left:1072px;top:184px;height:280px"><span>140 pt</span></div>
+
+        <div class="slots">
+          <div class="slot" style="top:234px"><b>① 图标 + ② 标题</b><i>16 / 13pt</i></div>
+          <div class="slot" style="top:282px"><b>③ 正文</b><i>12pt · 一行</i></div>
+          <div class="slot" style="top:358px"><b>④ 按钮组</b><i>高 24 · 间距 10</i></div>
+          <div class="slot" style="top:418px"><b>⑤ 微行</b><i>11pt + esc 键帽</i></div>
+        </div>
+      </div>
+    </figure>
+
+    <p class="planfoot">锚定：卡片左缘 = 工具条外缘 + 8 pt；卡片不覆盖选区。<br>
+      竖向 16 / 18 / 6 / 18 / 17 / 24 / 11 / 14 / 16 = 140 pt（内边距 16，按钮行高 24，微行 11pt/14）。
+      横向：内边距 16；按钮行右对齐、间距 10。<br>
+      材质：<code>.hudWindow</code> 级别的深色材质自带压暗下限，卡片有效亮度落在 oklch 31.5–38% 区间；
+      A 恒为深色 —— 覆盖层永远是深的。</p>
+
+    <h3>可读性验证：同一张卡，压在深 / 浅内容上</h3>
+    <figure data-od-id="plan-carrier-a-legibility">
+      <figcaption>覆盖在浅色内容上（卡片材质不变，只换底）</figcaption>
+      <div class="plan plan--bare">
+        <div class="sc" style="--w:460;--h:228">
+          <div class="mat mat--light">
+            <span class="mat__lb">覆盖层材质（示意）· 浅底</span>
+            <span class="mat__edgelb">工具条外缘 →</span>
+            <i class="mat__edge"></i>
+            <div class="card card--a host-dark">
+              <div class="card__head">
+                <svg class="card__glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2.6 5.6v-3h3M10.4 2.6h3v3M13.4 10.4v3h-3M5.6 13.4h-3v-3"/>
+                  <path d="M5.4 6.4h5.2M5.4 8.6h3M5.4 10.8h5.2"/></svg>
+                <span class="card__title">识别文字是 Pro 能力</span>
+              </div>
+              <p class="card__body">试用 7 天，结束后自动回到免费版。</p>
+              <div class="card__acts">
+                <button class="btn--txt">了解 Pro</button>
+                <button class="btn--pri">7 天免费试用</button>
+              </div>
+              <div class="card__micro"><span class="kbd--x">esc</span>关闭卡片，选区保留</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="planfoot">底变浅，卡片不变：材质把有效亮度压在 38% 以内，次要文字仍有 5.22:1、主按钮白字 4.93:1。
+      这就是"在覆盖层深色材质上够不够清楚"的答案 —— 清楚与否由材质下限决定，不由背后的内容决定。</p>
+  </section>
+
+  <!-- ══════════ 04 载体 B ══════════ -->
+  <section data-od-id="carrier-b">
+    <h2><span class="n">04</span>载体 B · 菜单入口旁的系统面板 · 300 × 115 pt</h2>
+    <p class="lead">点菜单栏「滚动截屏」时覆盖层还没出现，卡片画不到覆盖层上，只能是独立小面板：
+      不抢键盘焦点、点别处或 Esc 自己收起、贴在鼠标下方。骨架与 A 完全相同，少一个微行槽。</p>
+
+    <figure data-od-id="plan-carrier-b">
+      <figcaption>载体 B · 深色系统外观 · 稿面 2×（菜单栏为语境示意）</figcaption>
+      <div class="plan plan--card" style="height:560px">
+        <div class="sc" style="--w:460;--h:176;--oy:96px">
+          <div class="host-dark" style="position:relative;width:460px;height:176px">
+            <div class="mbar">
+              <span>访达</span><span>文件</span><span>编辑</span><span>显示</span>
+              <span class="mbar__sp"></span><em>（其余状态项从略）</em>
+              <span class="mbar__mb" title="Marquee 菜单栏图标">
+                <svg width="14" height="12" viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2"
+                  fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.4 2"/></svg>
+              </span>
+            </div>
+            <div class="card card--bd host-dark" data-od-id="card-b" style="position:absolute;left:144px;top:30px">
+              <div class="card__head">
+                <svg class="card__glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2.6 5.6v-3h3M10.4 2.6h3v3M13.4 10.4v3h-3M5.6 13.4h-3v-3"/>
+                  <path d="M8 5.2v5.4M5.7 8.4 8 10.7l2.3-2.3"/></svg>
+                <span class="card__title">滚动截屏是 Pro 能力</span>
+              </div>
+              <p class="card__body">试用 7 天，结束后自动回到免费版。</p>
+              <div class="card__acts">
+                <button class="btn--txt">了解 Pro</button>
+                <button class="btn--pri" data-od-id="card-b-primary">7 天免费试用</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dim" style="left:420px;top:144px;width:600px"><span>300 pt</span></div>
+        <div class="dim--v" style="left:1072px;top:156px;height:230px"><span>115 pt</span></div>
+        <div class="dim--v" style="left:132px;top:96px;height:48px"><span style="left:auto;right:12px">24</span></div>
+
+        <div class="slots" style="width:404px;height:368px">
+          <div class="slot" style="top:158px"><b>① 图标 + ② 标题</b><i>16 / 13pt</i></div>
+          <div class="slot" style="top:206px"><b>③ 正文</b><i>12pt · 一行</i></div>
+          <div class="slot" style="top:282px"><b>④ 按钮组</b><i>高 24 · 间距 10</i></div>
+          <div class="slot" style="top:338px"><b>⑤ 无微行</b><i>比 A 矮 25 pt</i></div>
+        </div>
+      </div>
+    </figure>
+    <p class="planfoot">竖向 16 / 18 / 6 / 18 / 17 / 24 / 16 = 115 pt。菜单栏 24 pt；面板顶边 = 菜单栏底 + 6 pt，右缘距屏右 16 pt 起（示意）。
+      B 不取键盘焦点 → 主按钮用"强调填充"表达推荐，但不要设成 AppKit 的 default button（那等于抢键盘、Return 直接触发购买）。</p>
+
+    <figure data-od-id="plan-carrier-b-light" style="margin-top:44px">
+      <figcaption>载体 B · 浅色系统外观（B 跟随系统；同一个面板，只换宿主 token）</figcaption>
+      <div class="plan plan--card" style="height:560px">
+        <div class="sc" style="--w:460;--h:176">
+          <div class="host-light" style="position:relative;width:460px;height:176px">
+            <div class="mbar">
+              <span>访达</span><span>文件</span><span>编辑</span><span>显示</span>
+              <span class="mbar__sp"></span><em>（其余状态项从略）</em>
+              <span class="mbar__mb">
+                <svg width="14" height="12" viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2"
+                  fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.4 2"/></svg>
+              </span>
+            </div>
+            <div class="card card--bl host-light" style="position:absolute;left:144px;top:30px">
+              <div class="card__head">
+                <svg class="card__glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2.6 5.6v-3h3M10.4 2.6h3v3M13.4 10.4v3h-3M5.6 13.4h-3v-3"/>
+                  <path d="M8 5.2v5.4M5.7 8.4 8 10.7l2.3-2.3"/></svg>
+                <span class="card__title">滚动截屏是 Pro 能力</span>
+              </div>
+              <p class="card__body">试用 7 天，结束后自动回到免费版。</p>
+              <div class="card__acts">
+                <button class="btn--txt">了解 Pro</button>
+                <button class="btn--pri">7 天免费试用</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="planfoot">A 与 B 的关系：<b>骨架一样，宿主材质各自服从环境。</b>A 在覆盖层里恒深色；
+      B 是系统面板，浅色模式就该是浅色面板 —— 否则它会在系统里像一块异物。若改为锚定菜单栏图标（而不是跟随鼠标），
+      同一个面板加 8 pt 尖角即可，内容与尺寸不变。</p>
+  </section>
+
+  <!-- ══════════ 05 三种文案结构 ══════════ -->
+  <section data-od-id="copy-structures">
+    <h2><span class="n">05</span>三种文案结构 · 实稿</h2>
+    <p class="lead">同一骨架，三种填充。只有标题里的功能名、正文一句、两个按钮的文案改变，尺寸完全一致。</p>
+
+    <div class="vrow">
+      <div class="vcap"><b>从未购买 · 可试用</b>
+        <span>主 <span class="mono">[7 天免费试用]</span><br>次 <span class="mono">[了解 Pro]</span></span>
+        <span>正文陈述后果：试用结束自动回免费版 —— 不是"解锁全部能力"。</span></div>
+      <div class="stage stage--card stage--matdark"><div class="sc" style="--w:300;--h:140">
+        <div class="card card--a host-dark">
+          <div class="card__head">
+            <svg class="card__glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.6 5.6v-3h3M10.4 2.6h3v3M13.4 10.4v3h-3M5.6 13.4h-3v-3"/><path d="M5.4 6.4h5.2M5.4 8.6h3M5.4 10.8h5.2"/></svg>
+            <span class="card__title">识别文字是 Pro 能力</span></div>
+          <p class="card__body">试用 7 天，结束后自动回到免费版。</p>
+          <div class="card__acts"><button class="btn--txt">了解 Pro</button><button class="btn--pri">7 天免费试用</button></div>
+          <div class="card__micro"><span class="kbd--x">esc</span>关闭卡片，选区保留</div>
+        </div></div></div>
+    </div>
+
+    <div class="vrow">
+      <div class="vcap"><b>试用已结束</b>
+        <span>主 <span class="mono">[了解 Pro]</span><br>次 <span class="mono">[恢复购买]</span></span>
+        <span>正文先安抚：免费版仍然可用。所以这张卡的第一个动作不是卖，是说明。</span></div>
+      <div class="stage stage--card stage--matdark"><div class="sc" style="--w:300;--h:140">
+        <div class="card card--a host-dark">
+          <div class="card__head">
+            <svg class="card__glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.6 5.6v-3h3M10.4 2.6h3v3M13.4 10.4v3h-3M5.6 13.4h-3v-3"/><path d="M8 5.2v5.4M5.7 8.4 8 10.7l2.3-2.3"/></svg>
+            <span class="card__title">滚动截屏是 Pro 能力</span></div>
+          <p class="card__body">试用已结束，免费版仍可截图与标注。</p>
+          <div class="card__acts"><button class="btn--txt">恢复购买</button><button class="btn--pri">了解 Pro</button></div>
+          <div class="card__micro"><span class="kbd--x">esc</span>关闭卡片，选区保留</div>
+        </div></div></div>
+    </div>
+
+    <div class="vrow">
+      <div class="vcap"><b>购买被撤销</b>
+        <span>主 <span class="mono">[恢复购买]</span><br>次 <span class="mono">[了解 Pro]</span></span>
+        <span>主按钮跟着"用户最可能想干的事"走，不跟着"我们最想卖的东西"走。</span></div>
+      <div class="stage stage--card stage--matdark"><div class="sc" style="--w:300;--h:140">
+        <div class="card card--a host-dark">
+          <div class="card__head">
+            <svg class="card__glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5.7 2.8h4.6l-.7 2.6v3.2H6.4V5.4z"/><path d="M8 8.6v4.6"/></svg>
+            <span class="card__title">钉图是 Pro 能力</span></div>
+          <p class="card__body">购买已撤销，可点恢复购买重新获取。</p>
+          <div class="card__acts"><button class="btn--txt">了解 Pro</button><button class="btn--pri">恢复购买</button></div>
+          <div class="card__micro"><span class="kbd--x">esc</span>关闭卡片，选区保留</div>
+        </div></div></div>
+    </div>
+
+    <p class="planfoot">三张卡各用了一个功能图标，正好演示 ① 图标槽：识别文字 / 滚动截屏 / 钉图。
+      三种结构同样适用于载体 B（去掉 ⑤ 微行，高度 115）。</p>
+  </section>
+
+  <!-- ══════════ 06 按钮差异态 ══════════ -->
+  <section data-od-id="button-states">
+    <h2><span class="n">06</span>按钮差异态 · 默认 / 悬停 / 按下</h2>
+    <p class="lead">主次不靠"两个色块"，靠<b>一个色块 + 一个文字按钮</b>。
+      色块承担"推荐"，位置承担"顺序"（主按钮贴右下角，离"结束"最近）；文字按钮用底和字色的变化回应鼠标。</p>
+
+    <h3>深色材质 · 主按钮（唯一色块）</h3>
+    <div class="grid grid--3">
+      <figure class="stg"><figcaption>默认 · #006fdc · 白字 4.93:1</figcaption>
+        <div class="stage stage--matdark"><div class="sc" style="--w:96;--h:24">
+          <button class="btn--pri host-dark" style="width:96px">7 天免费试用</button></div></div></figure>
+      <figure class="stg"><figcaption>悬停 · #0072df · 4.73:1</figcaption>
+        <div class="stage stage--matdark"><div class="sc" style="--w:96;--h:24">
+          <button class="btn--pri is-hover host-dark" style="width:96px">7 天免费试用</button></div></div></figure>
+      <figure class="stg"><figcaption>按下 · #0059c4 · 6.69:1 + 内阴影</figcaption>
+        <div class="stage stage--matdark"><div class="sc" style="--w:96;--h:24">
+          <button class="btn--pri is-press host-dark" style="width:96px">7 天免费试用</button></div></div></figure>
+    </div>
+
+    <h3>深色材质 · 次按钮（纯文字）</h3>
+    <div class="grid grid--3">
+      <figure class="stg"><figcaption>默认 · 白 64% · 6.3:1</figcaption>
+        <div class="stage stage--matdark"><div class="sc" style="--w:72;--h:24">
+          <button class="btn--txt host-dark" style="width:72px">了解 Pro</button></div></div></figure>
+      <figure class="stg"><figcaption>悬停 · 升到 100% + 白 10% 底</figcaption>
+        <div class="stage stage--matdark"><div class="sc" style="--w:72;--h:24">
+          <button class="btn--txt is-hover host-dark" style="width:72px">了解 Pro</button></div></div></figure>
+      <figure class="stg"><figcaption>按下 · 白 16% 底（对比继续升）</figcaption>
+        <div class="stage stage--matdark"><div class="sc" style="--w:72;--h:24">
+          <button class="btn--txt is-press host-dark" style="width:72px">了解 Pro</button></div></div></figure>
+    </div>
+
+    <h3>浅色面板（载体 B 的浅色外观）</h3>
+    <div class="grid grid--3">
+      <figure class="stg"><figcaption>默认 · #0065d2 · 5.62:1</figcaption>
+        <div class="stage host-light"><div class="sc" style="--w:96;--h:24">
+          <button class="btn--pri" style="width:96px">7 天免费试用</button></div></div></figure>
+      <figure class="stg"><figcaption>悬停 · #0072df · 4.73:1</figcaption>
+        <div class="stage host-light"><div class="sc" style="--w:96;--h:24">
+          <button class="btn--pri is-hover" style="width:96px">7 天免费试用</button></div></div></figure>
+      <figure class="stg"><figcaption>按下 · #004fba · 7.64:1</figcaption>
+        <div class="stage host-light"><div class="sc" style="--w:96;--h:24">
+          <button class="btn--pri is-press" style="width:96px">7 天免费试用</button></div></div></figure>
+      <figure class="stg"><figcaption>默认 · 黑 58% · 5.3:1</figcaption>
+        <div class="stage host-light"><div class="sc" style="--w:72;--h:24">
+          <button class="btn--txt" style="width:72px">了解 Pro</button></div></div></figure>
+      <figure class="stg"><figcaption>悬停 · 升到 85% + 黑 6% 底</figcaption>
+        <div class="stage host-light"><div class="sc" style="--w:72;--h:24">
+          <button class="btn--txt is-hover" style="width:72px">了解 Pro</button></div></div></figure>
+      <figure class="stg"><figcaption>按下 · 黑 10% 底</figcaption>
+        <div class="stage host-light"><div class="sc" style="--w:72;--h:24">
+          <button class="btn--txt is-press" style="width:72px">了解 Pro</button></div></div></figure>
+    </div>
+    <p class="planfoot">规则：<b>状态只准把文字对比度往上推。</b>填充按钮的悬停不能提亮（白字会掉到 4.5:1 以下），
+      所以用"压暗 1% + 顶部 1px 高光"表达悬停，按下再压暗并加内阴影；文字按钮的悬停把字色升到 100% 并加一层底。</p>
+  </section>
+
+  <!-- ══════════ 07 备注 ══════════ -->
+  <section data-od-id="notes">
+    <h2><span class="n">07</span>备注与未覆盖项</h2>
+    <ul class="rules">
+      <li><b>不新开窗口 / 不新开页面（硬约束 2）：</b>载体 A 是覆盖层内浮起的一层卡片，载体 B 是一个不取焦点的系统面板；两个按钮里没有任何一个会先弹一次账单页 —— [了解 Pro] 才是去了解，[试用] 与 [恢复购买] 都在原地开始。</li>
+      <li><b>载体 A 的 Esc（行为面）：</b>只收卡片。冻结的画面、选区、已画的标注一字不动 —— 微行 ⑤ 把这条承诺写给了用户看，避免他不敢按 Esc。</li>
+      <li><b>微行 ⑤ 是我加的第 4 行（你的结构是 3 件）：</b>它承载"不打断你这次截图"这条硬约束，并可砍。砍掉后卡片高 115，与载体 B 同高，其余槽位不受影响。</li>
+      <li><b>若购买成功后需要用户回菜单重新触发滚动截屏：</b>建议载体 B 也补一行微行（文案示例「升级后从菜单再点一次即可开始」），高度回到 140。这取决于购买完成后 app 能否自动接着开始截图 —— 这一条我没有替你决定。</li>
+      <li><b>文案与字数上限：</b>标题 ≤ 12 字（13pt 单行）、正文 ≤ 22 字（12pt 单行）、按钮 ≤ 6 字（12pt）。超限会折行，折行后卡片高度 +18，A 与 B 将不再同高。</li>
+      <li><b>未画（按范围锁定）：</b>覆盖层工具条、编辑器、偏好设置、最近截图面板、账单页。载体 A 的环境用材质色板示意，没有贴真实桌面截图 —— 若你要的是"卡片压在真实截图上的观感"，请给我一张可以用的截图，我再出第三张验证稿。</li>
+      <li><b>对比度已逐项实测：</b>深色材质上次要文字 6.30:1、主按钮白字 4.93 → 4.73 → 6.69；浅色面板上次要文字 5.28:1、主按钮白字 5.62 → 4.73 → 7.64；状态点对底 9.3:1（深）/ 3.9:1（浅）。全部 ≥ 4.5:1（非文字 ≥ 3:1）。</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marquee · ④ 覆盖层 · 截屏中的全屏界面 · 高保真稿</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   0. 方向种子 —— modern-minimal（Linear / Vercel），逐字绑定（仅文档层）
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
+  --accent:  oklch(58% 0.18 255);
+
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+:root{
+  --stage: oklch(96.6% 0.003 260);
+  --ink:   oklch(32% 0.01 260);
+  --ink2:  oklch(52% 0.008 260);
+  --ink3:  oklch(84% 0.006 260);
+  --dim:   oklch(53% 0.16 32);
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   1. 宿主 token —— 与 ①②③ 逐项相同（本稿只深色：覆盖层恒深色）
+   ══════════════════════════════════════════════════════════════════ */
+.host-dark{
+  --c-bg:      oklch(26.5% 0 0);      /* #252525 */
+  --c-panel:   oklch(31.5% 0 0);      /* #313131 工具条/弹层材质 */
+  --c-inset:   oklch(22.5% 0 0);      /* #1c1c1c 色板托盘/输入框内底 */
+  --c-cap:     oklch(38% 0 0);        /* #424242 键帽 */
+  --c-capbd:   oklch(46% 0 0);        /* #585858 */
+  --c-border:  oklch(43% 0 0);        /* #505050 */
+  --c-hair:    rgba(255,255,255,.10);
+  --c-label:   #ffffff;               /* 对材质 12.9:1 */
+  --c-label2:  rgba(255,255,255,.64); /* 对材质 6.30:1 */
+  --c-fill:    oklch(55% 0.19 254);   /* #006fdc 白字 4.93:1 */
+  --c-fill-h:  oklch(56% 0.19 254);
+  --c-fill-p:  oklch(48% 0.19 254);
+  --c-glyph:   oklch(72% 0.14 254);
+  --c-warn:    oklch(84% 0.17 88);    /* #f8c20d 对材质 9.30:1 */
+  --c-ring:    oklch(62% 0.17 254);
+  --c-soft:    rgba(255,255,255,.07);
+  --c-soft-h:  rgba(255,255,255,.09);
+  --c-soft-p:  rgba(255,255,255,.16);
+  --c-ghost:   rgba(255,255,255,.10);
+  --c-menubar: oklch(28.5% 0 0);
+  --c-mbartx:  rgba(255,255,255,.82);
+
+  /* 覆盖层专属 —— 前三个是"底色"，后三个是"画在内容上的线" */
+  --o-veil:    rgba(0,0,0,.32);       /* 暗幕：冻住的部分 */
+  --o-veil-s:  rgba(0,0,0,.45);       /* 线的黑边（白芯黑边规则） */
+  --o-cancel:  #ff6b60;               /* 对材质 4.66:1（systemRed 只有 3.67:1，提亮一档） */
+  --o-done:    #30d158;               /* 对材质 6.44:1，无需调整 */
+  --o-dim:     0 0 0 9999px var(--o-veil);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2. 文档层
+   ══════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:400 14px/1.75 var(--font-body);-webkit-text-size-adjust:100%}
+.wrap{max-width:1248px;margin:0 auto;padding:56px 24px 120px}
+.doc__n{font:600 12px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+h1{margin:12px 0 0;font:600 30px/1.25 var(--font-display);letter-spacing:-.02em;color:var(--fg)}
+.doc__lede{margin:14px 0 0;max-width:76ch;color:var(--ink2);font-size:14px}
+.doc__lede strong{color:var(--ink);font-weight:600}
+.doc__meta{margin:18px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.tag{font:500 11px/1 var(--mono);color:var(--ink2);background:var(--stage);border:1px solid var(--border);
+     border-radius:999px;padding:6px 10px}
+
+section{margin-top:72px;border-top:1px solid var(--border);padding-top:32px}
+h2{margin:0;font:600 19px/1.3 var(--font-display);letter-spacing:-.01em;color:var(--fg);display:flex;align-items:baseline;gap:12px}
+h2 .n{font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.08em}
+h3{margin:32px 0 0;font:600 14px/1.4 var(--font-display);color:var(--fg)}
+h4{margin:24px 0 0;font:600 12.5px/1.4 var(--font-display);color:var(--fg)}
+p{margin:12px 0 0;max-width:78ch;color:var(--ink2)}
+.lead{margin-top:14px;color:var(--ink)}
+ul.rules{margin:14px 0 0;padding:0;list-style:none;max-width:84ch}
+ul.rules li{position:relative;padding:8px 0 8px 22px;color:var(--ink2);border-top:1px dashed var(--border)}
+ul.rules li:first-child{border-top:0}
+ul.rules li::before{content:'';position:absolute;left:2px;top:18px;width:7px;height:7px;background:var(--dim);border-radius:1px}
+ul.rules b{color:var(--ink);font-weight:600}
+code{font:500 12px/1 var(--mono);background:var(--stage);border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:var(--ink)}
+pre.seq{margin:16px 0 0;padding:14px 16px;background:var(--stage);border:1px solid var(--border);border-radius:8px;
+     font:500 11.5px/1.85 var(--mono);color:var(--ink2);white-space:pre;overflow-x:auto}
+pre.seq b{color:var(--ink);font-weight:600}
+
+table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px 10px 0;border-bottom:1px solid var(--border)}
+th{font:600 11px/1.4 var(--mono);color:var(--ink2);letter-spacing:.04em;white-space:nowrap}
+td{color:var(--ink2)} td b{font-weight:600;color:var(--ink)}
+td .mono{font:500 11.5px/1.6 var(--mono);color:var(--ink2)}
+
+.toks{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px;margin-top:18px}
+.tok{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.tok__chip{height:52px;display:flex;align-items:center;justify-content:center}
+.tok__b{padding:10px 12px 12px}
+.tok__n{font:600 12px/1.3 var(--font-body);color:var(--ink)}
+.tok__v{font:500 10.5px/1.6 var(--mono);color:var(--ink2);margin-top:3px}
+
+/* ══════════════════════════════════════════════════════════════════
+   3. 覆盖层部件（只读 --c-* / --o-*）
+   ══════════════════════════════════════════════════════════════════ */
+.sc{position:relative;width:calc(var(--w)*2px);height:calc(var(--h)*2px)}
+.sc>*{position:absolute;left:0;top:0;transform:scale(2);transform-origin:0 0}
+.ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.lk{position:absolute;right:2px;bottom:2px;width:9px;height:9px;stroke:currentColor;fill:none;
+    stroke-width:1;stroke-linecap:round;color:rgba(255,255,255,.55)}
+
+/* 工具条：511 × 40 */
+.bar{display:flex;align-items:center;gap:2px;padding:5px;border-radius:10px;background:var(--c-panel);
+     border:1px solid rgba(255,255,255,.12);box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32);
+     font-family:var(--font-body);-webkit-font-smoothing:antialiased}
+.cell{position:relative;flex:none;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;
+      justify-content:center;color:rgba(255,255,255,.82)}
+.cell.is-hover{background:var(--c-soft-h);color:#fff}
+.cell.is-press,.cell.is-open{background:var(--c-soft-p);color:#fff}
+.cell.is-on{background:var(--c-fill);color:#fff}
+.cell.is-dim{color:rgba(255,255,255,.30)}
+.cell.is-cancel{color:var(--o-cancel)}
+.cell.is-done{color:var(--o-done)}
+.cell.gap{margin-left:8px}
+.vsep{flex:none;width:1px;height:18px;margin:0 6px;background:var(--c-hair)}
+/* 长截图时工具条下长出的第二行 */
+.strip{display:flex;align-items:center;gap:8px;width:513px;height:22px;padding:0 10px;
+     background:var(--c-panel);border:1px solid rgba(255,255,255,.12);border-top:0;
+     border-radius:0 0 10px 10px;font:400 11px/1 var(--font-body);color:var(--c-label2);
+     -webkit-font-smoothing:antialiased}
+.strip b{font-weight:500;color:var(--c-label)}
+.strip .al{margin-left:auto;display:flex;align-items:center;gap:6px;color:var(--c-warn);font-weight:500}
+.strip .al::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--c-warn);flex:none}
+
+/* 弹层 */
+.pop{position:absolute;padding:12px;border-radius:10px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);
+     box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32);font-family:var(--font-body);
+     -webkit-font-smoothing:antialiased}
+.pop--style{width:198px}
+.pop--emoji{width:212px}
+.pop__lab{font:500 11px/14px var(--font-body);color:var(--c-label2)}
+.tray{margin-top:4px;padding:6px;border-radius:6px;background:var(--c-inset);display:flex;gap:6px}
+.sw{width:22px;height:22px;border-radius:5px;flex:none;position:relative}
+.sw.is-cur{box-shadow:0 0 0 2px var(--c-panel),0 0 0 3.5px #fff}
+.hairedge{box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+.hair{margin-top:10px;height:1px;background:var(--c-hair)}
+.szrow{margin-top:6px;display:flex;gap:6px}
+.sz{width:54px;height:38px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.82)}
+.sz.is-cur{background:var(--c-fill);color:#fff}
+.egrid{margin-top:8px;display:grid;grid-template-columns:repeat(6,28px);gap:4px}
+.emo{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+     font-size:19px;line-height:1}
+.emo.is-hover{background:var(--c-soft-h)}
+
+/* 尺寸三档的三种写法 */
+.dot{border-radius:50%;background:currentColor}
+.mos{background-color:#fff;background-image:
+     repeating-linear-gradient(90deg,transparent 0 calc(var(--g) - 1px),var(--c-panel) calc(var(--g) - 1px) var(--g)),
+     repeating-linear-gradient(0deg,transparent 0 calc(var(--g) - 1px),var(--c-panel) calc(var(--g) - 1px) var(--g))}
+.aa{font-family:var(--font-display);font-weight:600;line-height:1;letter-spacing:0}
+
+/* 选区 / 控制点 / 吸附线（白芯黑边） */
+.hole{position:absolute;box-shadow:0 0 0 1px #fff,0 0 0 2px var(--o-veil-s),var(--o-dim)}
+.hole--s{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--o-veil-s),var(--o-dim)}
+.holetint{position:absolute;background:rgba(255,255,255,.04);box-shadow:0 0 0 1px #fff,0 0 0 2px var(--o-veil-s),var(--o-dim)}
+.ph{position:absolute;width:7px;height:7px;background:#fff;box-shadow:0 0 0 1px var(--o-veil-s)}
+.snapline{position:absolute;background:#fff;box-shadow:0 0 0 1px var(--o-veil-s)}
+.bg{position:absolute;inset:0;overflow:hidden}
+.bg--light{background:#ffffff}
+.bg--mid{background:oklch(93% 0.004 250)}
+.bg--dark{background:oklch(21% 0.008 250)}
+.blk{position:absolute;border-radius:6px}
+.bg--light .blk,.bg--mid .blk{background:rgba(0,0,0,.055)}
+.bg--dark .blk{background:rgba(255,255,255,.06)}
+.bglb{position:absolute;font:500 10.5px/1.5 var(--mono);color:rgba(0,0,0,.34)}
+.bg--dark .bglb{color:rgba(255,255,255,.42)}
+
+/* 光标提示 / 光标 */
+.tip{position:absolute;height:26px;padding:0 10px;border-radius:13px;display:flex;align-items:center;gap:6px;
+     background:var(--c-panel);border:1px solid rgba(255,255,255,.12);color:var(--c-label);
+     font:400 12px/1 var(--font-body);white-space:nowrap;
+     box-shadow:0 10px 24px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28);-webkit-font-smoothing:antialiased}
+.tip em{font:500 11px/1 var(--mono);font-style:normal;color:var(--c-label2)}
+.pill{height:28px;padding:0 12px;border-radius:14px;display:inline-flex;align-items:center;gap:8px;
+     background:var(--c-panel);border:1px solid rgba(255,255,255,.12);color:var(--c-label);
+     font:400 12px/1 var(--font-body);white-space:nowrap;
+     box-shadow:0 10px 24px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28);-webkit-font-smoothing:antialiased}
+.pill em{font:400 11px/1 var(--font-body);font-style:normal;color:var(--c-label2)}
+.kbd--x{min-width:16px;height:15px;padding:0 4px;border-radius:3.5px;background:var(--c-cap);
+      border:1px solid var(--c-capbd);display:inline-flex;align-items:center;justify-content:center;
+      font:500 10px/1 var(--font-body);color:var(--c-label)}
+.host-dark .kbd--x{box-shadow:0 1px 0 rgba(0,0,0,.3)}
+.cross{position:absolute;width:19px;height:19px}
+
+/* 读数框：一个框，两种读数 */
+.rd{position:absolute;width:132px;height:44px;padding:7px 10px;border-radius:8px;background:var(--c-panel);
+     border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 28px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28);
+     font-family:var(--font-body);-webkit-font-smoothing:antialiased}
+.rd b{display:block;font:600 13px/15px var(--font-body);color:var(--c-label);white-space:nowrap}
+.rd span{display:block;margin-top:2px;font:500 11px/13px var(--mono);color:var(--c-label2);white-space:nowrap}
+.rd .chip{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px;
+     box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+.rd .plus{color:var(--c-warn)}
+
+/* 放大镜 */
+.loupe{position:absolute;width:104px;border-radius:8px;overflow:hidden;background:var(--c-panel);
+     border:1px solid rgba(255,255,255,.12);box-shadow:0 14px 32px rgba(0,0,0,.44),0 2px 8px rgba(0,0,0,.3)}
+.loupe__g{display:grid;grid-template-columns:repeat(8,13px);grid-template-rows:repeat(8,13px)}
+.loupe__g i{display:block}
+.loupe__g .ctr{box-shadow:inset 0 0 0 1.5px #fff,0 0 0 1.5px var(--o-veil-s);z-index:1}
+.loupe__r{padding:6px 8px;border-top:1px solid rgba(255,255,255,.12);font-family:var(--font-body);
+     -webkit-font-smoothing:antialiased}
+.loupe__r b{display:block;font:600 12px/14px var(--font-body);color:var(--c-label)}
+.loupe__r span{display:block;font:500 10.5px/13px var(--mono);color:var(--c-label2)}
+
+/* 就地文字输入框（系统输入框形态） */
+.field{position:absolute;display:flex;align-items:center;height:32px;padding:0 8px;border-radius:6px;
+     background:var(--c-inset);border:1px solid var(--c-border);box-shadow:0 0 0 3px var(--c-ring);
+     font:400 13px/1 var(--font-body);color:var(--c-label);-webkit-font-smoothing:antialiased}
+.field .car{width:1px;height:16px;background:var(--c-label);margin-left:1px}
+.annoT{position:absolute;font:600 13px/1.2 var(--font-body);color:#fff}
+
+/* 层级梯 */
+.lad{position:relative;margin-top:18px;padding:14px;border:1px dashed var(--border);border-radius:10px;
+     font:500 11px/1.6 var(--mono);color:var(--ink2)}
+.lad__b{border:1px solid var(--ink3);border-radius:8px;padding:10px 12px;margin-top:8px;position:relative}
+.lad__b:first-child{margin-top:0}
+.lad__b>b{font:600 11.5px/1.5 var(--font-body);color:var(--ink)}
+.lad__b>i{font-style:normal;color:var(--ink2)}
+.lad__b.hot{border-color:var(--dim);background:oklch(97.5% 0.02 32)}
+.lad__esc{position:absolute;right:10px;top:10px;font:600 10.5px/1 var(--mono);color:var(--dim)}
+
+/* 稿面与红样 */
+.plan{position:relative;width:1200px}
+.plan .sc{position:absolute;left:var(--ox);top:var(--oy)}
+.plan .ovl{position:absolute;left:var(--ox);top:var(--oy)}
+.plan--p1,.plan--p2,.plan--p3{height:648px;--ox:88px;--oy:56px}
+.ovl{position:relative;width:1024px;height:560px;overflow:hidden;font-family:var(--font-body);-webkit-font-smoothing:antialiased}
+.call{position:absolute;font:600 10.5px/1 var(--mono);color:var(--dim);background:rgba(255,255,255,.94);
+      border:1px solid rgba(0,0,0,.06);padding:3px 6px;border-radius:4px;white-space:nowrap}
+.segnums{display:flex;gap:4px;width:1022px;margin-top:8px}
+.segnums span{width:56px;text-align:center;font:500 10px/1 var(--mono);color:var(--ink2)}
+.grps{display:flex;width:1022px;margin-bottom:10px}
+.grps span{border-top:1px solid var(--ink3);padding-top:6px;text-align:center;font:600 10.5px/1.4 var(--mono);color:var(--ink2)}
+.dia{position:relative;width:300px;height:190px;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden}
+.dia i{position:absolute;display:block;font-style:normal;border-radius:4px}
+.dbox{background:var(--stage);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+      font:500 10px/1 var(--mono);color:var(--ink2)}
+.dsel{border:1px dashed var(--dim);border-radius:2px}
+.dpop{background:oklch(31.5% 0 0);font:500 10px/1 var(--mono);color:rgba(255,255,255,.8);
+      display:flex;align-items:center;justify-content:center}
+.dbar{background:oklch(31.5% 0 0);border-radius:4px}
+.duo{display:flex;gap:28px;align-items:center}
+.lbl{font:500 10.5px/1.7 var(--mono);color:var(--ink2)}
+figure{margin:0}
+figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin:0 0 10px;letter-spacing:.02em}
+.dim{position:absolute;height:1px;background:var(--dim)}
+.dim::before,.dim::after{content:'';position:absolute;top:-3px;width:1px;height:7px;background:var(--dim)}
+.dim::before{left:0}.dim::after{right:0}
+.dim span{position:absolute;left:50%;top:-9px;transform:translate(-50%,-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v{position:absolute;width:1px;background:var(--dim)}
+.dim--v::before,.dim--v::after{content:'';position:absolute;left:-3px;width:7px;height:1px;background:var(--dim)}
+.dim--v::before{top:0}.dim--v::after{bottom:0}
+.dim--v span{position:absolute;left:12px;top:50%;transform:translateY(-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v span.l{left:auto;right:12px}
+.grid{display:grid;gap:18px;margin-top:20px}
+.grid--2{grid-template-columns:repeat(2,520px)}
+.grid--3{grid-template-columns:repeat(3,256px)}
+.grid--6{grid-template-columns:repeat(6,150px)}
+.stage{border-radius:10px;display:flex;align-items:center;justify-content:center;padding:24px;border:1px solid var(--border)}
+.stage--matdark{background:oklch(22% 0 0);border-color:transparent}
+.stage--white{background:#fff}
+.stg{margin:0}
+.stg figcaption{font:600 10.5px/1 var(--mono);color:var(--ink2);margin-bottom:8px;letter-spacing:.04em}
+.vrow{display:grid;grid-template-columns:300px 664px;gap:28px;align-items:center;margin-top:26px}
+.vcap b{display:block;font:600 13px/1.5 var(--font-body);color:var(--ink)}
+.vcap span{display:block;margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--ink2)}
+.vcap .mono{font:500 11px/1.7 var(--mono);color:var(--ink2)}
+.planfoot{margin-top:22px;font:500 11px/1.9 var(--mono);color:var(--ink2)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-rect" viewBox="0 0 16 16"><rect x="2.75" y="3.5" width="10.5" height="9" rx="1.5"/></symbol>
+<symbol id="i-ellipse" viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="5.5" ry="4.5"/></symbol>
+<symbol id="i-emoji" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M5.9 9.3c.5.9 1.2 1.3 2.1 1.3s1.6-.4 2.1-1.3"/><path d="M6.1 6.3h.01M9.9 6.3h.01"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3.2 12.8 12.6 3.4"/><path d="M6.7 3.2h6.3v6.3"/></symbol>
+<symbol id="i-brush" viewBox="0 0 16 16"><path d="M3.4 12.6 4.9 9l5.7-5.7a1.45 1.45 0 0 1 2.1 2.1L7 11.1l-3.6 1.5Z"/><path d="M4.9 9 7 11.1"/></symbol>
+<symbol id="i-mosaic" viewBox="0 0 16 16"><rect x="2.75" y="2.75" width="4.6" height="4.6"/><rect x="8.65" y="8.65" width="4.6" height="4.6"/><rect x="8.65" y="2.75" width="4.6" height="4.6" stroke-dasharray="1.7 1.4"/><rect x="2.75" y="8.65" width="4.6" height="4.6" stroke-dasharray="1.7 1.4"/></symbol>
+<symbol id="i-text" viewBox="0 0 16 16"><path d="M3.2 4.3h9.6M8 4.3v8.4M6 12.7h4"/></symbol>
+<symbol id="i-style" viewBox="0 0 16 16"><path d="M2.8 5h10.4M2.8 8h10.4M2.8 11h10.4"/><circle cx="6" cy="5" r="1.55" fill="currentColor" stroke="none"/><circle cx="10.2" cy="8" r="1.55" fill="currentColor" stroke="none"/><circle cx="5.2" cy="11" r="1.55" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-scan" viewBox="0 0 16 16"><path d="M2.75 5.2V3.6a.85.85 0 0 1 .85-.85h1.6M11.9 2.75h1.35a.85.85 0 0 1 .85.85v1.6M13.25 10.8v1.6a.85.85 0 0 1-.85.85h-1.6M4.1 13.25H3.6a.85.85 0 0 1-.85-.85v-1.6"/><path d="M4.6 8h6.8"/><path d="M5.7 5.6h4.6M5.7 10.4h2.6"/></symbol>
+<symbol id="i-undo" viewBox="0 0 16 16"><path d="M3.5 7.3h6.2a3.35 3.35 0 0 1 0 6.7H6"/><path d="M6 4.4 3.3 7.3 6 10.2"/></symbol>
+<symbol id="i-redo" viewBox="0 0 16 16"><path d="M12.5 7.3H6.3a3.35 3.35 0 0 0 0 6.7H10"/><path d="M10 4.4 12.7 7.3 10 10.2"/></symbol>
+<symbol id="i-save" viewBox="0 0 16 16"><path d="M8 2.9v7.2"/><path d="M5.4 7.5 8 10.1l2.6-2.6"/><path d="M3.4 12.6h9.2"/></symbol>
+<symbol id="i-pin" viewBox="0 0 16 16"><path d="M9.4 1.9 14 6.5l-1.7 1.7-1-.3-2.6 2.6.3 2-1.5 1.5L3.4 9.9l-1.7.4-1 1"/><path d="M4.3 11.7 1.9 14.1"/></symbol>
+<symbol id="i-x" viewBox="0 0 16 16"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></symbol>
+<symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5 6.6 11.6 12.5 4.6"/></symbol>
+<symbol id="i-lock" viewBox="0 0 9 9"><rect x="1.5" y="3.9" width="6" height="4.1" rx="1.1"/><path d="M2.9 3.9V3a1.6 1.6 0 0 1 3.2 0v.9"/></symbol>
+<symbol id="i-cursor" viewBox="0 0 19 19"><path d="M9.5 1.2v17M1.2 9.5h17" stroke-width="1.4"/><path d="M9.5 6.2v6.6M6.2 9.5h6.6" stroke-width="1.4"/></symbol>
+</defs></svg>
+
+<div class="wrap" data-od-id="doc-head">
+
+  <div class="doc__n">① / ② / ③ / ④　MARQUEE DESIGN SPEC</div>
+  <h1>Marquee 覆盖层 — 截屏中的全屏界面</h1>
+  <p class="doc__lede">本文件是第 ④ 块。前三块：首次启动引导页 <code>first-run-onboarding.html</code>、
+     升级卡片 <code>pro-upgrade-card.html</code>、首次使用教学 <code>first-use-coach.html</code>。
+     01 节那张 token 表与它们逐项相同，控件 CSS 只读 <code>--c-*</code>。</p>
+  <p class="doc__lede"><strong>一句结构结论先讲：</strong>这块界面没有窗口，所以它没有"标题栏"可以立威 ——
+     它的秩序只能来自<b>一条轴</b>：屏幕正中是"内容"（选区与标注），屏幕边缘是"控件"（工具条、读数、提示），
+     而<b>空态的主角不是任何控件</b>，是"屏幕对手的回应"（下面 02 节解释）。
+     15 格不是挤出来的，是量出来的：<b>513 pt，占 1024 屏宽的 50.1%</b> —— 正好半个屏。</p>
+  <div class="doc__meta">
+    <span class="tag">覆盖层 1024 点宽屏（示意屏）</span>
+    <span class="tag">工具条 513 × 40 pt · 占屏宽 50.1%</span>
+    <span class="tag">稿面：三阶段 1× / 部件 2×</span>
+    <span class="tag">深色唯一（覆盖层恒深色）</span>
+    <span class="tag">标注单位 pt</span>
+    <span class="tag">不新开窗口 / 不新开弹窗 / 不加步骤</span>
+    <span class="tag">文案为示意</span>
+  </div>
+
+  <!-- ══════════ 01 共用语言 ══════════ -->
+  <section data-od-id="shared-language">
+    <h2><span class="n">01</span>共用语言</h2>
+    <p class="lead">沿用 ①②③。本稿只加一件新东西：<b>覆盖层是"画在别人内容上"的界面</b> ——
+       底下的画面是什么颜色，不由我们决定。所以这里多了一条纪律，读作<b>「白芯黑边」</b>：
+       凡是画在内容之上、不能被材质托住的线（选区描边、控制点、吸附线、放大镜准心），
+       一律<b>白 1 pt 芯 + 黑 45% 的边</b>。白芯在深色内容上跳出来，黑边在纯白内容上把白芯托住 ——
+       一条线同时通过两个极端，比"挑一个够亮的颜色"可靠。</p>
+
+    <h3>覆盖层材质（深色唯一）</h3>
+    <div class="toks">
+      <div class="tok"><div class="tok__chip" style="background:#fff"><div style="width:104px;height:52px;background:#fff;box-shadow:inset 0 0 0 9999px var(--o-veil)"></div></div>
+        <div class="tok__b"><div class="tok__n">暗幕 --o-veil</div><div class="tok__v">rgba(0,0,0,.32)<br>冻住的部分；选区是"挖掉的洞"，不是画上去的框</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">工具条 / 弹层 / 读数 --c-panel</div><div class="tok__v">oklch(31.5% 0 0) · #313131<br>有效亮度下限 ≤ oklch 38%（材质自带压暗），所以<b>格子里的读数对任何底都成立</b></div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(22.5% 0 0)"><div style="width:44px;height:22px;border-radius:4px;background:oklch(21% 0.19 254)"></div></div>
+        <div class="tok__b"><div class="tok__n">托盘 / 输入框内底 --c-inset</div><div class="tok__v">oklch(22.5% 0 0) · #1c1c1c<br>色板行必须坐在它上面：蓝 #0a84ff 直接压在 #313131 上只有 2.6:1，落在托盘上是 3.5:1</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0);color:#ff6b60;font:600 20px/1 var(--font-body)">✕</div>
+        <div class="tok__b"><div class="tok__n">取消红 --o-cancel</div><div class="tok__v">#ff6b60 · 对材质 4.66:1<br>比 systemRed #ff453a 提亮一档 —— 后者在这里只有 3.67:1，够不上你要的正文级</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0);color:#30d158;font:600 20px/1 var(--font-body)">✓</div>
+        <div class="tok__b"><div class="tok__n">完成绿 --o-done</div><div class="tok__v">#30d158 · 对材质 6.44:1<br>绿不用提亮；红要提一档，两个值的不对称是量出来的，不是偏好</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0)"><div style="color:var(--c-warn);font:500 11px/1 var(--mono)">已经滚到底了</div></div>
+        <div class="tok__b"><div class="tok__n">告警 --c-warn</div><div class="tok__v">#f8c20d · 对材质 9.30:1<br>告警不换行、不加高：它<b>取代</b>提示行，不叠在提示行下面</div></div></div>
+    </div>
+
+    <h3>尺寸与文字阶（只列本稿新增 / 引用的行）</h3>
+    <table>
+      <tr><th>件</th><th>尺寸</th><th>文字</th><th>说明</th></tr>
+      <tr><td><b>工具条</b></td><td class="mono">513 × 40 pt</td><td>—</td><td>圆角 10 · 内边距 5 · 组内间隙 2 · 分隔线两侧各 8（间隙 2 + 外边距 6）</td></tr>
+      <tr><td><b>格子</b></td><td class="mono">28 × 28 pt</td><td>—</td><td>圆角 6 · 图标 16 × 16 · 描边 1.5（与 ② 的卡片图标同一套笔画）</td></tr>
+      <tr><td><b>Pro 小锁</b></td><td class="mono">9 × 9 pt</td><td>—</td><td>贴格子右下角内 2 pt；白 55%，对材质 5.10:1</td></tr>
+      <tr><td><b>光标提示</b></td><td class="mono">高 26 pt</td><td class="mono">12 pt</td><td>距光标热区 16 / 18 pt；胶囊 28 高层级更高（复用 ③ 的 .pill，逐项相同）</td></tr>
+      <tr><td><b>读数框</b></td><td class="mono">132 × 44 pt</td><td class="mono">13 / 11 pt</td><td><b>同一个框两种读数</b>：落点前是颜色，落点后是尺寸 —— 见 08</td></tr>
+      <tr><td><b>提示行</b>（③）</td><td class="mono">513 × 22 pt</td><td class="mono">11 pt</td><td>工具条下方长出的第二行，共材质、无间隙、圆角只在底部</td></tr>
+      <tr><td><b>弹层</b></td><td class="mono">样式 198 × 135 · 表情 212 × 170 pt</td><td class="mono">11 pt 标签</td><td>贴工具条外侧 8 pt；色板托盘 174 × 34</td></tr>
+      <tr><td><b>文字输入框</b></td><td class="mono">240 × 32 pt</td><td class="mono">13 pt</td><td>真系统输入框形态：内底 + 3 pt 焦点环（与 ① 的录制框同一套）</td></tr>
+      <tr><td><b>放大镜</b></td><td class="mono">104 × 129 pt</td><td class="mono">12 / 10.5 pt</td><td>8 × 8 像素格，每格 13 pt；准心用白芯黑边</td></tr>
+    </table>
+    <p class="planfoot">对比度实测（对 --c-panel oklch 31.5%）：格图标 白 82% <b>9.31:1</b>；悬停 / 按下 / 选中白字 <b>12.9 / 12.9 / 4.93:1</b>；
+       置灰 白 30% 2.58:1（禁用态无下限，且只有"暂时没内容可撤"才允许）；取消红 <b>4.66:1</b>；完成绿 <b>6.44:1</b>；
+       提示行 / 弹层标签 白 64% <b>6.30:1</b>；告警 <b>9.30:1</b>。色板对托盘 --c-inset：红 4.80 / 橙 8.28 / 黄 12.07 / 绿 8.43 / 蓝 <b>3.46</b> / 白 21:1（全部 ≥ 3:1）。</p>
+  </section>
+
+  <!-- ══════════ 02 结构 ══════════ -->
+  <section data-od-id="structure">
+    <h2><span class="n">02</span>结构 —— 先回答"为什么"</h2>
+
+    <h3>空态那一屏，主角是什么？</h3>
+    <p class="lead">你倾向"随光标走的那句提示"，我同意方向，但要把它说准一点：
+       <b>主角不是那句话，是"屏幕对手的回应"这一件事</b>，它由三样东西合起来演，缺一样就不成立。</p>
+    <ul class="rules">
+      <li><b>① 随光标的提示 = 因果链。</b>屏幕被冻住之后，整块屏幕上<b>没有一样东西在动</b> ——
+          静止的提示会被当成壁纸的一部分（它和冻结的画面长得一模一样）。只有<b>跟着手走</b>的东西，
+          才能证明"机器在回应你"。这一条只能由"动"来承担，不能由"好看"来承担。</li>
+      <li><b>② 光标下的窗口在暗幕里被点亮 = 屏幕本身在答话。</b>空态的第二条路是"单击一个窗口"，
+          但点亮发生在<b>按下之前</b>：鼠标扫过窗口，那块窗口就从暗幕里亮起来。
+          这是比任何文案都强的"没死机"信号 —— 它证明的是<b>屏幕在替你做判断</b>，而不只是"有个东西在动"。</li>
+      <li><b>③ 顶部那枚静止胶囊（复用 ③ 的 M1）= 状态声明。</b>它回答"我现在处在什么状态"（屏幕已冻结 + Esc 取消），
+          不回答"下一步做什么"，所以它<b>不动</b> —— 一个不动的元素负责"稳"，一个动的元素负责"活"，
+          两个都动就是乱。</li>
+    </ul>
+    <p>三样合起来的读法是：<b>屏幕上唯一会动的是跟着你手的提示，屏幕上唯一会亮的是你指到的窗口，剩下的都停着。</b>
+       所以空态的主角是"回应"本身；提示是它的字幕，窗口高亮是它的动作，胶囊是它的底。</p>
+    <p class="planfoot">如果只能保一样，保 ②（窗口点亮）。理由：文案是给"读"的，点亮是给"看"的 ——
+       怀疑死机的用户不会去读屏幕上的字，他会动鼠标，然后等屏幕的反应。</p>
+
+    <h3>15 格为什么是这四组</h3>
+    <p>分组不是按"长得像"，是按<b>点下去之后"什么改变了"</b>：改的是"我接下来画什么" → 工具；
+       改的是"画出来的长什么样" → 样式；改的是"这张图要去哪" → 动作；而「识别文字」<b>不改任何状态</b>，
+       它读走一段文本就结束 —— 它是"动作"，但它是<b>唯一需要解释的动作</b>（Pro），所以给它单独一组。
+       这一条是产品约束逼出来的：Pro 卡片的入口必须"看得见、点得动、旁边没有别的动作会误触"。</p>
+    <table>
+      <tr><th>分界规则</th><th>工具（7 格）</th><th>动作（6 格）</th></tr>
+      <tr><td><b>会不会灰</b></td><td>永不置灰</td><td>会灰（撤销/重做没得撤时）—— <b>看会不会灰，就知道是不是动作</b></td></tr>
+      <tr><td><b>会不会亮着</b></td><td>会（选中态 = 填充蓝）</td><td>永不亮着；按下即执行，松手回默认 <span class="mono">（这条就是"没有选中态"）</span></td></tr>
+      <tr><td><b>图标画什么</b></td><td>画<b>结果</b>：一个矩形、一个椭圆、一枚表情</td><td>画<b>动作</b>：撤销的箭头、落盘的箭头、✕ / ✓</td></tr>
+      <tr><td><b>排布间距</b></td><td>组内 2 pt 连成一片（同类可换）</td><td>组内 2 pt，但<b>取消前让开 8 pt</b>：不可逆的那个动作，物理上离邻居远一点</td></tr>
+    </table>
+
+    <h3>三阶段：同一块界面的增删表</h3>
+    <table>
+      <tr><th>元素</th><th>① 空态</th><th>② 已落点</th><th>③ 长截图</th></tr>
+      <tr><td><b>暗幕</b></td><td>在</td><td>在（选区挖空）</td><td>在（选区挖空）</td></tr>
+      <tr><td><b>跟随光标的提示</b></td><td><b>主角</b>（内容随光标下的东西变）</td><td>撤</td><td>撤</td></tr>
+      <tr><td><b>顶部胶囊</b>（③ 的 M1，首次）</td><td>在</td><td>撤</td><td>撤</td></tr>
+      <tr><td><b>选区描边 + 8 控制点</b></td><td>无</td><td>1 pt 白芯黑边</td><td>加粗到 2 pt（"还在长"的暗示）</td></tr>
+      <tr><td><b>工具条</b></td><td>无 —— 没落点就没有可画的画布</td><td>贴选区左下外侧 8 pt</td><td>同 ②，下方长出提示行</td></tr>
+      <tr><td><b>读数框</b></td><td>无（取色读数在放大镜里）</td><td><b>尺寸 + 位置</b></td><td><b>已拼高度 + 帧数 + 配准耗时</b></td></tr>
+      <tr><td><b>提示行</b></td><td>无</td><td>无</td><td>在（手动 / 自动两句，见 10）</td></tr>
+      <tr><td><b>放大镜</b>（按住 ⌥ 时）</td><td>取色 + HEX/RGB</td><td>取色</td><td>停用（这一阶段 ⌥ 已改为"无阴影"）</td></tr>
+    </table>
+    <p class="planfoot">空态为什么没有工具条：工具都需要"画布" —— 选区就是画布。没有选区就给一排画笔，
+       用户的第一反应是"我该先点哪个"，而正确动作是"先框一下"。这一格的留白是<strong>省掉一次误点</strong>，不是省地方。</p>
+
+    <h3>1024 点宽预算（硬约束的算术）</h3>
+    <pre class="seq">15 格 × 28                   = 420
+组内间隙 · 工具组 6 × 2      =  12
+组内间隙 · 动作组 4 × 2 + 10 =  18     ← 最后那个 10 是"取消"前让开的（外边距 8 + 间隙 2）
+分隔线 3 × (8 │ 1 │ 8)       =  51     ← 外侧的 8 = 间隙 2 + 外边距 6
+容器内边距 2 × 5             =  10
+描边 2 × 1                   =   2
+───────────────────────────────────
+合计                         = <b>513 pt</b>   ← 1024 的 50.1%（余量 511 pt）</pre>
+    <p>余量足够，所以"15 格"<b>不是宽度上的上限</b>。真正的上限是<b>扫视成本</b>：一屏 15 个图标的识别负担已经接近"每次都要找一下"。
+       真要砍，砍的顺序是 <b>① 重做</b>（唯一有对称孪生兄弟的动作，⇧⌘Z 兜底）→ <b>② 保存</b>（⌘S 兜底，且"完成"仍能把图交出去）→
+       <b>工具那 7 格一格不砍</b>：砍工具是能力缩水，砍动作只是入口缩水。这条顺序我建议写进产品原则，而不只是这次的排版备忘。</p>
+  </section>
+
+  <!-- ══════════ 03 三阶段总览 ══════════ -->
+  <section data-od-id="phases">
+    <h2><span class="n">03</span>三阶段总览</h2>
+    <p class="lead">三张都是 1×（1024 × 560 的示意屏），因为它们要验的是"放不放得下"和"压不压得住底" ——
+       这两件事放大就看不出来了。底我故意选得不一样：① 纯白网页（最不利）、② 常见浅色页面、③ 深色编辑器。</p>
+
+    <h3>① 空态</h3>
+    <figure class="stg" data-od-id="phase-1-empty">
+      <figcaption>① 空态 · 1× · 底＝纯白网页（最不利的一种底）</figcaption>
+      <div class="plan plan--p1">
+        <div class="ovl host-dark">
+          <div class="bg bg--light">
+            <div class="blk" style="left:0;top:0;width:1024px;height:44px;border-radius:0"></div>
+            <div class="blk" style="left:64px;top:104px;width:420px;height:22px"></div>
+            <div class="blk" style="left:64px;top:140px;width:620px;height:13px"></div>
+            <div class="blk" style="left:64px;top:188px;width:592px;height:13px"></div>
+            <div class="blk" style="left:700px;top:104px;width:260px;height:180px"></div>
+            <div class="bglb" style="left:64px;top:72px">被冻结的画面（示意）</div>
+          </div>
+          <div class="holetint" style="left:300px;top:150px;width:380px;height:240px"></div>
+          <svg class="cross" viewBox="0 0 19 19" style="left:551px;top:321px;stroke:#fff;fill:none;filter:drop-shadow(0 0 1.5px rgba(0,0,0,.9))"><use href="#i-cursor"/></svg>
+          <div class="tip" style="left:576px;top:348px">单击截取这个窗口<em>· 拖出区域</em></div>
+          <div class="pill" style="left:404px;top:24px">屏幕已冻结 <em>· 拖拽框选</em> <span class="kbd--x">esc</span></div>
+          <div class="call" style="left:314px;top:120px">光标下的窗口在暗幕里点亮（按下之前就亮）</div>
+          <div class="call" style="left:600px;top:392px">跟随光标的提示 · 距热区 16 / 18</div>
+          <div class="call" style="left:64px;top:300px">除它以外，整块屏幕都压在 32% 黑下</div>
+        </div>
+        <div class="dim--v" style="left:1144px;top:56px;height:24px"><span>24</span></div>
+        <div class="dim" style="left:648px;top:386px;width:16px"><span>16</span></div>
+        <div class="dim--v" style="left:672px;top:386px;height:18px"><span class="l">18</span></div>
+      </div>
+      <div class="stage stage--matdark" style="margin-top:18px;justify-content:flex-start;gap:24px;padding:18px 22px">
+        <span class="tip" style="position:static">拖出要截的区域 <em>· ⏎ 截整屏</em></span>
+        <span class="tip" style="position:static">单击截取这个窗口 <em>· 拖出区域</em></span>
+        <span class="lbl" style="color:rgba(255,255,255,.5)">↑ 提示的内容随"光标下是什么"换；"⏎ 截整屏"始终在场，因为它是"什么都没选中"的出口</span>
+      </div>
+      <p class="planfoot">三条路在这一屏里同时可见：拖（提示里带）· 单击（点亮的那个窗口说的话）· ⏎ 整屏（提示的第二段）。
+        Esc 只在顶部胶囊里，因为它是"状态"而不是"下一步"。<br>
+        白底 + 32% 黑 = 底被压到 #adadad 一档；白芯黑边的窗口描边在这种底上仍然成立 —— 这就是"压白底"的验收现场。</p>
+    </figure>
+
+    <h3>② 已落点</h3>
+    <figure class="stg" data-od-id="phase-2-selected">
+      <figcaption>② 已落点 · 1× · 底＝常见浅色页面</figcaption>
+      <div class="plan plan--p2">
+        <div class="ovl host-dark">
+          <div class="bg bg--mid">
+            <div class="blk" style="left:0;top:0;width:1024px;height:40px;border-radius:0"></div>
+            <div class="blk" style="left:96px;top:130px;width:340px;height:16px"></div>
+            <div class="blk" style="left:596px;top:130px;width:330px;height:260px"></div>
+            <div class="blk" style="left:96px;top:470px;width:830px;height:12px"></div>
+            <div class="bglb" style="left:96px;top:104px">被冻结的画面（示意）</div>
+          </div>
+          <div class="snapline" style="left:176px;top:0;width:1px;height:560px"></div>
+          <div class="snapline" style="left:0;top:96px;width:1024px;height:1px"></div>
+          <div class="hole" style="left:176px;top:96px;width:560px;height:320px">
+            <i class="ph" style="left:-3.5px;top:-3.5px"></i><i class="ph" style="left:276.5px;top:-3.5px"></i><i class="ph" style="left:556.5px;top:-3.5px"></i><i class="ph" style="left:556.5px;top:156.5px"></i><i class="ph" style="left:556.5px;top:316.5px"></i><i class="ph" style="left:276.5px;top:316.5px"></i><i class="ph" style="left:-3.5px;top:316.5px"></i><i class="ph" style="left:-3.5px;top:156.5px"></i>
+          </div>
+          <div class="rd" style="left:744px;top:44px"><b>1120 × 640</b><span>x 352 · y 192 px</span></div>
+          <div class="bar" style="position:absolute;left:176px;top:424px">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+          <div class="call" style="left:186px;top:76px">吸附线：贯穿屏幕，标出吸到了哪条边</div>
+          <div class="call" style="left:700px;top:430px">工具条贴选区左下外侧 8</div>
+          <div class="call" style="left:700px;top:404px">拖它 = 移动选区</div>
+        </div>
+        <div class="dim--v" style="left:244px;top:472px;height:8px"><span>8</span></div>
+        <div class="dim" style="left:264px;top:632px;width:560px"><span>560 pt（= 1120 px @2×）</span></div>
+        <div class="dim--v" style="left:1144px;top:152px;height:320px"><span>320</span></div>
+      </div>
+      <p class="planfoot">8 个控制点：四角 + 四边中点，7 × 7 白芯黑边 —— 压在浅底上不会"化掉"。
+        读数给的是 <b>px</b> 而不是 pt：用户关心的是导出图的像素（示意屏按 2× Retina，560 pt = 1120 px）。
+        "拖它 = 移动选区"这条提示只在悬停选区时出现，不常显 —— 常显会挡住他自己要截的内容。</p>
+    </figure>
+
+    <h3>③ 长截图进行中</h3>
+    <figure class="stg" data-od-id="phase-3-stitching">
+      <figcaption>③ 长截图进行中 · 1× · 底＝深色编辑器</figcaption>
+      <div class="plan plan--p3">
+        <div class="ovl host-dark">
+          <div class="bg bg--dark">
+            <div class="blk" style="left:72px;top:96px;width:320px;height:11px"></div>
+            <div class="blk" style="left:96px;top:122px;width:520px;height:11px"></div>
+            <div class="blk" style="left:96px;top:148px;width:460px;height:11px"></div>
+            <div class="blk" style="left:72px;top:200px;width:280px;height:11px"></div>
+            <div class="blk" style="left:96px;top:252px;width:420px;height:11px"></div>
+            <div class="bglb" style="left:72px;top:66px">被冻结的画面（示意）· 内容已滚动 3 屏</div>
+          </div>
+          <div class="hole--s" style="position:absolute;left:176px;top:60px;width:560px;height:320px">
+            <div style="position:absolute;left:10px;right:10px;bottom:8px;border-top:1px dashed rgba(255,255,255,.45)"></div>
+            <div class="call" style="left:8px;top:8px">已拼进来的继续往上顶</div>
+          </div>
+          <div class="rd" style="left:744px;top:8px"><b>2 480 px 高</b><span>18 帧 · 配准 4 ms</span></div>
+          <div class="bar" style="position:absolute;left:176px;top:388px;border-radius:10px 10px 0 0">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+          <div class="strip" style="position:absolute;left:176px;top:428px">继续往下滚，或按空格自动滚 <b>·</b> ⏎ 结束 <b>·</b> ⌘S 结束并保存 <b>·</b> Esc 取消</div>
+          <div class="call" style="left:700px;top:392px">描边加粗到 2 pt：它还在长</div>
+          <div class="call" style="left:700px;top:436px">提示行 = 工具条长出的第二行</div>
+        </div>
+        <div class="dim--v" style="left:1144px;top:484px;height:22px"><span>22</span></div>
+        <div class="dim--v" style="left:64px;top:64px;height:44px"><span>44</span></div>
+      </div>
+      <p class="planfoot">工具条与提示行共材质、无间隙，圆角只在提示行的底部 —— 它们是<b>一个东西</b>，
+        不是"工具条 + 一条通知"。提示行只在 ③ 出现，所以 ② 的工具条仍然是一个 40 高的圆角块。<br>
+        读数框换内容不换位置：还是 ② 那个 132 × 44 的框，贴在选区右上外侧同一处 —— 用户不需要重新找它。</p>
+    </figure>
+  </section>
+
+  <!-- ══════════ 04 工具条整条放大稿 ══════════ -->
+  <section data-od-id="toolbar">
+    <h2><span class="n">04</span>工具条 · 整条放大稿</h2>
+    <p class="lead">15 格、四组、三条分隔线。整条 1× 是 513 宽，2× 的稿面 1026 宽 —— 之所以能排得下这么多格，
+       是因为每格只有 28 点；之所以敢只给 28 点，是因为<b>这排图标全部是"结果"而不是"说明"</b>：
+       矩形就是一个矩形，撤销就是一个箭头，不需要读字。</p>
+    <figure class="stg" data-od-id="toolbar-anatomy">
+      <figcaption>整条 · 2×（1026 × 80 px）· 免费版（识别文字 / 钉图 带常显小锁）</figcaption>
+      <div class="grps" style="width:1002px;gap:4px;margin-left:12px">
+        <span style="width:416px">7 个绘制工具</span><span style="width:2px;margin:0 12px;border-top:0"></span><span style="width:56px">样式</span><span style="width:2px;margin:0 12px;border-top:0"></span><span style="width:56px">识别文字</span><span style="width:2px;margin:0 12px;border-top:0"></span><span style="width:372px">6 个动作</span>
+      </div>
+      <div class="segnums" style="width:1002px;gap:4px;margin-left:12px">
+        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><i style="flex:none;width:2px;height:14px;margin:0 12px;align-self:center;background:var(--ink3)"></i><span>8</span><i style="flex:none;width:2px;height:14px;margin:0 12px;align-self:center;background:var(--ink3)"></i><span>9</span><i style="flex:none;width:2px;height:14px;margin:0 12px;align-self:center;background:var(--ink3)"></i><span>10</span><span>11</span><span>12</span><span>13</span><span style="margin-left:16px">14</span><span>15</span>
+      </div>
+      <div style="position:relative;width:1026px;height:80px">
+        <div class="bar" style="width:513px;transform:scale(2);transform-origin:0 0">
+          <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+        </div>
+        <div class="dim" style="left:12px;top:104px;width:56px"><span>28</span></div>
+        <div class="dim" style="left:428px;top:104px;width:34px"><span>8│1│8</span></div>
+        <div class="dim" style="left:12px;top:136px;width:1026px"><span>513 pt · 整条（1024 的 50.1%）</span></div>
+      </div>
+      <p class="planfoot" style="margin-top:64px">1 矩形 · 2 椭圆 · 3 表情 · 4 箭头 · 5 画笔 · 6 马赛克 · 7 文字 ｜ 8 样式 ｜ 9 识别文字（Pro）｜
+        10 撤销 · 11 重做 · 12 保存 · 13 钉图（Pro）· 14 取消（红）· 15 完成（绿）<br>
+        图标语言：绘制工具画"画出来的结果"（矩形 / 椭圆 / 一枚笑脸 / 一个箭头），动作画"动作"（撤销的回头箭、落盘的向下箭、✕ / ✓）——
+        这是 02 节第四条分界规则在图标上的落地。识别文字和钉图沿用 ② 升级卡片的同一颗图标，逐笔相同。<br>
+        撤销与重做现在是灰的：这一屏还没有可撤销的笔画 —— <b>这是两种"不可用"里唯一被允许变灰的那一种</b>（另一种见 07）。</p>
+    </figure>
+
+    <h3>压白底 / 压深底 · 可读性验收</h3>
+    <figure class="stg" data-od-id="toolbar-contrast">
+      <figcaption>同一整条 · 1× · 左：纯白（最不利）· 右：深色（常见）</figcaption>
+      <div class="grid grid--2" style="grid-template-columns:repeat(2,560px)">
+        <div class="stage stage--white host-dark" style="padding:20px">
+          <div class="bar" style="flex:none">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+        </div>
+        <div class="stage stage--matdark host-dark" style="padding:20px">
+          <div class="bar" style="flex:none">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+        </div>
+      </div>
+      <p class="planfoot">左右两块的差别<b>只有底</b>：工具条自己是不透明的深材质，有效亮度压在 oklch 31.5%（材质下限 ≤ 38%）。
+        所以 01 节那张对比度表对两种底都成立 —— 取消红 4.66:1、完成绿 6.44:1、格图标 9.31:1，
+        在白底网页上和深色编辑器上<b>是同一个数</b>。这就是"必须自己带底"的代价与回报：工具条永远比它压着的东西暗一档。</p>
+    </figure>
+  </section>
+
+  <!-- ══════════ 05 两个弹层 ══════════ -->
+  <section data-od-id="popovers">
+    <h2><span class="n">05</span>两个弹层</h2>
+    <p class="lead">样式弹层管"画出来的样子"，表情弹层管"落一个东西"。两者都不换屏、不抢焦点 ——
+       它们是工具条伸出来的一段，所以位置规则只有一条：<b>贴工具条外侧 8；外侧放不下就翻到内侧；内侧也放不下就夹进屏幕。</b>
+       下面的例子画的是最常见的情形：工具条在屏幕下沿，外侧（下方）没有空间，弹层翻到工具条<b>上方</b>。</p>
+
+    <h3>位置关系 · 1×</h3>
+    <div class="grid grid--2" style="grid-template-columns:repeat(2,560px)">
+      <figure class="stg" data-od-id="popover-style-position">
+        <figcaption>样式弹层 · 点「样式」格展开</figcaption>
+        <div class="stage stage--matdark host-dark" style="position:relative;width:560px;height:300px;display:block;padding:0">
+          <div class="bar" style="position:absolute;left:20px;bottom:20px;width:513px">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-open"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+          <div class="pop pop--style" style="left:251px;bottom:68px">
+            <div class="tray">
+              <span class="sw" style="background:#ff453a"></span><span class="sw" style="background:#ff9f0a"></span><span class="sw" style="background:#ffd60a"></span><span class="sw" style="background:#30d158"></span><span class="sw is-cur hairedge" style="background:#0a84ff"></span><span class="sw hairedge" style="background:#ffffff"></span>
+            </div>
+            <div class="hair"></div>
+            <div class="pop__lab" style="margin-top:8px">线宽</div>
+            <div class="szrow">
+              <span class="sz"><i class="dot" style="width:6px;height:6px"></i></span><span class="sz is-cur"><i class="dot" style="width:11px;height:11px"></i></span><span class="sz"><i class="dot" style="width:18px;height:18px"></i></span>
+            </div>
+          </div>
+          <div class="dim--v" style="left:471px;bottom:60px;height:8px"><span class="l">8</span></div>
+        </div>
+        <p class="planfoot">弹层左缘 = 触发格左缘（不是工具条左缘）：弹层指的是<b>它自己那颗按钮</b>。
+          「样式」格这时保持"按下"外观 —— 弹层是它伸出来的，不是它选中了。</p>
+      </figure>
+      <figure class="stg" data-od-id="popover-emoji-position">
+        <figcaption>表情弹层 · 选中「表情」工具时自动出现</figcaption>
+        <div class="stage stage--matdark host-dark" style="position:relative;width:560px;height:300px;display:block;padding:0">
+          <div class="bar" style="position:absolute;left:20px;bottom:20px;width:513px">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+          <div class="pop pop--emoji" style="left:86px;bottom:68px">
+            <div class="pop__lab">点一下，落在选区里</div>
+            <div class="egrid">
+              <span class="emo">✅</span><span class="emo">❌</span><span class="emo">⚠️</span><span class="emo">❓</span><span class="emo">❗</span><span class="emo">🚫</span>
+              <span class="emo">👈</span><span class="emo">👉</span><span class="emo">👆</span><span class="emo">👇</span><span class="emo">⬅️</span><span class="emo">➡️</span>
+              <span class="emo">⭐️</span><span class="emo">🔥</span><span class="emo">💡</span><span class="emo">✨</span><span class="emo">📍</span><span class="emo">💬</span>
+              <span class="emo">1️⃣</span><span class="emo">2️⃣</span><span class="emo">3️⃣</span><span class="emo">4️⃣</span><span class="emo">5️⃣</span><span class="emo">6️⃣</span>
+            </div>
+          </div>
+          <div class="dim--v" style="left:471px;bottom:60px;height:8px"><span class="l">8</span></div>
+        </div>
+        <p class="planfoot">24 枚按四类排：对错（✅ ❌ ⚠️ ❓ ❗ 🚫）· 指向（👈 👉 👆 👇 ⬅️ ➡️）·
+          强调（⭐️ 🔥 💡 ✨ 📍 💬）· 完成度（1️⃣–6️⃣ 给步骤编号）。<b>点亮只认自己</b>：
+          这一屏亮着的是「表情」，「样式」不亮 —— 上一版把它一起点亮过，用户当场指出不对。</p>
+      </figure>
+    </div>
+
+    <h3>内容放大 · 2×</h3>
+    <div class="vrow" data-od-id="popover-style-zoom">
+      <div class="vcap"><b>样式弹层 198 × 135 pt</b>
+        <span>两行一件事：上一行是"用什么颜色"，下一行是"画多粗"。中间那条发丝线是必须的 ——
+          它们是两个维度，不是两组同类项。</span>
+        <span class="mono">色板托盘 174 × 34<br>色板 22 × 22 · 间隙 6<br>标签行 11 pt · 高 14<br>尺寸格 54 × 38 · 间隙 6<br>内边距 12</span>
+        <span>白和蓝色板带 1 pt 内描边（白 22%）：白块压在白上面也得看得见边界。</span></div>
+      <div class="stage" style="position:relative;width:520px;height:310px;display:block;padding:0;background:oklch(22% 0 0);border-color:transparent">
+        <div style="position:absolute;left:56px;top:20px;width:396px;height:270px">
+          <div class="pop pop--style host-dark" style="transform:scale(2);transform-origin:0 0;position:relative;left:0;top:0">
+            <div class="tray">
+              <span class="sw" style="background:#ff453a"></span><span class="sw" style="background:#ff9f0a"></span><span class="sw" style="background:#ffd60a"></span><span class="sw" style="background:#30d158"></span><span class="sw is-cur hairedge" style="background:#0a84ff"></span><span class="sw hairedge" style="background:#ffffff"></span>
+            </div>
+            <div class="hair"></div>
+            <div class="pop__lab" style="margin-top:8px">线宽</div>
+            <div class="szrow">
+              <span class="sz"><i class="dot" style="width:6px;height:6px"></i></span><span class="sz is-cur"><i class="dot" style="width:11px;height:11px"></i></span><span class="sz"><i class="dot" style="width:18px;height:18px"></i></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="vrow" data-od-id="popover-emoji-zoom">
+      <div class="vcap"><b>表情弹层 212 × 170 pt</b>
+        <span>6 × 4 网格，格 28 × 28、间隙 4。表情用的是系统彩色字形，不是图形 ——
+          它们是"内容"，所以不参与对比度规则（红黄绿自有轮廓）。</span>
+        <span class="mono">网格 6 × 4 · 格 28 × 28<br>字形 19 pt<br>标签 11 pt<br>内边距 12 · 标签与网格间隙 8</span>
+        <span>标签句用的是"点一下，落在选区里"，而不是"表情"：这两个字用户看得见（它们在格子里），
+          不知道的是"点了之后会发生什么"。</span></div>
+      <div class="stage" style="position:relative;width:520px;height:380px;display:block;padding:0;background:oklch(22% 0 0);border-color:transparent">
+        <div style="position:absolute;left:48px;top:20px;width:424px;height:340px">
+          <div class="pop pop--emoji host-dark" style="transform:scale(2);transform-origin:0 0;position:relative;left:0;top:0">
+            <div class="pop__lab">点一下，落在选区里</div>
+            <div class="egrid">
+              <span class="emo">✅</span><span class="emo">❌</span><span class="emo">⚠️</span><span class="emo">❓</span><span class="emo">❗</span><span class="emo">🚫</span>
+              <span class="emo">👈</span><span class="emo">👉</span><span class="emo">👆</span><span class="emo">👇</span><span class="emo">⬅️</span><span class="emo">➡️</span>
+              <span class="emo">⭐️</span><span class="emo">🔥</span><span class="emo">💡</span><span class="emo">✨</span><span class="emo">📍</span><span class="emo">💬</span>
+              <span class="emo">1️⃣</span><span class="emo">2️⃣</span><span class="emo">3️⃣</span><span class="emo">4️⃣</span><span class="emo">5️⃣</span><span class="emo">6️⃣</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3>放不下的三种走法</h3>
+    <div class="grid grid--3" style="grid-template-columns:repeat(3,300px)">
+      <figure class="stg" data-od-id="popover-fit-below">
+        <figcaption>① 外侧有地方 → 在下方</figcaption>
+        <div class="dia">
+          <i class="dbox" style="left:16px;top:14px;width:268px;height:60px">屏幕</i>
+          <i class="dsel" style="left:40px;top:30px;width:220px;height:80px">选区</i>
+          <i class="dbar" style="left:40px;top:118px;width:220px;height:16px"></i>
+          <i class="dpop" style="left:40px;top:142px;width:150px;height:36px">弹层</i>
+          <i class="lbl" style="left:196px;top:128px">下方还放得下</i>
+        </div>
+      </figure>
+      <figure class="stg" data-od-id="popover-fit-flip">
+        <figcaption>② 外侧没地方 → 翻到上方（最常见）</figcaption>
+        <div class="dia">
+          <i class="dsel" style="left:40px;top:70px;width:220px;height:80px">选区</i>
+          <i class="dpop" style="left:40px;top:26px;width:150px;height:36px">弹层</i>
+          <i class="dbar" style="left:40px;top:158px;width:220px;height:16px"></i>
+          <i class="lbl" style="left:196px;top:142px">下方是屏幕边</i>
+        </div>
+      </figure>
+      <figure class="stg" data-od-id="popover-fit-clamp">
+        <figcaption>③ 两边都没地方 → 夹进屏幕（压工具条）</figcaption>
+        <div class="dia">
+          <i class="dsel" style="left:40px;top:6px;width:220px;height:46px">选区贴顶</i>
+          <i class="dbar" style="left:40px;top:58px;width:220px;height:16px"></i>
+          <i class="dpop" style="left:14px;top:82px;width:272px;height:36px">弹层被夹进来（宽度不变，位置让路）</i>
+        </div>
+      </figure>
+    </div>
+    <p class="planfoot">这条规则和 ③ 稿里气泡的规则是<b>同一条</b>（贴外侧 8 / 翻内侧 / 夹进屏幕），
+      只是插入点从"气泡"换成了"弹层"。实现上就是一个函数，四个调用点。</p>
+  </section>
+
+  <!-- ══════════ 06 尺寸三档的三种含义 ══════════ -->
+  <section data-od-id="sizes">
+    <h2><span class="n">06</span>尺寸三档的三种含义</h2>
+    <p class="lead">同一个位置、同样的三个格子，含义随当前工具变。这条规则最容易被做错的地方不是"变含义"，
+       而是<b>三档怎么画</b> —— 照数值线性画，第 2 档和第 3 档就长一样了。所以三种含义用了三套画法，
+       每套的理由都不一样。</p>
+
+    <div class="vrow" data-od-id="size-linewidth">
+      <div class="vcap"><b>线宽 · 矩形 / 椭圆 / 箭头 / 画笔</b>
+        <span>真值 2 / 4 / 8 pt。<b>圆点不照真值画</b>：⌀ 6 / 11 / 18（1 : 1.83 : 3）。
+          2 pt 的圆点若照实画只有 2 点，在 28 点的格子里等于看不见 —— 圆点要表达的不是"2 点"，是"细"。</span>
+        <span class="mono">尺寸格 54 × 38 · 三格间隙 6<br>圆点 ⌀ 6 / 11 / 18<br>当前档 = 填充蓝 + 白点</span></div>
+      <div class="stage stage--matdark" style="width:664px;justify-content:flex-start;gap:34px;padding:24px 28px">
+        <div class="sc" style="--w:174;--h:38">
+          <div class="szrow" style="margin-top:0">
+            <span class="sz"><i class="dot" style="width:6px;height:6px"></i></span><span class="sz is-cur"><i class="dot" style="width:11px;height:11px"></i></span><span class="sz"><i class="dot" style="width:18px;height:18px"></i></span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <span class="lbl" style="color:rgba(255,255,255,.5)">1:1 的真实笔触 ↓</span>
+          <div style="display:flex;align-items:center;gap:12px"><span class="lbl" style="width:30px;color:rgba(255,255,255,.64)">2 pt</span><i style="display:block;width:132px;height:2px;border-radius:1px;background:#fff"></i></div>
+          <div style="display:flex;align-items:center;gap:12px"><span class="lbl" style="width:30px;color:rgba(255,255,255,.64)">4 pt</span><i style="display:block;width:132px;height:4px;border-radius:2px;background:#fff"></i></div>
+          <div style="display:flex;align-items:center;gap:12px"><span class="lbl" style="width:30px;color:rgba(255,255,255,.64)">8 pt</span><i style="display:block;width:132px;height:8px;border-radius:4px;background:#fff"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="vrow" data-od-id="size-mosaic">
+      <div class="vcap"><b>打码强度 · 马赛克</b>
+        <span>真值 4 / 8 / 16 pt（马赛克格子的大小）。这一档<b>不能只改大小</b>：三档都画成"一片格子"的话，
+          8 和 16 在格子里几乎一样。改成<b>结构差</b>：4×4 的细网 → 2×2 的粗格 → 整块实心，
+          读法是"越往后越糊"，而不是"越往后越大"。</span>
+        <span class="mono">尺寸格里的符号：24 × 24<br>格线 1 pt（panel 色）<br>画布预览 48 × 48 · 1:1</span></div>
+      <div class="stage stage--matdark" style="width:664px;justify-content:flex-start;gap:34px;padding:24px 28px">
+        <div class="sc" style="--w:174;--h:38">
+          <div class="szrow" style="margin-top:0">
+            <span class="sz"><i class="mos" style="width:24px;height:24px;--g:6px"></i></span><span class="sz is-cur"><i class="mos" style="width:24px;height:24px;--g:12px"></i></span><span class="sz"><i class="mos" style="width:24px;height:24px;--g:24px"></i></span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <span class="lbl" style="color:rgba(255,255,255,.5)">1:1 的画布预览（48 × 48）↓</span>
+          <div style="display:flex;align-items:flex-end;gap:14px">
+            <div style="text-align:center"><i class="mos" style="display:block;width:48px;height:48px;--g:4px"></i><span class="lbl" style="color:rgba(255,255,255,.5)">4 pt</span></div>
+            <div style="text-align:center"><i class="mos" style="display:block;width:48px;height:48px;--g:8px"></i><span class="lbl" style="color:rgba(255,255,255,.5)">8 pt</span></div>
+            <div style="text-align:center"><i class="mos" style="display:block;width:48px;height:48px;--g:16px"></i><span class="lbl" style="color:rgba(255,255,255,.5)">16 pt</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="vrow" data-od-id="size-font">
+      <div class="vcap"><b>字号 · 文字 / 表情</b>
+        <span>真值 18 / 28 / 44 pt。这一档<b>不需要压缩</b>：字号本来就是"大小"本身，
+          格子放得下就照实画（cap 高 13 / 20 / 32）。三档的比值 1 : 1.56 : 2.44 本身就拉得开。</span>
+        <span class="mono">尺寸格 54 × 38<br>字母 A 按真值 1:1<br>表情与文字共用这条轴</span></div>
+      <div class="stage stage--matdark" style="width:664px;justify-content:flex-start;gap:34px;padding:24px 28px">
+        <div class="sc" style="--w:174;--h:38">
+          <div class="szrow" style="margin-top:0">
+            <span class="sz"><i class="aa" style="font-size:18px;line-height:.74">A</i></span><span class="sz is-cur"><i class="aa" style="font-size:28px;line-height:.74">A</i></span><span class="sz"><i class="aa" style="font-size:44px;line-height:.74">A</i></span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <span class="lbl" style="color:rgba(255,255,255,.5)">1:1 的画出效果 ↓</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;color:#fff">
+            <span style="font-size:18px;line-height:1.1">标注 18</span>
+            <span style="font-size:28px;line-height:1.1">标注 28</span>
+            <span style="font-size:44px;line-height:1.1">标注 44</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:20px">
+            <span style="font-size:18px;line-height:1">⭐️</span><span style="font-size:28px;line-height:1">⭐️</span><span style="font-size:44px;line-height:1">⭐️</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3>映射表（这张表是给实现的）</h3>
+    <table>
+      <tr><th>当前工具</th><th>三档真值</th><th>格子里的画法</th><th>为什么不照值画</th></tr>
+      <tr><td><b>矩形 / 椭圆 / 箭头 / 画笔</b></td><td class="mono">2 / 4 / 8 pt</td><td class="mono">圆点 ⌀ 6 / 11 / 18</td>
+        <td>照实画：2 pt 是个点、4 pt 也接近点，三档里有两档读不出差别。<b>压缩比 1 : 1.83 : 3</b>，让"细 / 中 / 粗"各自成立。</td></tr>
+      <tr><td><b>马赛克</b></td><td class="mono">4 / 8 / 16 pt</td><td class="mono">细网 → 粗格 → 实心</td>
+        <td>线性画：8 与 16 都是"一片"，几乎一样（你点出的那一条）。改成<b>格数差</b> 4×4 / 2×2 / 1 —— 差的是结构，不是尺寸。</td></tr>
+      <tr><td><b>文字 / 表情</b></td><td class="mono">18 / 28 / 44 pt</td><td class="mono">字母 A，按真值 1:1</td>
+        <td>这一档<b>不许压缩</b>：字号本身就是大小，压了反而骗人。格子里放得下（cap 32 &lt; 38），所以照实画。</td></tr>
+    </table>
+    <p class="planfoot">形状之外我还加了两个字：标签行写「线宽」/「打码」/「字号」。理由在 §13 第 4 问里 ——
+      形状负责"一眼分得开"，两个字负责"确证我理解对了"，成本是一行 11 pt，不占新空间。</p>
+  </section>
+
+  <!-- ══════════ 07 格子的六种状态 ══════════ -->
+  <section data-od-id="cell-states">
+    <h2><span class="n">07</span>格子的六种状态</h2>
+    <p class="lead">六种状态里，五种属于"工具 / 入口"格；<b>置灰只属于动作里的撤销与重做</b>，
+       且只在"当前确实没有可撤的东西"时出现 —— 全工具条唯一允许变灰的地方。
+       另一处"不可用"（Pro 两格）<b>永远不许变灰</b>，理由在 12 节。</p>
+    <div class="grid grid--6">
+      <figure class="stg"><figcaption>默认</figcaption>
+        <div class="sc" style="--w:28;--h:28"><span class="cell"><svg class="ic"><use href="#i-brush"/></svg></span></div>
+        <p class="planfoot" style="margin-top:12px">图标白 82%<br>对材质 9.31:1</p></figure>
+      <figure class="stg"><figcaption>悬停</figcaption>
+        <div class="sc" style="--w:28;--h:28"><span class="cell is-hover"><svg class="ic"><use href="#i-brush"/></svg></span></div>
+        <p class="planfoot" style="margin-top:12px">底白 9% + 图标 100%<br>12.9:1（只升不降）</p></figure>
+      <figure class="stg"><figcaption>按下</figcaption>
+        <div class="sc" style="--w:28;--h:28"><span class="cell is-press"><svg class="ic"><use href="#i-brush"/></svg></span></div>
+        <p class="planfoot" style="margin-top:12px">底白 16%<br>松手即回默认</p></figure>
+      <figure class="stg"><figcaption>选中</figcaption>
+        <div class="sc" style="--w:28;--h:28"><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span></div>
+        <p class="planfoot" style="margin-top:12px">填充蓝 + 白<br>4.93:1 · 全条只许一个</p></figure>
+      <figure class="stg"><figcaption>置灰</figcaption>
+        <div class="sc" style="--w:28;--h:28"><span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span></div>
+        <p class="planfoot" style="margin-top:12px">图标白 30% · 2.58:1<br>仅"无可撤销"时</p></figure>
+      <figure class="stg"><figcaption>带 Pro 小锁</figcaption>
+        <div class="sc" style="--w:28;--h:28"><span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span></div>
+        <p class="planfoot" style="margin-top:12px">图标仍 82%，只加 9 pt 锁<br>白 55% · 5.10:1</p></figure>
+    </div>
+    <h3>点亮只认自己</h3>
+    <div class="duo" style="margin-top:16px">
+      <div style="position:relative;width:260px;height:80px;flex:none"><div class="bar" style="width:130px;transform:scale(2);transform-origin:0 0"><span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-style"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span></div></div>
+      <div class="vcap" style="max-width:640px"><b>什么都没选</b><span>四格全默认。工具是"待用"，不是"在用" —— 所以一格都不亮。</span></div>
+    </div>
+    <div class="duo" style="margin-top:18px">
+      <div style="position:relative;width:260px;height:80px;flex:none"><div class="bar" style="width:130px;transform:scale(2);transform-origin:0 0"><span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-style"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span></div></div>
+      <div class="vcap" style="max-width:640px"><b>选中画笔</b><span>亮的只有画笔，因为它是"我手上正拿着的那支笔"。</span></div>
+    </div>
+    <div class="duo" style="margin-top:18px">
+      <div style="position:relative;width:260px;height:80px;flex:none"><div class="bar" style="width:130px;transform:scale(2);transform-origin:0 0"><span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell is-open"><svg class="ic"><use href="#i-style"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span></div></div>
+      <div class="vcap" style="max-width:640px"><b>打开样式弹层（画笔仍然是选中的）</b><span>样式格是"按下未复位"的外观（底白 16% + 图标白），画笔继续是填充蓝。
+        两种亮分属两种状态：<b>填充蓝 = 当前生效的工具；按下外观 = 这个弹层正开着</b>，谁也不冒充谁。</span></div>
+    </div>
+    <div class="duo" style="margin-top:18px">
+      <div style="position:relative;width:260px;height:80px;flex:none"><div class="bar" style="width:130px;transform:scale(2);transform-origin:0 0"><span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-style"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span></div></div>
+      <div class="vcap" style="max-width:640px"><b>选中表情（表情弹层自动出现）</b><span>亮的只有表情格；<b>样式格不亮</b>。
+        上一版这里把样式一起点亮了，用户当场指出不对 —— 现在唯一可能点亮样式格的，是"样式自己的弹层开着"这一件事。</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 08 放大镜与读数框 ══════════ -->
+  <section data-od-id="magnifier">
+    <h2><span class="n">08</span>放大镜与读数框</h2>
+    <p class="lead">§6 那句话（同一个 ⌥ 在两段里做两件事，界面要让人看出是哪件）在这里落地：
+       <b>读数框当唯一的发言人</b>。落点前它说颜色，落点后它说尺寸；落点后按住 ⌥，第二行换成"不含阴影"。
+       同一块 132 × 44、同一处位置，只换内容 —— 用户不需要学两个框。</p>
+    <div class="grid grid--2" style="grid-template-columns:repeat(2,560px)">
+      <figure class="stg" data-od-id="loupe">
+        <figcaption>⌥ 悬停 → 放大镜（落点之前）· 2×</figcaption>
+        <div class="stage stage--matdark" style="position:relative;width:560px;height:300px;display:block;padding:0">
+          <div style="position:absolute;left:80px;top:12px;width:208px;height:258px">
+            <div class="loupe" style="left:0;top:0">
+              <div class="loupe__g" style="display:block;width:104px;height:104px;background-color:#0a84ff;background-image:repeating-linear-gradient(90deg,transparent 0 12px,rgba(0,0,0,.16) 12px 13px),repeating-linear-gradient(0deg,transparent 0 12px,rgba(0,0,0,.16) 12px 13px),linear-gradient(90deg,transparent 0 65px,#f4f4f4 65px 104px),linear-gradient(180deg,transparent 0 78px,#7a7a7a 78px 80px,#e8e8e8 80px 104px)">
+                <i class="ctr" style="position:absolute;left:52px;top:52px;width:13px;height:13px"></i>
+              </div>
+              <div class="loupe__r"><b>#0A84FF</b><span>10 · 132 · 255 · 点击复制</span></div>
+            </div>
+          </div>
+          <div style="position:absolute;left:16px;top:24px;width:116px;font:500 10.5px/1.6 var(--mono);color:rgba(255,255,255,.5)">8 × 8 像素格 · 每格 13 pt<br>准心 = 光标下那一颗像素</div>
+          <svg class="cross" viewBox="0 0 19 19" style="left:296px;top:272px;stroke:#fff;fill:none;filter:drop-shadow(0 0 1.5px rgba(0,0,0,.9))"><use href="#i-cursor"/></svg>
+          <div class="call" style="left:336px;top:258px">放大镜随光标，热区在右下 16 / 18</div>
+        </div>
+        <p class="planfoot">取色只在落点之前。放大镜自己带材质（--c-panel），所以它压在白底网页上也一样清 ——
+          它读的是"屏幕上的像素"，但它的字靠自己的底。</p>
+      </figure>
+      <figure class="stg" data-od-id="readout-meanings">
+        <figcaption>同一个读数框，三种内容</figcaption>
+        <div class="stage stage--matdark" style="width:560px;height:300px;flex-direction:column;align-items:flex-start;gap:22px;padding:26px 28px">
+          <div class="duo" style="gap:18px"><span class="lbl" style="width:150px;color:rgba(255,255,255,.55)">落点前 · ⌥ 悬停</span>
+            <div class="rd" style="position:static"><b><i class="chip" style="background:#0a84ff"></i>#0A84FF</b><span>10 · 132 · 255</span></div></div>
+          <div class="duo" style="gap:18px"><span class="lbl" style="width:150px;color:rgba(255,255,255,.55)">落点后 · 常态</span>
+            <div class="rd" style="position:static"><b>1120 × 640</b><span>x 352 · y 192 px</span></div></div>
+          <div class="duo" style="gap:18px"><span class="lbl" style="width:150px;color:rgba(255,255,255,.55)">落点后 · 按住 ⌥</span>
+            <div class="rd" style="position:static"><b>1120 × 640</b><span class="plus">⌥ 窗口截图 · 不含阴影</span></div></div>
+        </div>
+        <p class="planfoot">第二行是"当前那一刻 ⌥ 是什么意思"的唯一声明处。
+          不含阴影用琥珀色而不是普通次要色：它是一个<b>会改变结果的开关</b>，不是一个说明。</p>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ══════════ 09 文字输入框 ══════════ -->
+  <section data-od-id="text-input">
+    <h2><span class="n">09</span>就地文字输入框</h2>
+    <p class="lead">外壳是深色的，但里面必须是<b>真系统输入框</b> —— 中文输入法的候选、联想、光标全靠它。
+       所以样子沿用 ① 的录制框那一套：深内底 + 3 pt 焦点环。它不是一个"像输入框的标注"，它是输入框。</p>
+    <div class="grid grid--2" style="grid-template-columns:repeat(2,560px)">
+      <figure class="stg" data-od-id="field-empty">
+        <figcaption>点一下文字工具 → 就地出现 · 2×</figcaption>
+        <div class="stage stage--matdark" style="width:560px;height:170px;padding:0">
+          <div style="position:relative;width:480px;height:64px">
+            <div class="field" style="position:absolute;left:0;top:0;width:240px"><span class="car"></span></div>
+          </div>
+        </div>
+        <p class="planfoot">空框里没有占位句：光标在闪，就是"在这儿打字"。占位句在这个场景里是多余的 ——
+          用户刚刚自己点了"文字"工具，他知道自己在干什么。</p>
+      </figure>
+      <figure class="stg" data-od-id="field-typing">
+        <figcaption>正在输入 · 2×</figcaption>
+        <div class="stage stage--matdark" style="width:560px;height:170px;padding:0">
+          <div style="position:relative;width:480px;height:64px">
+            <div class="field" style="position:absolute;left:0;top:0;width:240px">这一段的文案要改<span class="car"></span></div>
+          </div>
+        </div>
+        <p class="planfoot">编辑期间<b>键盘整条让行</b>：空格、方向键、⌘Z 全部归输入框，只拦 Esc。
+          中文候选窗由系统绘制，本稿不画它 —— 画了反而会与真机不一样。</p>
+      </figure>
+      <figure class="stg" data-od-id="field-committed">
+        <figcaption>⏎ 结算后 · 框消失，内容落成标注 · 2×</figcaption>
+        <div class="stage stage--matdark" style="width:560px;height:170px;padding:0">
+          <div style="position:relative;width:480px;height:64px">
+            <span class="annoT" style="left:0;top:22px">这一段的文案要改</span>
+          </div>
+        </div>
+        <p class="planfoot">结算 ≠ 丢弃：⏎ 或点别处都是结算，<b>只有 Esc 丢</b>。而 Esc 丢掉它之后，
+          已画的标注与选区一字不动 —— 这是 11 节那架梯子的第 ④ 层。</p>
+      </figure>
+      <figure class="stg" data-od-id="field-rules">
+        <figcaption>三条口径</figcaption>
+        <div class="stage" style="width:560px;height:170px;align-items:flex-start;justify-content:flex-start;padding:20px 24px">
+          <ul class="rules" style="margin:0;max-width:none">
+            <li>结算：<b>⏎ / 点别处</b> —— 内容落成标注，输入框消失。</li>
+            <li>丢弃：<b>只有 Esc</b> —— 丢的只是这一次输入，画面其余部分不动。</li>
+            <li>字号：跟随「尺寸」三档的当前档（18 / 28 / 44），颜色跟随当前色板 —— 文字和图形共用一套样式，不另开一套。</li>
+          </ul>
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ══════════ 10 长截图 ══════════ -->
+  <section data-od-id="longshot">
+    <h2><span class="n">10</span>长截图：同一行的六个面孔</h2>
+    <p class="lead">长截图不新增界面 —— 它只在 ② 的工具条下面长出 22 pt 的提示行，并把读数框换成进度。
+       所以这一节交付的是<b>同一行的六种文字</b>，不是六个界面；告警也不加行，它<b>取代</b>提示行。</p>
+    <div class="duo" style="margin-top:18px;align-items:flex-start">
+      <div class="stage stage--matdark" style="width:573px;flex-direction:column;align-items:stretch;gap:8px;padding:18px 20px">
+        <span class="lbl" style="color:rgba(255,255,255,.5)">刚拖出 · 手动</span>
+        <div class="strip" style="border-top:1px solid rgba(255,255,255,.12);border-radius:10px">继续往下滚，或按空格自动滚 <b>·</b> ⏎ 结束 <b>·</b> ⌘S 结束并保存 <b>·</b> Esc 取消</div>
+        <span class="lbl" style="color:rgba(255,255,255,.5)">空格开启后 · 自动滚动中</span>
+        <div class="strip" style="border-top:1px solid rgba(255,255,255,.12);border-radius:10px">自动滚动中 <b>·</b> 空格停止 <b>·</b> Esc 停止（已拼的保留）<b>·</b> ⏎ 结束</div>
+        <span class="lbl" style="color:rgba(255,255,255,.5)">告警 · 取代提示行，不叠行</span>
+        <div class="strip" style="border-top:1px solid rgba(255,255,255,.12);border-radius:10px"><span class="al">已经滚到底了</span></div>
+        <div class="strip" style="border-top:1px solid rgba(255,255,255,.12);border-radius:10px"><span class="al">这一帧没对齐，已经跳过</span></div>
+        <span class="lbl" style="color:rgba(255,255,255,.5)">按空格但自动滚动不可用 · 沙盒构建</span>
+        <div class="strip" style="border-top:1px solid rgba(255,255,255,.12);border-radius:10px"><span class="al">这个版本不提供自动滚动</span></div>
+        <span class="lbl" style="color:rgba(255,255,255,.5)">按空格但自动滚动不可用 · 没授权</span>
+        <div class="strip" style="border-top:1px solid rgba(255,255,255,.12);border-radius:10px"><span class="al">自动滚动需要辅助功能权限 · 前往系统设置 → 隐私与安全性 → 辅助功能</span></div>
+      </div>
+      <div class="vcap" style="width:520px">
+        <b>三种读数（读数框换内容不换位置）</b>
+        <span class="mono">第一行：已拼高度 px（刚拖出时是「0 px 高」）<br>第二行：已拼帧数 · 配准耗时<br>配准耗时是可选值 —— 拿不到就不显示，不留空位</span>
+        <span><b>沙盒优先于授权。</b>两处"不能用"必须先问"这个构建支持吗"，再问"授权了吗"。
+          说反了就是把用户支去干一件注定没用的事：他会去系统设置里勾半天，回来发现还是不能用。</span>
+        <span>所以沙盒那句里<b>刻意不出现"辅助功能"四个字</b> —— 出现了就会把用户引向那个他没救的开关。
+          没授权的那句才给出完整路径，且给的是「系统设置 → 隐私与安全性 → 辅助功能」这三级，不写"系统设置里"。</span>
+        <span><b>Esc 在长截图里的身份要说清：</b>"停止"而不是"取消" —— 已拼的部分保留。
+          真正丢掉整次截图的 Esc，要等这一层先退掉（见 11）。</span>
+      </div>
+    </div>
+    <p class="planfoot">六种文字全部 ≤ 34 字（11 pt → 约 374 pt），单行放得下 513 宽的提示行 —— 这是"不许换行、不许加高"的物理前提。
+      行内的分隔符用 500 字重的白，不用竖线：竖线在 22 pt 的行高里会显得像表格。</p>
+  </section>
+
+  <!-- ══════════ 11 Esc 四级退 ══════════ -->
+  <section data-od-id="esc-ladder">
+    <h2><span class="n">11</span>Esc 四级退</h2>
+    <p class="lead">四级退不是四个快捷键，是<b>同一架梯子的四层</b>。所以它不能靠"提示句"表达
+       （提示句说完就没了），要靠"退完之后屏幕上还剩什么"表达 —— 用户是靠<b>前后差</b>感觉到自己退到了哪一层的。</p>
+    <div class="lad" style="max-width:920px;margin-top:20px">
+      <div class="lad__b">① 整次截图<i> —— 最外面一层，什么都没有了才退它</i><span class="lad__esc">第 5 下</span>
+        <div class="lad__b">② 选区<i> —— 8 个控制点 + 描边一起消失，工具条随之收走</i><span class="lad__esc">第 4 下</span>
+          <div class="lad__b">③ 工具选中<i> —— 只取消"手上那支笔"，已画的标注全部留着</i><span class="lad__esc">第 3 下</span>
+            <div class="lad__b">④ 正在输入的文字<i> —— 只丢这一次输入；标注、选区、工具全不动</i><span class="lad__esc">第 2 下</span>
+              <div class="lad__b hot">⑤ 弹层 / 卡片<i> —— 只收它。冻结的画面、选区、已画的笔画、输入到一半的字，一字不动</i><span class="lad__esc">第 1 下</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <table>
+      <tr><th>按下的那一下 Esc 退掉什么</th><th>屏幕上发生的唯一变化</th><th>观感上"退到了哪一层"</th></tr>
+      <tr><td><b>弹层 / 卡片（最浅）</b></td><td class="mono">弹层消失；触发它的格子从"按下"回到默认</td><td>东西还在，只是收了一张纸</td></tr>
+      <tr><td><b>正在输入的文字</b></td><td class="mono">输入框消失（内容丢弃）；同一位置的其它标注不变</td><td>丢了一次输入，不是丢了工作</td></tr>
+      <tr><td><b>工具选中</b></td><td class="mono">填充蓝的格子回到默认；已画的标注、选区不动</td><td>把笔放下了</td></tr>
+      <tr><td><b>选区</b></td><td class="mono">控制点、描边、读数框、工具条一起收走 —— 回到空态</td><td>回到"什么都没框"</td></tr>
+      <tr><td><b>整次截图（最后一下）</b></td><td class="mono">暗幕收走，屏幕恢复原样（不产出任何东西）</td><td>整次截图取消</td></tr>
+    </table>
+    <p class="planfoot">红色只出现在最外面一层：工具条上那颗「取消」是红的，Esc 的前四下<b>不带任何红</b> ——
+      前四下退掉的都只是"层"，不是"工作"。让 Esc 的提示沾上红色，用户就会以为按一下会丢掉整张图，于是他不敢按 ——
+      而那正是这条规则要治的病。</p>
+  </section>
+
+  <!-- ══════════ 12 备注 ══════════ -->
+  <section data-od-id="notes">
+    <h2><span class="n">12</span>备注</h2>
+    <ul class="rules">
+      <li><b>与 ③ 的接缝。</b>③ 稿里工具条是虚线占位（180 × 28，标注"本体不在本次交付范围内"）。本稿定为 <b>513 × 40</b>，
+          锚定规则不变：工具条顶边 = 选区底边 + 8，气泡/弹层再贴它外侧 8。③ 的占位高度 28 只是示意，不构成冲突。</li>
+      <li><b>与 ② 的接缝。</b>点「识别文字」「钉图」弹出的还是 ② 的载体 A（300 × 140 深色卡片），
+          落点规则同 05 节：贴工具条外侧 8、翻内侧、夹进屏幕。卡片是最浅的一层 —— 它就是 11 节的第 ⑤ 层。</li>
+      <li><b>两种"不可用"必须长得不一样。</b>撤销/重做变灰（白 30%）是"现在真的没事可做"；
+          Pro 两格带锁（图标仍 82% + 9 pt 锁）是"这事要解释一下"。混用会把"点得动的"和"点不动的"教成同一件事。</li>
+      <li><b>未在本稿范围。</b>编辑器、偏好设置、最近截图、钉图之后的窗、菜单栏与状态栏 —— 已有稿。
+          本稿也不含动画与过渡时长：那是实现参数，不是版面决定。</li>
+      <li><b>一个我决定先不做的。</b>让「样式」格自己显示当前颜色与粗细（图标即预览）——
+          很吸引人，但那会让"格子"同时承担"图标"和"数据"两种角色，与 07 节的六态语义打架。留作下一轮候选，不是遗漏。</li>
+      <li><b>稿面统一。</b>三阶段 1×（1024 × 560 示意屏）、部件 2×；标注单位 pt；屏宽按 1024 点测算。
+          所有对比度按 <code>--c-panel</code> oklch(31.5%) 计算，未使用任何"估计差不多"的数值。</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>

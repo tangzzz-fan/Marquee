@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marquee · ① 首次启动引导页 · 高保真稿（深/浅）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   0. 方向种子 —— modern-minimal（Linear / Vercel），逐字绑定
+   本表只服务"文档层"（本页的版式与字体）。
+   窗口内部不套用此表：按你的硬约束「对齐 macOS 原生观感」，
+   窗口里的颜色来自 AppKit 系统色（见 01 节的宿主 token）。
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
+  --accent:  oklch(58% 0.18 255);
+
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+
+/* ── 文档层附加 token（红样 / 舞台），已逐项校验对比度 ── */
+:root{
+  --stage: oklch(96.6% 0.003 260);   /* #f2f4f6 舞台底 */
+  --ink:   oklch(32% 0.01 260);      /* #303338 文档主文字 11.5:1 */
+  --ink2:  oklch(52% 0.008 260);     /* #66696e 文档次要文字 5.0:1 */
+  --ink3:  oklch(84% 0.006 260);     /* 文档细线 */
+  --dim:   oklch(53% 0.16 32);       /* #b63d29 标注层 5.2:1 */
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   1. 宿主 token —— 同一套控件 CSS，两套宿主材质
+   .host-dark  = 深色窗口 / 深色覆盖层材质（#252525 系）
+   .host-light = 浅色窗口 / 浅色系统面板（#e7e7e7 系）
+   两块稿的共用语言就是这张表：任何控件都只读 --c-*，不写死颜色。
+   ══════════════════════════════════════════════════════════════════ */
+.host-dark{
+  --c-bg:      oklch(26.5% 0 0);      /* #252525 窗口底 */
+  --c-panel:   oklch(31.5% 0 0);      /* #313131 卡片/面板材质 */
+  --c-inset:   oklch(22.5% 0 0);      /* #1c1c1c 录制框内底（内凹） */
+  --c-cap:     oklch(38% 0 0);        /* #424242 键帽 */
+  --c-capbd:   oklch(46% 0 0);        /* #585858 键帽描边（对底 2.4:1） */
+  --c-border:  oklch(43% 0 0);        /* #505050 控件描边（对底 1.9:1） */
+  --c-borderh: oklch(50% 0 0);        /* 悬停描边 */
+  --c-hair:    rgba(255,255,255,.10);
+  --c-label:   #ffffff;               /* 主文字 15.3:1 */
+  --c-label2:  rgba(255,255,255,.64); /* 次要文字 7.10:1（窗底）/ 6.30:1（卡片材质） */
+  --c-fill:    oklch(55% 0.19 254);   /* #006fdc 强调填充，白字 4.93:1 */
+  --c-fill-h:  oklch(56% 0.19 254);   /* #0072df 悬停 4.73:1 */
+  --c-fill-p:  oklch(48% 0.19 254);   /* #0059c4 按下 6.69:1 */
+  --c-glyph:   oklch(72% 0.14 254);   /* #62a7fa 图标强调色 5.2:1 */
+  --c-warn:    oklch(84% 0.17 88);    /* #f8c20d 状态点 9.3:1 */
+  --c-ring:    oklch(62% 0.17 254);   /* 焦点环 */
+  --c-soft:    rgba(255,255,255,.07); /* 描边按钮底 */
+  --c-soft-h:  rgba(255,255,255,.11);
+  --c-soft-p:  rgba(255,255,255,.15);
+  --c-ghost:   rgba(255,255,255,.10); /* 文字按钮悬停底（卡片用） */
+  --c-ghost-p: rgba(255,255,255,.16);
+  --c-menubar: oklch(28.5% 0 0);      /* 菜单栏（卡片载体 B 语境） */
+  --c-mbartx:  rgba(255,255,255,.82);
+}
+.host-light{
+  --c-bg:      oklch(92.8% 0 0);      /* #e7e7e7 窗口底 */
+  --c-panel:   oklch(99% 0 0);        /* #fcfcfc 面板材质 */
+  --c-inset:   #ffffff;               /* 白底输入域 */
+  --c-cap:     oklch(96.5% 0 0);      /* #f3f3f3 键帽 */
+  --c-capbd:   oklch(80% 0 0);        /* #bebebe 键帽描边（对白 1.9:1） */
+  --c-border:  oklch(80% 0 0);        /* #bebebe 控件描边 */
+  --c-borderh: oklch(72% 0 0);        /* 悬停描边 */
+  --c-hair:    rgba(0,0,0,.10);
+  --c-label:   rgba(0,0,0,.85);       /* 主文字 12.8:1 */
+  --c-label2:  rgba(0,0,0,.58);       /* 次要文字 5.0:1（窗底）/ 5.3:1（面板） */
+  --c-fill:    oklch(52% 0.19 254);   /* #0065d2 强调填充，白字 5.62:1 */
+  --c-fill-h:  oklch(56% 0.19 254);   /* #0072df 悬停 4.73:1 */
+  --c-fill-p:  oklch(45% 0.19 254);   /* #004fba 按下 7.64:1 */
+  --c-glyph:   oklch(52% 0.19 254);
+  --c-warn:    oklch(56% 0.13 62);    /* #a96000 状态点 3.9:1 */
+  --c-ring:    oklch(60% 0.18 254);
+  --c-soft:    rgba(255,255,255,.92);
+  --c-soft-h:  #ffffff;
+  --c-soft-p:  oklch(95% 0 0);
+  --c-ghost:   rgba(0,0,0,.06);
+  --c-ghost-p: rgba(0,0,0,.10);
+  --c-menubar: oklch(96.5% 0 0);
+  --c-mbartx:  rgba(0,0,0,.78);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2. 文档层
+   ══════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font:400 14px/1.75 var(--font-body);
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:1248px;margin:0 auto;padding:56px 24px 120px}
+.doc__n{font:600 12px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+h1{margin:12px 0 0;font:600 30px/1.25 var(--font-display);letter-spacing:-.02em;color:var(--fg)}
+.doc__lede{margin:14px 0 0;max-width:74ch;color:var(--ink2);font-size:14px}
+.doc__lede strong{color:var(--ink);font-weight:600}
+.doc__meta{margin:18px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.tag{font:500 11px/1 var(--mono);color:var(--ink2);background:var(--stage);
+     border:1px solid var(--border);border-radius:999px;padding:6px 10px}
+
+section{margin-top:72px;border-top:1px solid var(--border);padding-top:32px}
+h2{margin:0;font:600 19px/1.3 var(--font-display);letter-spacing:-.01em;color:var(--fg);
+   display:flex;align-items:baseline;gap:12px}
+h2 .n{font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.08em}
+h3{margin:32px 0 0;font:600 14px/1.4 var(--font-display);color:var(--fg)}
+p{margin:12px 0 0;max-width:78ch;color:var(--ink2)}
+.lead{margin-top:14px;color:var(--ink)}
+ul.rules{margin:14px 0 0;padding:0;list-style:none;max-width:82ch}
+ul.rules li{position:relative;padding:8px 0 8px 22px;color:var(--ink2);border-top:1px dashed var(--border)}
+ul.rules li:first-child{border-top:0}
+ul.rules li::before{content:'';position:absolute;left:2px;top:18px;width:7px;height:7px;
+  background:var(--dim);border-radius:1px}
+ul.rules b{color:var(--ink);font-weight:600}
+code{font:500 12px/1 var(--mono);background:var(--stage);border:1px solid var(--border);
+     border-radius:4px;padding:2px 5px;color:var(--ink)}
+
+table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px 10px 0;border-bottom:1px solid var(--border)}
+th{font:600 11px/1.4 var(--mono);color:var(--ink2);letter-spacing:.04em;white-space:nowrap}
+td b{font-weight:600;color:var(--ink)}
+td{color:var(--ink2)}
+td .mono{font:500 11.5px/1.6 var(--mono);color:var(--ink2)}
+
+/* token 卡 */
+.toks{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px;margin-top:18px}
+.tok{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.tok__chip{height:52px}
+.tok__b{padding:10px 12px 12px}
+.tok__n{font:600 12px/1.3 var(--font-body);color:var(--ink)}
+.tok__v{font:500 10.5px/1.6 var(--mono);color:var(--ink2);margin-top:3px}
+
+/* ══════════════════════════════════════════════════════════════════
+   3. 控件层 —— 两个文件共用；只读 --c-*
+   ══════════════════════════════════════════════════════════════════ */
+/* 2× 缩放容器：--w/--h 用 pt，容器自动变成 2× 像素 */
+.sc{position:relative;width:calc(var(--w)*2px);height:calc(var(--h)*2px)}
+.sc>*{position:absolute;left:0;top:0;transform:scale(2);transform-origin:0 0}
+
+/* 窗口 */
+.win{width:440px;height:336px;border-radius:10px;background:var(--c-bg);color:var(--c-label);
+     font-family:var(--font-body);-webkit-font-smoothing:antialiased;overflow:hidden}
+.win--dark{box-shadow:0 30px 60px rgba(16,18,22,.30),0 2px 6px rgba(16,18,22,.20)}
+.win--light{box-shadow:0 30px 60px rgba(16,18,22,.16),0 2px 6px rgba(16,18,22,.10)}
+.win__bar{height:28px;display:flex;align-items:center;gap:8px;padding-left:13px}
+.tl{width:12px;height:12px;border-radius:50%;display:block}
+.tl--r{background:#ff5f57}.tl--y{background:#febc2e}.tl--g{background:#28c840}
+.win--light .tl{box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.win__body{height:308px;padding:0 20px 24px;display:flex;flex-direction:column}
+
+/* ① 身份带 */
+.ob__title{margin:24px 0 0;font:600 21px/26px var(--font-display);letter-spacing:-.01em}
+.ob__sub{margin:7px 0 0;font:400 13px/18px var(--font-body);color:var(--c-label2)}
+
+/* ② 动作 + 前提带（220pt 宽的小专栏） */
+.ob__hero{margin-top:22px;width:220px}
+.ob__label{font:500 11px/14px var(--font-body);color:var(--c-label2)}
+.rec{margin-top:6px;width:220px;height:34px;border-radius:6px;background:var(--c-inset);
+     border:1px solid var(--c-border);display:flex;align-items:center;justify-content:center;gap:6px}
+.kbd{min-width:22px;height:22px;padding:0 7px;border-radius:5px;background:var(--c-cap);
+     border:1px solid var(--c-capbd);display:inline-flex;align-items:center;justify-content:center;
+     font:500 13px/1 var(--font-body);color:var(--c-label)}
+.win--dark .kbd{box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.win--light .kbd{box-shadow:0 1px 0 rgba(0,0,0,.05)}
+.rec__ph{font:400 12px/1 var(--font-body);color:var(--c-label2)}
+/* 录制框状态 */
+.rec.is-hover{border-color:var(--c-borderh)}
+.host-dark .rec.is-press{background:oklch(21% 0 0);box-shadow:inset 0 1px 2px rgba(0,0,0,.5)}
+.host-light .rec.is-press{background:oklch(97.5% 0 0);box-shadow:inset 0 1px 2px rgba(0,0,0,.09)}
+.rec.is-live{outline:3px solid var(--c-ring);outline-offset:2px}
+.rec:hover{border-color:var(--c-borderh)}
+.rec:active{box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+
+/* 前提带（＝录制框的脚注，同 220pt 宽） */
+.perm{margin-top:10px;width:220px;height:22px;display:flex;align-items:center;gap:6px}
+.perm__dot{width:6px;height:6px;border-radius:50%;background:var(--c-warn);flex:none}
+.perm__check{width:11px;height:11px;flex:none;color:var(--c-label2)}
+.perm__text{font:500 11px/14px var(--font-body);color:var(--c-label2);flex:1}
+.perm--on .perm__text{font-weight:400}
+
+/* ④ 目录带 */
+.ob__catalog{margin-top:auto;font:400 12px/16px var(--font-body);color:var(--c-label2)}
+/* ⑤ 出口带 */
+.ob__foot{margin-top:16px;display:flex;justify-content:flex-end}
+
+/* 按钮 */
+.btn{border:0;cursor:default;font-family:var(--font-body);color:var(--c-label);
+     display:inline-flex;align-items:center;justify-content:center}
+.btn--primary{height:28px;padding:0 14px;border-radius:6px;background:var(--c-fill);
+     color:#fff;font:600 13px/1 var(--font-body)}
+.btn--primary:hover{background:var(--c-fill-h);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
+.btn--primary:active{background:var(--c-fill-p);box-shadow:inset 0 1.5px 2px rgba(0,0,0,.24)}
+.btn--primary.is-hover{background:var(--c-fill-h);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
+.btn--primary.is-press{background:var(--c-fill-p);box-shadow:inset 0 1.5px 2px rgba(0,0,0,.24)}
+.btn--small{height:22px;padding:0 10px;border-radius:5px;background:var(--c-soft);
+     border:1px solid var(--c-border);font:500 11px/1 var(--font-body)}
+.btn--small:hover{background:var(--c-soft-h);border-color:var(--c-borderh)}
+.btn--small:active{background:var(--c-soft-p);border-color:var(--c-borderh);
+     box-shadow:inset 0 1px 2px rgba(0,0,0,.18)}
+.btn--small.is-hover{background:var(--c-soft-h);border-color:var(--c-borderh)}
+.btn--small.is-press{background:var(--c-soft-p);border-color:var(--c-borderh);
+     box-shadow:inset 0 1px 2px rgba(0,0,0,.18)}
+
+/* ══════════════════════════════════════════════════════════════════
+   4. 稿面：2× 缩放 + 红样标注层
+   ══════════════════════════════════════════════════════════════════ */
+.plan{position:relative;width:1200px;height:852px;--ox:150px;--oy:96px}
+.plan .sc{position:absolute;left:var(--ox);top:var(--oy)}
+.plan__hd{position:absolute;left:var(--ox);top:24px;font:600 11px/1 var(--mono);color:var(--ink2);
+          letter-spacing:.04em}
+/* 尺寸线 */
+.dim{position:absolute;height:1px;background:var(--dim)}
+.dim::before,.dim::after{content:'';position:absolute;top:-3px;width:1px;height:7px;background:var(--dim)}
+.dim::before{left:0}.dim::after{right:0}
+.dim span{position:absolute;left:50%;top:-9px;transform:translate(-50%,-50%);
+  font:600 10.5px/1 var(--mono);color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--top{left:var(--ox);top:68px;width:880px}
+.dim--fld{left:calc(var(--ox) + 40px);top:calc(var(--oy) + 228px);width:440px}
+.dim--cta{left:calc(var(--ox) + 684px);top:calc(var(--oy) + 648px);width:156px}
+/* 左侧竖向尺寸链：16 段，全部标注 */
+.chain{position:absolute;left:0;top:var(--oy);width:126px;height:672px}
+.chain__rail{position:absolute;right:0;top:0;bottom:0;width:1px;background:var(--ink3)}
+.chain__rail::after{content:'';position:absolute;right:-3px;bottom:0;width:7px;height:1px;background:var(--ink3)}
+.seg{position:absolute;left:0;right:0;height:calc(var(--h)*2px);top:calc(var(--y)*2px)}
+.seg::after{content:'';position:absolute;right:-3px;top:0;width:7px;height:1px;background:var(--ink3)}
+.seg span{position:absolute;right:9px;top:50%;transform:translateY(-50%);
+  font:500 10.5px/1 var(--mono);color:var(--ink2)}
+.seg--head span{color:var(--dim)}
+.seg--head::after{background:var(--dim)}
+/* 右侧职责分带 */
+.zone{position:absolute;left:calc(var(--ox) + 880px + 18px);width:1px;background:var(--ink3)}
+.zone::before,.zone::after{content:'';position:absolute;left:0;width:8px;height:1px;background:var(--ink3)}
+.zone::before{top:0}.zone::after{bottom:0}
+.zone__lb{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:130px;
+  font:600 12px/1.4 var(--font-body);color:var(--ink)}
+.zone__lb i{display:block;font:500 10.5px/1.6 var(--mono);font-style:normal;color:var(--ink2)}
+.legend{margin:26px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:10px 32px}
+.legend li{font-size:12.5px;line-height:1.7;color:var(--ink2);display:flex;gap:8px}
+.legend li>b{color:var(--dim);font-weight:600;flex:none;font-family:var(--mono);font-size:11px;padding-top:3px}
+.legend span b{font:600 12.5px/1.7 var(--font-body);color:var(--ink)}
+.planfoot{margin-top:22px;font:500 11px/1.9 var(--mono);color:var(--ink2)}
+
+/* 浅色稿：同结构，只换颜色 */
+.colordiff{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:20px}
+.cd{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;
+    padding:8px 10px;background:var(--surface)}
+.cd i{width:26px;height:26px;border-radius:6px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+.cd b{font:600 12px/1.3 var(--font-body);color:var(--ink);display:block}
+.cd span{font:500 10.5px/1.5 var(--mono);color:var(--ink2)}
+
+/* ══════════════════════════════════════════════════════════════════
+   5. 差异态舞台
+   ══════════════════════════════════════════════════════════════════ */
+.grid{display:grid;gap:18px 18px;margin-top:20px}
+.grid--2{grid-template-columns:repeat(2,498px)}
+.grid--3{grid-template-columns:repeat(3,252px)}
+.stg{margin:0}
+.stg figcaption{font:600 10.5px/1 var(--mono);color:var(--ink2);margin-bottom:8px;letter-spacing:.04em}
+.stage{border-radius:10px;display:flex;align-items:center;justify-content:center;padding:20px 29px;
+       border:1px solid var(--border)}
+.stage.host-dark{border-color:transparent}
+</style>
+</head>
+<body>
+<div class="wrap" data-od-id="doc-head">
+
+  <div class="doc__n">① / ②　MARQUEE DESIGN SPEC</div>
+  <h1>Marquee 首次启动引导页 — 高保真稿</h1>
+  <p class="doc__lede">本文件是两块稿的第 ① 块。第 ② 块（升级卡片，载体 A / B）在 <code>pro-upgrade-card.html</code>，
+     两块共用下面 01 节那一张 token 表 —— 这也是它们"看起来像同一个产品在说话"的全部依据。</p>
+  <p class="doc__lede"><strong>结构结论先讲：</strong>主角是录制框，但它的主角地位不靠放大，靠"全页唯一的物体"；
+     三行文字压成"两行正文 + 一行目录"；权限行从第 5 项升格为录制框的脚注 —— 没有屏幕录制权限，
+     这个快捷键是死的，它们本来就是同一件事。</p>
+  <div class="doc__meta">
+    <span class="tag">窗框 440 × 336 pt（内容区 440 × 308 + 标题栏 28）</span>
+    <span class="tag">稿面 2×（= Retina 等效）</span>
+    <span class="tag">标注单位 pt</span>
+    <span class="tag">单页，无分页</span>
+    <span class="tag">文案为示意</span>
+  </div>
+
+  <!-- ══════════ 01 共用语言 ══════════ -->
+  <section data-od-id="shared-language">
+    <h2><span class="n">01</span>共用语言</h2>
+    <p class="lead">这张表两个文件共用（第 ② 块里是同一张）。控件 CSS 只读 <code>--c-*</code>，
+      不写死任何颜色：换宿主就换一套值，控件本身一行不改。</p>
+
+    <h3>宿主材质 · 深色（窗口 / 覆盖层）</h3>
+    <div class="toks">
+      <div class="tok"><div class="tok__chip" style="background:oklch(26.5% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">窗口底 --c-bg</div><div class="tok__v">oklch(26.5% 0 0) · #252525</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">卡片 / 面板材质 --c-panel</div><div class="tok__v">oklch(31.5% 0 0) · #313131</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(22.5% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">录制框内底 --c-inset</div><div class="tok__v">oklch(22.5% 0 0) · #1c1c1c</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(38% 0 0);box-shadow:inset 0 0 0 1px oklch(46% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">键帽 --c-cap</div><div class="tok__v">oklch(38% 0 0) · #424242<br>描边 oklch(46%) · #585858</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(55% 0.19 254)"></div>
+        <div class="tok__b"><div class="tok__n">强调填充 --c-fill</div><div class="tok__v">oklch(55% 0.19 254) · #006fdc<br>白字 4.93:1（悬停 4.73 / 按下 6.69）</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0);color:rgba(255,255,255,.64);
+        display:flex;align-items:center;justify-content:center;font:500 12px/1 var(--font-body)">次要文字</div>
+        <div class="tok__b"><div class="tok__n">次要文字 --c-label2</div><div class="tok__v">白 64%<br>窗底 7.10:1 / 材质 6.30:1</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(31.5% 0 0);display:flex;align-items:center;justify-content:center">
+        <i style="width:8px;height:8px;border-radius:50%;background:oklch(84% 0.17 88)"></i></div>
+        <div class="tok__b"><div class="tok__n">状态点（未授权）--c-warn</div><div class="tok__v">oklch(84% 0.17 88) · #f8c20d<br>对底 9.3:1</div></div></div>
+    </div>
+
+    <h3>宿主材质 · 浅色（窗口 / 系统面板）</h3>
+    <div class="toks">
+      <div class="tok"><div class="tok__chip" style="background:oklch(92.8% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">窗口底 --c-bg</div><div class="tok__v">oklch(92.8% 0 0) · #e7e7e7</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(99% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">面板材质 --c-panel</div><div class="tok__v">oklch(99% 0 0) · #fcfcfc</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:#fff;box-shadow:inset 0 0 0 1px oklch(80% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">录制框内底 --c-inset</div><div class="tok__v">#ffffff · 描边 oklch(80%) #bebebe</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(96.5% 0 0);box-shadow:inset 0 0 0 1px oklch(80% 0 0)"></div>
+        <div class="tok__b"><div class="tok__n">键帽 --c-cap</div><div class="tok__v">oklch(96.5% 0 0) · #f3f3f3<br>描边 oklch(80%) · #bebebe</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(52% 0.19 254)"></div>
+        <div class="tok__b"><div class="tok__n">强调填充 --c-fill</div><div class="tok__v">oklch(52% 0.19 254) · #0065d2<br>白字 5.62:1（悬停 4.73 / 按下 7.64）</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(92.8% 0 0);color:rgba(0,0,0,.58);
+        display:flex;align-items:center;justify-content:center;font:500 12px/1 var(--font-body)">次要文字</div>
+        <div class="tok__b"><div class="tok__n">次要文字 --c-label2</div><div class="tok__v">黑 58%<br>窗底 5.01:1 / 面板 5.28:1</div></div></div>
+      <div class="tok"><div class="tok__chip" style="background:oklch(92.8% 0 0);display:flex;align-items:center;justify-content:center">
+        <i style="width:8px;height:8px;border-radius:50%;background:oklch(56% 0.13 62)"></i></div>
+        <div class="tok__b"><div class="tok__n">状态点（未授权）--c-warn</div><div class="tok__v">oklch(56% 0.13 62) · #a96000<br>对底 3.9:1</div></div></div>
+    </div>
+
+    <h3>文字与尺寸阶</h3>
+    <table>
+      <thead><tr><th>角色</th><th>字号 / 行高</th><th>字重</th><th>字体</th></tr></thead>
+      <tbody>
+        <tr><td><b>页面标题</b></td><td class="mono">21 / 26 pt</td><td class="mono">Semibold 600</td><td>SF Pro Display · 中文回落 PingFang SC</td></tr>
+        <tr><td><b>副标题（承诺句）</b></td><td class="mono">13 / 18 pt</td><td class="mono">Regular 400</td><td>SF Pro Text</td></tr>
+        <tr><td><b>目录行</b></td><td class="mono">12 / 16 pt</td><td class="mono">Regular 400</td><td>SF Pro Text</td></tr>
+        <tr><td><b>标签 · 权限行 · 小按钮</b></td><td class="mono">11 / 14 pt</td><td class="mono">Medium 500</td><td>SF Pro Text（系统 small 尺寸对应字号）</td></tr>
+        <tr><td><b>键帽 / 主按钮</b></td><td class="mono">13 pt</td><td class="mono">Medium 500 / Semibold 600</td><td>SF Pro Text</td></tr>
+      </tbody>
+    </table>
+    <p class="planfoot">= 字阶只有四档：21 / 13 / 12 / 11。层级由<b>字号 + 位置 + 字重</b>承担，
+      不靠把颜色继续调淡 —— 次要文字的透明度在两套方案里都锁在 4.5:1 以上。</p>
+
+    <h3>圆角与控件高度</h3>
+    <table>
+      <thead><tr><th>对象</th><th>尺寸</th><th>圆角</th><th>备注</th></tr></thead>
+      <tbody>
+        <tr><td>窗口</td><td class="mono">440 × 336 pt</td><td class="mono">10 pt</td><td>标题栏 28 pt，内容区 308 pt</td></tr>
+        <tr><td>录制框</td><td class="mono">220 × 34 pt</td><td class="mono">6 pt</td><td>内凹底 + 1pt 描边</td></tr>
+        <tr><td>键帽</td><td class="mono">22 高 · 最小 22 宽</td><td class="mono">5 pt</td><td>间距 6 pt，内边距 0 / 7 pt</td></tr>
+        <tr><td>主按钮 [开始使用]</td><td class="mono">78 × 28 pt</td><td class="mono">6 pt</td><td>系统 regular 尺寸</td></tr>
+        <tr><td>小按钮 [打开系统设置]</td><td class="mono">86 × 22 pt</td><td class="mono">5 pt</td><td>系统 small 尺寸</td></tr>
+        <tr><td>卡片 / 面板（第 ② 块）</td><td class="mono">300 × 140 pt</td><td class="mono">10 pt</td><td>见 <code>pro-upgrade-card.html</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ══════════ 02 结构 ══════════ -->
+  <section data-od-id="structure">
+    <h2><span class="n">02</span>结构：为什么这么排</h2>
+    <p class="lead">六个元素没有增减，只换了归属、顺序和"物种"。下表是逐项交代。</p>
+    <table>
+      <thead><tr><th>原稿元素</th><th>新归属</th><th>处理 / 为什么</th></tr></thead>
+      <tbody>
+        <tr><td>1 标题 21pt</td><td><b>① 身份带</b></td><td>保留不动。它是全页唯一一句"我在哪"——首次启动的人不知道 app 没有主窗口，这行字不能省。</td></tr>
+        <tr><td>2 副标题 13pt</td><td><b>① 身份带</b></td><td>重写。删掉"按一下快捷键"（录制框已经把这个信息演出来了，重复），改成一句话承诺弧线：冻结 → 框选 → 标注 → 进剪贴板。它是"发生什么"，不是"怎么用"。</td></tr>
+        <tr><td>3 名词行 12pt</td><td><b>③ 目录带</b></td><td>下移到录制框之后。它不是一个句子，是索引：放在正文里会稀释前两行的重量，放在底部才是"还能做什么"的可选阅读。</td></tr>
+        <tr><td>4 标签 + 录制框</td><td><b>② 动作带</b></td><td>升为全页唯一的"物体"：唯一有底、有描边、能被按的元素。标签从"旁边的说明"变成对象的铭牌，直接压在框上方 6pt。</td></tr>
+        <tr><td>5 权限行 + 按钮</td><td><b>② 前提带</b></td><td>并入动作带，成为录制框的脚注：同 220pt 宽、同左缘、11pt 同阶、间距只有 10pt。它不再和录制框平级——没有这个权限，快捷键是死的。</td></tr>
+        <tr><td>6 [开始使用]</td><td><b>④ 出口带</b></td><td>位置不动（右下），仍是全页唯一的主 CTA。它和目录行之间留 16pt，和窗底留 24pt。</td></tr>
+      </tbody>
+    </table>
+
+    <h3>四条决策</h3>
+    <ul class="rules">
+      <li><b>主角 = 录制框，靠"唯一性"而不是靠放大。</b>全页只有它是物体（有材质、有边、能按），其余全是文字。你把它做成 220×34 是对的：放大只会让它变重，和"轻、快"打架。</li>
+      <li><b>三行 → 两行正文 + 一行目录。</b>标题管定位、副标题管承诺，两行都是一句话；名词行改变"物种"降为目录，所以看起来更少，信息没少。</li>
+      <li><b>权限行：显眼靠位置和"可点的物体"，不靠颜色音量。</b>未授权 = 琥珀点 + 小描边按钮，紧贴录制框下方（因果相邻）；已授权 = 按钮消失，整行收成一条灰勾。状态之间的差别本身就是提示。</li>
+      <li><b>间距即关系：</b>顶边距 24 &gt; 带间 22 &gt; 组内 7 / 6 / 10。四个数字已经说完了四块内容的关系，字号只负责第二层。</li>
+    </ul>
+    <p class="planfoot">未决 / 未画：快捷键与系统或其他 app 冲突时的"该组合已被占用"提示，本稿未出；
+      建议后续补在同一脚注位（与权限行共用一条位置规则）。</p>
+  </section>
+
+  <!-- ══════════ 03 深色稿 ══════════ -->
+  <section data-od-id="comp-dark">
+    <h2><span class="n">03</span>深色稿 · 440 × 336 pt · 2×</h2>
+    <p class="lead">左侧是逐段竖向尺寸链（16 段，单位 pt，含标题栏），右侧是四块职责带。
+      数值与实现一一对应：内容区 = 24+26+7+18+22+14+6+34+10+22+41+16+16+28+24 = 308 pt。</p>
+
+    <div class="plan" data-od-id="plan-onboarding-dark">
+      <div class="plan__hd">窗框 440 × 336 pt · 内容区 440 × 308 · 稿面 2×</div>
+
+      <div class="sc" style="--w:440;--h:336">
+        <div class="win win--dark host-dark" data-od-id="onboarding-dark">
+          <div class="win__bar"><i class="tl tl--r"></i><i class="tl tl--y"></i><i class="tl tl--g"></i></div>
+          <div class="win__body">
+            <h3 class="ob__title" data-od-id="onboarding-title">Marquee 就在菜单栏</h3>
+            <p class="ob__sub">按下快捷键：屏幕冻住，框选标注，直接进剪贴板。</p>
+
+            <div class="ob__hero">
+              <div class="ob__label">截屏快捷键</div>
+              <div class="rec" data-od-id="recorder-field"><span class="kbd">⌃</span><span class="kbd">Q</span></div>
+              <div class="perm" data-od-id="permission-row">
+                <i class="perm__dot"></i>
+                <span class="perm__text">屏幕录制：还没授权</span>
+                <button class="btn btn--small" data-od-id="btn-open-settings">打开系统设置</button>
+              </div>
+            </div>
+
+            <div class="ob__catalog" data-od-id="catalog-line">截图 · 标注 · 滚动截屏 · 识别文字 · 钉图</div>
+            <div class="ob__foot"><button class="btn btn--primary" data-od-id="cta-start">开始使用</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dim dim--top"><span>440 pt（窗框宽）</span></div>
+      <div class="dim dim--fld"><span>录制框 220 × 34</span></div>
+      <div class="dim dim--cta"><span>78 × 28</span></div>
+
+      <div class="chain">
+        <i class="chain__rail"></i>
+        <div class="seg seg--head" style="--y:0;--h:28"><span>28</span></div>
+        <div class="seg" style="--y:28;--h:24"><span>24</span></div>
+        <div class="seg" style="--y:52;--h:26"><span>26</span></div>
+        <div class="seg" style="--y:78;--h:7"><span>7</span></div>
+        <div class="seg" style="--y:85;--h:18"><span>18</span></div>
+        <div class="seg" style="--y:103;--h:22"><span>22</span></div>
+        <div class="seg" style="--y:125;--h:14"><span>14</span></div>
+        <div class="seg" style="--y:139;--h:6"><span>6</span></div>
+        <div class="seg" style="--y:145;--h:34"><span>34</span></div>
+        <div class="seg" style="--y:179;--h:10"><span>10</span></div>
+        <div class="seg" style="--y:189;--h:22"><span>22</span></div>
+        <div class="seg" style="--y:211;--h:41"><span>41</span></div>
+        <div class="seg" style="--y:252;--h:16"><span>16</span></div>
+        <div class="seg" style="--y:268;--h:16"><span>16</span></div>
+        <div class="seg" style="--y:284;--h:28"><span>28</span></div>
+        <div class="seg" style="--y:312;--h:24"><span>24</span></div>
+      </div>
+
+      <div class="zone" style="top:calc(var(--oy) + 104px);height:102px">
+        <div class="zone__lb">① 身份<i>它在哪</i></div></div>
+      <div class="zone" style="top:calc(var(--oy) + 250px);height:172px">
+        <div class="zone__lb">② 动作 + 前提<i>唯一的物体 + 脚注</i></div></div>
+      <div class="zone" style="top:calc(var(--oy) + 504px);height:32px">
+        <div class="zone__lb">③ 目录<i>还能做什么</i></div></div>
+      <div class="zone" style="top:calc(var(--oy) + 568px);height:56px">
+        <div class="zone__lb">④ 出口<i>一个按钮</i></div></div>
+    </div>
+
+    <ul class="legend">
+      <li><b>①</b><span><b>身份带</b> 51 pt：标题 21pt 说"我在菜单栏"，副标题 13pt 说"会发生什么"。两行同一件事的两面，间距只给 7 pt。</span></li>
+      <li><b>②</b><span><b>动作 + 前提带</b> 86 pt：录制框 34 pt 是主角，权限行 22 pt 是它的脚注。带内三档间距 6 / 10 pt，一眼看出谁属于谁。</span></li>
+      <li><b>③</b><span><b>目录带</b> 16 pt：单行 12pt，等宽列表。它上方留 41 pt 弹性空白 —— 这是"动作"和"目录"之间的呼吸，也是窗口拉高时唯一的伸缩区。</span></li>
+      <li><b>④</b><span><b>出口带</b> 28 pt：右下角，全页唯一主 CTA。与目录行 16 pt，与窗底 24 pt，和顶边距对称。</span></li>
+    </ul>
+
+    <p class="planfoot">竖向 16 段全部标注（单位 pt）。窗口可调整大小：固定边距不变，弹性只落在 ③ 上方的 41 pt 区；
+      最小 440 × 336（保证目录行单行）；拉高只会增加呼吸，不产生第二页 —— 这就是"尺寸可调但永不变成分页流程"的结构保证。</p>
+  </section>
+
+  <!-- ══════════ 04 浅色稿 ══════════ -->
+  <section data-od-id="comp-light">
+    <h2><span class="n">04</span>浅色稿 · 同结构，只换材质</h2>
+    <p class="lead">尺寸、字阶、间距、控件几何与深色稿逐像素一致；差异只有下表七项。
+      这也是"共用一套视觉语言"的可验证形式：控件 CSS 里没有一个写死的颜色。</p>
+
+    <div class="plan" data-od-id="plan-onboarding-light" style="height:800px">
+      <div class="plan__hd">窗框 440 × 336 pt · 2× · 与深色稿同结构</div>
+      <div class="sc" style="--w:440;--h:336">
+        <div class="win win--light host-light" data-od-id="onboarding-light">
+          <div class="win__bar"><i class="tl tl--r"></i><i class="tl tl--y"></i><i class="tl tl--g"></i></div>
+          <div class="win__body">
+            <h3 class="ob__title">Marquee 就在菜单栏</h3>
+            <p class="ob__sub">按下快捷键：屏幕冻住，框选标注，直接进剪贴板。</p>
+            <div class="ob__hero">
+              <div class="ob__label">截屏快捷键</div>
+              <div class="rec"><span class="kbd">⌃</span><span class="kbd">Q</span></div>
+              <div class="perm">
+                <i class="perm__dot"></i>
+                <span class="perm__text">屏幕录制：还没授权</span>
+                <button class="btn btn--small">打开系统设置</button>
+              </div>
+            </div>
+            <div class="ob__catalog">截图 · 标注 · 滚动截屏 · 识别文字 · 钉图</div>
+            <div class="ob__foot"><button class="btn btn--primary">开始使用</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="dim dim--top"><span>440 pt</span></div>
+      <div class="dim dim--fld"><span>录制框 220 × 34</span></div>
+
+      <div class="zone" style="top:calc(var(--oy) + 104px);height:102px">
+        <div class="zone__lb">① 身份<i>同上</i></div></div>
+      <div class="zone" style="top:calc(var(--oy) + 250px);height:172px">
+        <div class="zone__lb">② 动作 + 前提<i>同上</i></div></div>
+      <div class="zone" style="top:calc(var(--oy) + 504px);height:32px">
+        <div class="zone__lb">③ 目录<i>同上</i></div></div>
+      <div class="zone" style="top:calc(var(--oy) + 568px);height:56px">
+        <div class="zone__lb">④ 出口<i>同上</i></div></div>
+    </div>
+
+    <h3>深浅差异（仅此七项）</h3>
+    <div class="colordiff">
+      <div class="cd"><i style="background:oklch(26.5% 0 0)"></i><div><b>窗口底</b><span>深 #252525 · 浅 #e7e7e7</span></div></div>
+      <div class="cd"><i style="background:oklch(22.5% 0 0)"></i><div><b>录制框内底</b><span>深 #1c1c1c（内凹）· 浅 #ffffff</span></div></div>
+      <div class="cd"><i style="background:oklch(46% 0 0)"></i><div><b>描边</b><span>深 #505050 / 键帽 #585858 · 浅 #bebebe</span></div></div>
+      <div class="cd"><i style="background:oklch(38% 0 0)"></i><div><b>键帽</b><span>深 #424242 · 浅 #f3f3f3</span></div></div>
+      <div class="cd"><i style="background:#fff;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)"></i><div><b>主文字</b><span>深 #ffffff · 浅 黑 85%</span></div></div>
+      <div class="cd"><i style="background:oklch(55% 0.19 254)"></i><div><b>强调填充</b><span>深 #006fdc · 浅 #0065d2（白字均 ≥ 4.5:1）</span></div></div>
+      <div class="cd"><i style="background:oklch(84% 0.17 88)"></i><div><b>状态点（未授权）</b><span>深 #f8c20d · 浅 #a96000（对底 ≥ 3:1）</span></div></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 05 差异态 ══════════ -->
+  <section data-od-id="states">
+    <h2><span class="n">05</span>差异态</h2>
+    <p class="lead">所有悬停 / 按下都遵守同一条规则：<b>文字对比度只升不降</b>。
+      填充按钮的悬停不能提亮（白字会掉到 4.5:1 以下），所以改用"压暗 1% + 顶部 1px 高光"表达悬停。</p>
+
+    <h3>录制框 · 深色（220 × 34 pt，2×）</h3>
+    <div class="grid grid--2">
+      <figure class="stg"><figcaption>默认 · 显示当前组合，键帽呈现</figcaption>
+        <div class="stage host-dark"><div class="sc" style="--w:220;--h:34">
+          <div class="rec"><span class="kbd">⌃</span><span class="kbd">Q</span></div></div></div></figure>
+      <figure class="stg"><figcaption>悬停 · 只动描边（#505050 → #5c5c5c），提示可点</figcaption>
+        <div class="stage host-dark"><div class="sc" style="--w:220;--h:34">
+          <div class="rec is-hover"><span class="kbd">⌃</span><span class="kbd">Q</span></div></div></div></figure>
+      <figure class="stg"><figcaption>按下 · 内底压暗 + 内阴影，不改变文字对比</figcaption>
+        <div class="stage host-dark"><div class="sc" style="--w:220;--h:34">
+          <div class="rec is-press"><span class="kbd">⌃</span><span class="kbd">Q</span></div></div></div></figure>
+      <figure class="stg"><figcaption>录制中 · 3pt 焦点环 + 占位句，键盘交给这个框</figcaption>
+        <div class="stage host-dark"><div class="sc" style="--w:220;--h:34">
+          <div class="rec is-live"><span class="rec__ph">按下新的组合…</span></div></div></div></figure>
+    </div>
+    <p class="planfoot">键帽 22 × 22 / 圆角 5 / 间距 6 / 内边距 0 7。⌃ 用 U+2303；若目标字体缺字，换成同尺寸自绘 SVG，
+      不要把键帽降级成纯文本。<br>提示：静态稿里同时给出 <code>:hover</code> / <code>:active</code> 与 <code>.is-hover</code> / <code>.is-press</code> 两套 —— 本页的控件可以直接用鼠标试。</p>
+
+    <h3>权限行 · 两态 × 两套材质</h3>
+    <div class="grid grid--2">
+      <figure class="stg"><figcaption>深色 · 未授权（需要行动）</figcaption>
+        <div class="stage host-dark"><div class="sc" style="--w:220;--h:22">
+          <div class="perm"><i class="perm__dot"></i><span class="perm__text">屏幕录制：还没授权</span>
+            <button class="btn btn--small">打开系统设置</button></div></div></div></figure>
+      <figure class="stg"><figcaption>深色 · 已授权（收成一条灰勾，按钮消失）</figcaption>
+        <div class="stage host-dark"><div class="sc" style="--w:220;--h:22">
+          <div class="perm perm--on"><svg class="perm__check" viewBox="0 0 12 12"><path d="M2.2 6.4 4.6 8.8 9.8 3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="perm__text">屏幕录制：已授权</span></div></div></div></figure>
+      <figure class="stg"><figcaption>浅色 · 未授权</figcaption>
+        <div class="stage host-light"><div class="sc" style="--w:220;--h:22">
+          <div class="perm"><i class="perm__dot"></i><span class="perm__text">屏幕录制：还没授权</span>
+            <button class="btn btn--small">打开系统设置</button></div></div></div></figure>
+      <figure class="stg"><figcaption>浅色 · 已授权</figcaption>
+        <div class="stage host-light"><div class="sc" style="--w:220;--h:22">
+          <div class="perm perm--on"><svg class="perm__check" viewBox="0 0 12 12"><path d="M2.2 6.4 4.6 8.8 9.8 3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="perm__text">屏幕录制：已授权</span></div></div></div></figure>
+    </div>
+
+    <h3>按钮 · 默认 / 悬停 / 按下</h3>
+    <div class="grid grid--3">
+      <figure class="stg"><figcaption>深色 · 默认</figcaption>
+        <div class="stage host-dark" style="padding:20px 40px"><div class="sc" style="--w:78;--h:28">
+          <button class="btn btn--primary" style="width:78px">开始使用</button></div></div></figure>
+      <figure class="stg"><figcaption>深色 · 悬停 #0072df · 4.73:1</figcaption>
+        <div class="stage host-dark" style="padding:20px 40px"><div class="sc" style="--w:78;--h:28">
+          <button class="btn btn--primary is-hover" style="width:78px">开始使用</button></div></div></figure>
+      <figure class="stg"><figcaption>深色 · 按下 #0059c4 · 6.69:1</figcaption>
+        <div class="stage host-dark" style="padding:20px 40px"><div class="sc" style="--w:78;--h:28">
+          <button class="btn btn--primary is-press" style="width:78px">开始使用</button></div></div></figure>
+      <figure class="stg"><figcaption>浅色 · 默认</figcaption>
+        <div class="stage host-light" style="padding:20px 40px"><div class="sc" style="--w:78;--h:28">
+          <button class="btn btn--primary" style="width:78px">开始使用</button></div></div></figure>
+      <figure class="stg"><figcaption>浅色 · 悬停 #0072df · 4.73:1</figcaption>
+        <div class="stage host-light" style="padding:20px 40px"><div class="sc" style="--w:78;--h:28">
+          <button class="btn btn--primary is-hover" style="width:78px">开始使用</button></div></div></figure>
+      <figure class="stg"><figcaption>浅色 · 按下 #004fba · 7.64:1</figcaption>
+        <div class="stage host-light" style="padding:20px 40px"><div class="sc" style="--w:78;--h:28">
+          <button class="btn btn--primary is-press" style="width:78px">开始使用</button></div></div></figure>
+    </div>
+
+    <h3>小按钮 [打开系统设置] · 深色</h3>
+    <div class="grid grid--3">
+      <figure class="stg"><figcaption>默认 · 底 白 7% / 描边 #505050</figcaption>
+        <div class="stage host-dark" style="padding:20px 40px"><div class="sc" style="--w:86;--h:22">
+          <button class="btn btn--small" style="width:86px">打开系统设置</button></div></div></figure>
+      <figure class="stg"><figcaption>悬停 · 底 白 11% / 描边提亮</figcaption>
+        <div class="stage host-dark" style="padding:20px 40px"><div class="sc" style="--w:86;--h:22">
+          <button class="btn btn--small is-hover" style="width:86px">打开系统设置</button></div></div></figure>
+      <figure class="stg"><figcaption>按下 · 底 白 15% + 内阴影</figcaption>
+        <div class="stage host-dark" style="padding:20px 40px"><div class="sc" style="--w:86;--h:22">
+          <button class="btn btn--small is-press" style="width:86px">打开系统设置</button></div></div></figure>
+    </div>
+  </section>
+
+  <!-- ══════════ 06 备注 ══════════ -->
+  <section data-od-id="notes">
+    <h2><span class="n">06</span>备注与未覆盖项</h2>
+    <ul class="rules">
+      <li><b>窗口可调整大小：</b>左右边距、控件位置全部固定，弹性只加在目录带上方那 41 pt。最小 440 × 336（保证目录行不折行），拉高只增加呼吸。永远不会长出第二页。</li>
+      <li><b>副标题替换说明：</b>原句「按一下快捷键，屏幕冻住，框出要截的地方。」把"按快捷键"和录制框说重了，且止于"框出"，没有说出产品的真正回报。新句承担承诺弧线；如果你想保留原句，建议至少删掉前半句。</li>
+      <li><b>可选建议（本稿按原元素清单，未加入）：</b>在标题行右侧带一个 16pt 的菜单栏图标。对菜单栏 app 来说，"哪个图标是 Marquee"是用户第二天最可能忘的事；但这会新增元素，需要你点头。</li>
+      <li><b>未画：</b>快捷键冲突态（"该组合已被占用"）。它是这个控件必然会遇到的状态，建议补在同一脚注位，样式复用权限行的未授权态（琥珀点 + 一句话 + 一个描边按钮）。</li>
+      <li><b>文案为示意：</b>所有中文都是占位语气，替换时请保持每行的字数上限 —— 副标题 ≤ 26 字（13pt 单行）、目录行 ≤ 20 字（12pt 单行）、权限行 ≤ 10 字（11pt，与右侧按钮同行）、标题 ≤ 12 字。</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>

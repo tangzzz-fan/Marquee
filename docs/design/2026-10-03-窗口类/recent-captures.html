@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marquee · ⑥ 最近截图面板 · 高保真稿（深/浅）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   0. 方向种子 —— modern-minimal（Linear / Vercel），逐字绑定（仅文档层）
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
+  --accent:  oklch(58% 0.18 255);
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+:root{
+  --stage: oklch(96.6% 0.003 260);
+  --ink:   oklch(32% 0.01 260);
+  --ink2:  oklch(52% 0.008 260);
+  --ink3:  oklch(84% 0.006 260);
+  --dim:   oklch(53% 0.16 32);
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   1. 宿主 token —— 与 ①②③④⑤ 逐项相同
+   ══════════════════════════════════════════════════════════════════ */
+.host-dark{
+  --c-bg:      oklch(26.5% 0 0);
+  --c-panel:   oklch(31.5% 0 0);
+  --c-inset:   oklch(22.5% 0 0);
+  --c-cap:     oklch(38% 0 0);
+  --c-capbd:   oklch(46% 0 0);
+  --c-border:  oklch(43% 0 0);
+  --c-borderh: oklch(50% 0 0);
+  --c-hair:    rgba(255,255,255,.10);
+  --c-label:   #ffffff;
+  --c-label2:  rgba(255,255,255,.64);
+  --c-fill:    oklch(55% 0.19 254);
+  --c-fill-h:  oklch(56% 0.19 254);
+  --c-fill-p:  oklch(48% 0.19 254);
+  --c-glyph:   oklch(72% 0.14 254);
+  --c-warn:    oklch(84% 0.17 88);
+  --c-ring:    oklch(62% 0.17 254);
+  --c-soft:    rgba(255,255,255,.07);
+  --c-soft-h:  rgba(255,255,255,.11);
+  --c-soft-p:  rgba(255,255,255,.15);
+  --c-ghost:   rgba(255,255,255,.10);
+  --c-ghost-p: rgba(255,255,255,.16);
+  --c-menubar: oklch(28.5% 0 0);
+  --c-mbartx:  rgba(255,255,255,.82);
+  --c-err:     oklch(72% 0.15 25);
+  --c-cau:     oklch(84% 0.17 88);
+}
+.host-light{
+  --c-bg:      oklch(92.8% 0 0);
+  --c-panel:   oklch(99% 0 0);
+  --c-inset:   #ffffff;
+  --c-cap:     oklch(96.5% 0 0);
+  --c-capbd:   oklch(80% 0 0);
+  --c-border:  oklch(80% 0 0);
+  --c-borderh: oklch(72% 0 0);
+  --c-hair:    rgba(0,0,0,.10);
+  --c-label:   rgba(0,0,0,.85);
+  --c-label2:  rgba(0,0,0,.58);
+  --c-fill:    oklch(52% 0.19 254);
+  --c-fill-h:  oklch(56% 0.19 254);
+  --c-fill-p:  oklch(45% 0.19 254);
+  --c-glyph:   oklch(52% 0.19 254);
+  --c-warn:    oklch(56% 0.13 62);
+  --c-ring:    oklch(60% 0.18 254);
+  --c-soft:    rgba(255,255,255,.92);
+  --c-soft-h:  #ffffff;
+  --c-soft-p:  oklch(95% 0 0);
+  --c-ghost:   rgba(0,0,0,.06);
+  --c-ghost-p: rgba(0,0,0,.10);
+  --c-menubar: oklch(96.5% 0 0);
+  --c-mbartx:  rgba(0,0,0,.78);
+  --c-err:     oklch(45% 0.19 27);
+  --c-cau:     oklch(42% 0.11 62);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2. 文档层
+   ══════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:400 14px/1.75 var(--font-body);-webkit-text-size-adjust:100%}
+.wrap{max-width:1248px;margin:0 auto;padding:56px 24px 120px}
+.doc__n{font:600 12px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+h1{margin:12px 0 0;font:600 30px/1.25 var(--font-display);letter-spacing:-.02em;color:var(--fg)}
+.doc__lede{margin:14px 0 0;max-width:76ch;color:var(--ink2);font-size:14px}
+.doc__lede strong{color:var(--ink);font-weight:600}
+.doc__meta{margin:18px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.tag{font:500 11px/1 var(--mono);color:var(--ink2);background:var(--stage);border:1px solid var(--border);
+     border-radius:999px;padding:6px 10px}
+section{margin-top:72px;border-top:1px solid var(--border);padding-top:32px}
+h2{margin:0;font:600 19px/1.3 var(--font-display);letter-spacing:-.01em;color:var(--fg);display:flex;align-items:baseline;gap:12px}
+h2 .n{font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.08em}
+h3{margin:32px 0 0;font:600 14px/1.4 var(--font-display);color:var(--fg)}
+p{margin:12px 0 0;max-width:78ch;color:var(--ink2)}
+.lead{margin-top:14px;color:var(--ink)}
+ul.rules{margin:14px 0 0;padding:0;list-style:none;max-width:84ch}
+ul.rules li{position:relative;padding:8px 0 8px 22px;color:var(--ink2);border-top:1px dashed var(--border)}
+ul.rules li:first-child{border-top:0}
+ul.rules li::before{content:'';position:absolute;left:2px;top:18px;width:7px;height:7px;background:var(--dim);border-radius:1px}
+ul.rules b{color:var(--ink);font-weight:600}
+code{font:500 12px/1 var(--mono);background:var(--stage);border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:var(--ink)}
+table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px 10px 0;border-bottom:1px solid var(--border)}
+th{font:600 11px/1.4 var(--mono);color:var(--ink2);letter-spacing:.04em;white-space:nowrap}
+td{color:var(--ink2)} td b{font-weight:600;color:var(--ink)}
+td .mono{font:500 11.5px/1.6 var(--mono);color:var(--ink2)}
+figure{margin:0}
+figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin:0 0 10px;letter-spacing:.02em}
+.planfoot{margin-top:22px;font:500 11px/1.9 var(--mono);color:var(--ink2)}
+
+/* ══════════════════════════════════════════════════════════════════
+   3. 控件层 —— 只读 --c-*；.mbar 逐字来自 ③
+   ══════════════════════════════════════════════════════════════════ */
+.sc{position:relative;width:calc(var(--w)*2px);height:calc(var(--h)*2px)}
+.sc>*{position:absolute;left:0;top:0;transform:scale(2);transform-origin:0 0}
+
+.mbar{width:460px;height:24px;display:flex;align-items:center;gap:13px;padding:0 10px;
+      background:var(--c-menubar);color:var(--c-mbartx);border-bottom:1px solid var(--c-hair);
+      font:400 11px/1 var(--font-body)}
+.mbar__sp{flex:1}
+.mbar__mb{width:24px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+      background:var(--c-ghost)}
+.mbar em{font:500 10px/1 var(--mono);font-style:normal;opacity:.75;margin-left:4px}
+.mbar svg{width:14px;height:12px;stroke:currentColor;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+
+/* 面板：340 宽 · 上舌尖 12 × 6 指着菜单栏图标 */
+.rc{position:relative;width:340px;border-radius:10px;background:var(--c-panel);
+    border:1px solid rgba(255,255,255,.12);font-family:var(--font-body);-webkit-font-smoothing:antialiased;
+    box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32)}
+.rc::after{content:'';position:absolute;top:-6px;left:var(--bk,300px);width:10px;height:10px;background:var(--c-panel);
+    border-left:1px solid rgba(255,255,255,.12);border-top:1px solid rgba(255,255,255,.12);transform:rotate(45deg)}
+.host-light .rc{border-color:rgba(0,0,0,.10);box-shadow:0 12px 28px rgba(16,18,22,.16),0 1px 4px rgba(16,18,22,.10)}
+.host-light .rc::after{border-color:rgba(0,0,0,.10);border-right:0;border-bottom:0;
+    border-left:1px solid rgba(0,0,0,.10);border-top:1px solid rgba(0,0,0,.10)}
+.rc__hd{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px}
+.rc__t{font:600 12px/1 var(--font-body);color:var(--c-label)}
+.rc__hint{margin-left:auto;font:400 11px/1 var(--font-body);color:var(--c-label2)}
+.rc__list{padding:0 5px}
+.rc__ft{height:30px;display:flex;align-items:center;gap:4px;padding:0 10px;border-top:1px solid var(--c-hair);
+    font:400 11px/1 var(--font-body);color:var(--c-label2)}
+.rc__ft b{font-weight:500;color:var(--c-glyph)}
+
+/* 行 46 高：缩略图即按钮 + 两个动作 */
+.rt{display:flex;align-items:center;gap:10px;height:46px;padding:0 5px;border-radius:6px}
+.rt+.rt{box-shadow:inset 0 1px 0 var(--c-hair)}
+.rt.is-hover{background:var(--c-soft)}
+.rt__im{position:relative;width:48px;height:34px;border-radius:4px;flex:none;overflow:visible;
+    border:1px solid var(--c-hair)}
+.rt__im i.im{position:absolute;inset:0;border-radius:3px;overflow:hidden}
+.rt__im.is-hover{border-color:var(--c-fill);box-shadow:0 0 0 1px var(--c-fill)}
+.rt__im.is-press i.im::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.38)}
+.rt__badge{position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:5px;background:var(--c-fill);
+    display:none;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.rt__badge svg{width:11px;height:11px;stroke:#fff;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.rt__im.is-hover .rt__badge,.rt__im.is-press .rt__badge{display:flex}
+.rt__im.is-press .rt__badge{background:var(--c-fill-p)}
+.rt__t{flex:1 1 auto;min-width:0}
+.rt__d{font:400 12px/16px var(--font-body);color:var(--c-label)}
+.rt__m{margin-top:2px;font:500 11px/14px var(--mono);color:var(--c-label2)}
+.rt__acts{display:flex;align-items:center;gap:2px;flex:none}
+.rt__acts .btn--mini{color:var(--c-label2)}
+.rt.is-hover .btn--mini{background:var(--c-ghost);color:var(--c-label)}
+.btn--mini{display:inline-flex;align-items:center;justify-content:center;height:24px;padding:0 8px;
+    border:0;border-radius:6px;background:transparent;font:500 11px/1 var(--font-body);flex:none}
+.btn--mini.is-hover{background:var(--c-ghost);color:var(--c-label)}
+.btn--mini.is-press{background:var(--c-ghost-p);color:var(--c-label)}
+
+/* 空态 */
+.rc__empty{height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.rc__empty svg{width:26px;height:26px;stroke:var(--c-label2);fill:none;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.rc__empty b{font:500 12px/1 var(--font-body);color:var(--c-label)}
+.rc__empty span{font:400 11px/1 var(--font-body);color:var(--c-label2)}
+
+/* 就地在面板里升起的 ② 载体 B —— 类名与数值逐字来自 ②，只加一条定位于面板的规则 */
+.card{width:300px;padding:16px;border-radius:10px;background:var(--c-panel);color:var(--c-label);
+    font-family:var(--font-body);-webkit-font-smoothing:antialiased}
+.card--bd{border:1px solid rgba(255,255,255,.12);box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32)}
+.card__head{display:flex;align-items:center;gap:8px}
+.card__glyph{width:16px;height:16px;flex:none;color:var(--c-glyph)}
+.card__title{font:600 13px/18px var(--font-body)}
+.card__body{margin:6px 0 0;font:400 12px/18px var(--font-body);color:var(--c-label2)}
+.card__acts{margin-top:17px;display:flex;justify-content:flex-end;gap:10px}
+.card--inpanel{position:absolute;left:19px;bottom:44px}
+.btn--pri{height:24px;padding:0 12px;border:0;border-radius:6px;background:var(--c-fill);color:#fff;
+    font:600 12px/1 var(--font-body);display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.btn--txt{height:24px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--c-label2);
+    font:500 12px/1 var(--font-body);display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.scrim{position:absolute;inset:0;border-radius:10px;background:rgba(0,0,0,.34)}
+.host-light .scrim{background:rgba(0,0,0,.16)}
+
+/* ══════════════════════════════════════════════════════════════════
+   4. 稿面与红样
+   ══════════════════════════════════════════════════════════════════ */
+.dim{position:absolute;height:1px;background:var(--dim)}
+.dim::before,.dim::after{content:'';position:absolute;top:-3px;width:1px;height:7px;background:var(--dim)}
+.dim::before{left:0}.dim::after{right:0}
+.dim span{position:absolute;left:50%;top:-9px;transform:translate(-50%,-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v{position:absolute;width:1px;background:var(--dim)}
+.dim--v::before,.dim--v::after{content:'';position:absolute;left:-3px;width:7px;height:1px;background:var(--dim)}
+.dim--v::before{top:0}.dim--v::after{bottom:0}
+.dim--v span{position:absolute;left:12px;top:50%;transform:translateY(-50%);font:600 10.5px/1 var(--mono);
+      color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v.l span{left:auto;right:12px}
+.grid{display:grid;gap:18px;margin-top:20px}
+.grid--2{grid-template-columns:repeat(2,560px)}
+.stg{margin:0;display:flex;flex-direction:column}
+.stg figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin-bottom:8px;letter-spacing:.04em}
+.stage{border-radius:10px;display:flex;align-items:center;justify-content:center;padding:28px;
+       flex:1 1 auto;border:1px solid var(--border);background:var(--stage)}
+.stage--dark{background:oklch(26.5% 0 0);border-color:transparent}
+.stage--light{background:oklch(92.8% 0 0);border-color:transparent}
+.hero{position:relative;width:520px;height:668px}
+.hero .mbar{position:absolute;left:0;top:0}
+.hero .rc{position:absolute;left:180px;top:30px}
+.zoombox{border:1px solid var(--border);border-radius:10px;padding:18px;background:var(--stage)}
+</style>
+</head>
+<body>
+<div class="wrap" data-od-id="doc-head">
+
+  <div class="doc__n">① / ② / ③ / ④ / ⑤ / ⑥　MARQUEE DESIGN SPEC · 窗口类 D</div>
+  <h1>最近截图面板 — 缩略图本身就是按钮</h1>
+  <p class="doc__lede">本文件是窗口类三块的 <b>D 块</b>。C 块（偏好设置）在 <code>preferences.html</code>，
+     E 块（菜单栏下拉）在 <code>menubar-menu.html</code>。它从菜单栏弹出（菜单栏条与图标逐字来自 ③ 的 <code>.mbar</code>），
+     跟随系统外观，所以深浅两套都在这里。</p>
+  <p class="doc__lede"><strong>结构结论先讲：</strong>它要解决的是一个具体得多的问题 ——
+     <b>刚截的那张找不到了</b>。所以它是一块"最近"面板，不是图库：<b>没有搜索、没有分组、没有批量</b>，
+     每一行只有两个动作，而<b>缩略图本身就是"复制到剪贴板"按钮</b> —— 点图就该拿到图，这是最自然的那一下。</p>
+  <div class="doc__meta">
+    <span class="tag">面板 340 宽 · 最高 12 行</span>
+    <span class="tag">行 46 · 缩略图 48 × 34</span>
+    <span class="tag">点别处自己收起</span>
+    <span class="tag">深浅两套</span>
+    <span class="tag">标注单位 pt · 文案为示意</span>
+  </div>
+
+  <!-- ══════════ 01 共用语言 ══════════ -->
+  <section data-od-id="shared-language">
+    <h2><span class="n">01</span>共用语言</h2>
+    <p class="lead">颜色表与 ①②③④⑤ 逐项相同；面板本身是 <code>.card</code> 家族的第四个成员 ——
+      同一块 <code>--c-panel</code> 材质、同一条 1px 白色 12% 描边、同一套投影、同一个 10 pt 圆角、同一枚 10 × 10 舌尖（与 ③ 的气泡同一枚）。
+      按钮高度沿用窗口类的 24（C 块定的那一档）。</p>
+
+    <h3>这一块的形态，逐件量出来</h3>
+    <table>
+      <thead><tr><th>形态</th><th>尺寸</th><th>材质 / 圆角</th><th>字阶</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>面板</b></td><td class="mono">340 宽 · 高由条数决定（最高 34 + 12 × 46 + 30 = 616，加 1pt 描边 = 618）</td>
+          <td class="mono">--c-panel + 1px 12% · 10 pt</td><td class="mono">—</td>
+          <td>上舌尖 12 × 6 指着菜单栏图标；深色投影与 ③ 的气泡同一套</td></tr>
+        <tr><td><b>标题带</b></td><td class="mono">34 高 · 左右内边距 10</td><td class="mono">无底 · 无分隔线</td><td class="mono">12 / 600 + 11 / 400</td>
+          <td>左「最近截图」，右一行常驻小字「点缩略图 = 复制」</td></tr>
+        <tr><td><b>行</b></td><td class="mono">46 高 · 左右 5（列内再 5 = 视觉 10）</td><td class="mono">悬停 = --c-soft · 6 pt</td><td class="mono">12 / 400 + 11 / 500 mono</td>
+          <td>行间用 <code>inset 0 1px 0 --c-hair</code> 压在行内，不占高度</td></tr>
+        <tr><td><b>缩略图</b></td><td class="mono">48 × 34（约 1.41 : 1，容纳 16:10 与 4:3 两种）</td><td class="mono">1px --c-hair · 4 pt</td><td class="mono">—</td>
+          <td><b>它就是按钮</b>：悬停加 1pt 蓝环 + 右上角 18 × 18 复制徽章</td></tr>
+        <tr><td><b>两个动作</b></td><td class="mono">24 高 · 内边距 0 / 8</td><td class="mono">无底无框 · 悬停 --c-ghost · 6 pt</td><td class="mono">11 / 500</td>
+          <td>[编辑] [删除]，只有文字 —— 这一行没有第三个动作</td></tr>
+        <tr><td><b>底部一行</b></td><td class="mono">30 高 · 上边 1px --c-hair</td><td class="mono">无底</td><td class="mono">11 / 400</td>
+          <td>免费版才有；已购买时整条消失（面板高度随之减 30）</td></tr>
+        <tr><td><b>空态块</b></td><td class="mono">120 高（面板总高 184）</td><td class="mono">居中，无底无框</td><td class="mono">12 / 500 + 11 / 400</td>
+          <td>26 pt 取景框图标 + 一句话 + 按什么键</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ══════════ 02 结构 ══════════ -->
+  <section data-od-id="structure">
+    <h2><span class="n">02</span>结构：它是"最近"，不是"图库"</h2>
+    <p class="lead">独立图库窗口会带来窗口管理、搜索、分组、拖拽导出 —— 那是另一个产品，
+      而且会把"刚截的图在哪"这个问题从<b>一眼</b>变成<b>一次操作</b>。所以界限不能靠文案守，要靠<b>结构</b>守。</p>
+    <ul class="rules">
+      <li><b>六件图库的装备，这里一件都没有：</b>没有搜索框（视觉上连一个输入域都不出现）、没有日期分组（不分组是刻意的 ——
+        分组是图库的语言）、没有排序与筛选、没有多选（缩略图不是勾选框）、没有拖拽导出、没有"放大查看"。
+        每拿掉一件，用户对它的期待就低一档。</li>
+      <li><b>缩略图就是按钮，这是全块最重要的一件事。</b>三条证据同时给：① 标题带右侧常驻小字「点缩略图 = 复制」；
+        ② 悬停时缩略图描边转蓝并浮出一枚复制徽章；③ 按下时图面压暗、徽章变实心。<b>不靠 tooltip</b> —— 悬停提示要等、会飘，而这是高频动作。</li>
+      <li><b>一行只有两个动作，且都是"就地"的。</b>[编辑] 用历史里的<b>原图 + 标注</b>重开编辑器（标注仍然可编辑，
+        不是在成品图上再画）；[删除] 从历史移除并<b>把磁盘文件移进废纸篓</b>。</li>
+      <li><b>为什么删除不做确认弹窗：</b>硬约束禁止新弹窗，而"删了就没"配"不可撤销"在一个高频面板里是危险的。
+        废纸篓把撤销权交给系统（Finder 里随时捞回来），我们一步不加 —— 这比弹一个"确定删除吗"更体面，也更符合 macOS。</li>
+      <li><b>删除不做红字。</b>红在这套语言里是"刚才这一下没成"（见 C 块 01 节），而删除不会失败。它的安全感来自废纸篓，不来自颜色。</li>
+      <li><b>高度只由条数决定，最高 12 行。</b>618 pt 在任一 Mac 上放得下，所以<b>不需要滚动条</b> ——
+        一个不会滚动的东西，看起来就不像图库。（12 行满时面板高 618 pt，在任一 Mac 上都放得下。）</li>
+      <li><b>免费版底部只有一行字，不弹卡片。</b>截图是高频动作，每截一张弹一次"要不要升级"等于自杀。
+        那行字里唯一的可点词是「升级到 Pro」（蓝），<b>点了才</b>在原地面板里升起 ② 的载体 B —— 不主动弹，但点了有去处。</li>
+    </ul>
+
+    <h3>行的解剖（从左到右四段，每一段一个尺寸）</h3>
+    <table>
+      <thead><tr><th>段</th><th>宽</th><th>内容</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td><span class="mono">5 + 48</span></td><td class="mono">53</td><td>缩略图</td>
+          <td>固定 48 × 34，纵横比不逐张跟随（否则每行高矮不一）；过长的图居中裁切，两端留 1pt 内衬</td></tr>
+        <tr><td><span class="mono">10</span></td><td class="mono">10</td><td>间隙</td><td>图与字之间恒 10 —— 它属于图，不属于字</td></tr>
+        <tr><td><span class="mono">flex</span></td><td class="mono">≈188</td><td>时间 + 尺寸</td>
+          <td>时间 12pt 主色（每行唯一的"标题"）；第二行 11pt mono：<code>1234×768 px</code>，有标注时追加 <code>· 3 个标注</code></td></tr>
+        <tr><td><span class="mono">2 + 2×32</span></td><td class="mono">≈66</td><td>[编辑] [删除]</td>
+          <td>常显不隐藏（隐藏会让每一行的宽度看起来在变）；平时极静，行一悬停才浮出底</td></tr>
+      </tbody>
+    </table>
+    <p class="planfoot">12 条里最早的那条是 9月30日 21:40 —— 面板回答的是"刚截的"，所以时间写到分钟、不写"3 天前"；
+      相对时间会让人算，绝对时间不用算。</p>
+  </section>
+
+  <!-- ══════════ 03 常态 ══════════ -->
+  <section data-od-id="list">
+    <h2><span class="n">03</span>常态：12 行（上限）+ 菜单栏语境</h2>
+    <p class="lead">面板从菜单栏图标下方弹出，右上角对齐屏幕右缘。舌尖指着图标中心 —— 这一枚小三角是"我从哪来"的全部解释。</p>
+    <figure class="stg" data-od-id="panel-context">
+      <figcaption>免费版 · 满 12 行 · 1× 实尺（含菜单栏条）</figcaption>
+      <div class="stage stage--dark" style="justify-content:flex-start;padding:40px 60px">
+        <div class="hero">
+          <div class="dim" style="left:180px;top:8px;width:340px"><span>340</span></div>
+          <div class="dim--v l" style="left:152px;top:30px;height:34px"><span>34 标题带</span></div>
+          <div class="dim--v l" style="left:152px;top:249px;height:46px"><span>46 行（× 12）</span></div>
+          <div class="dim--v l" style="left:152px;top:617px;height:30px"><span>30</span></div>
+          <div class="dim--v" style="left:530px;top:30px;height:618px"><span>618 = 34 + 12×46 + 30 + 2</span></div>
+          <div class="mbar host-dark" style="left:60px;width:460px">
+            <span>Marquee</span><span style="opacity:.62">访达</span><span style="opacity:.62">Safari</span>
+            <span class="mbar__sp"></span>
+            <span class="mbar__mb" style="background:rgba(255,255,255,.16)">
+              <svg viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2" stroke-dasharray="2.4 2"/></svg>
+            </span>
+            <span style="opacity:.62;width:9px;text-align:center;flex:none">◔</span>
+          </div>
+          <div class="host-dark rc" style="--bk:291px;left:180px;top:30px">
+            <div class="rc__hd"><span class="rc__t">最近截图</span><span class="rc__hint">点缩略图 = 复制</span></div>
+            <div class="rc__list">
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#4a5b7e,#7d8fb5)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 18:47</span><span class="rt__m">1234×768 px · 3 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#3f4a52,#6b7a86)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 17:20</span><span class="rt__m">2560×1440 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#585047,#8a7d6e)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 16:02</span><span class="rt__m">840×520 px · 1 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#455e52,#7d9a8b)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 14:38</span><span class="rt__m">1120×640 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#3d4a63,#7286a8)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 11:15</span><span class="rt__m">2880×1800 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#5a4f5e,#8d7f92)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 09:04</span><span class="rt__m">600×400 px · 2 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#4d5358,#7e878d)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月2日 22:31</span><span class="rt__m">1440×900 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#4f5b48,#7f8d76)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月2日 20:12</span><span class="rt__m">1280×800 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#5b5450,#8f847c)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月2日 15:47</span><span class="rt__m">1920×1080 px · 5 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#46525e,#77879a)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月1日 19:05</span><span class="rt__m">760×480 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#4a4f5c,#7b8394)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月1日 13:22</span><span class="rt__m">2048×1280 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#525a4e,#828c7a)"></i><span class="rt__badge"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">9月30日 21:40</span><span class="rt__m">980×620 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+            </div>
+            <div class="rc__ft">免费版只保留最近 12 张 · <b>升级到 Pro</b> 可保留全部</div>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="planfoot">行内第二行的 mono 里，尺寸与标注数之间用 <code>·</code> 分隔，标注数只在有标注时出现 ——
+      没有标注的行不写"0 个标注"（那是噪声，不是信息）。</p>
+  </section>
+
+  <!-- ══════════ 04 状态 ══════════ -->
+  <section data-od-id="states">
+    <h2><span class="n">04</span>状态：悬停 / 按下 / 空态 / 两种底部</h2>
+
+    <h3>「缩略图即按钮」的三步（2× 放大）</h3>
+    <div class="grid grid--2">
+      <figure class="stg"><figcaption>① 常态 · 1pt hairline 描边</figcaption>
+        <div class="stage stage--dark">
+          <div class="zoombox" style="border-color:transparent;background:transparent;padding:10px">
+            <div class="sc" style="--w:200;--h:46">
+              <div class="rt" style="width:200px;height:46px">
+                <span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#4a5b7e,#7d8fb5)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 18:47</span><span class="rt__m">1234×768 px</span></span>
+              </div>
+            </div>
+          </div>
+        </div></figure>
+      <figure class="stg"><figcaption>② 悬停缩略图 · 蓝环 + 复制徽章浮出</figcaption>
+        <div class="stage stage--dark">
+          <div class="zoombox" style="border-color:transparent;background:transparent;padding:10px">
+            <div class="sc" style="--w:200;--h:46">
+              <div class="rt" style="width:200px;height:46px">
+                <span class="rt__im is-hover" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#4a5b7e,#7d8fb5)"></i><span class="rt__badge" style="display:flex"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 18:47</span><span class="rt__m">1234×768 px</span></span>
+              </div>
+            </div>
+          </div>
+        </div></figure>
+      <figure class="stg"><figcaption>③ 按下 · 图面压暗 + 徽章变实心（点完就是剪贴板里那张图）</figcaption>
+        <div class="stage stage--dark">
+          <div class="zoombox" style="border-color:transparent;background:transparent;padding:10px">
+            <div class="sc" style="--w:200;--h:46">
+              <div class="rt" style="width:200px;height:46px">
+                <span class="rt__im is-press" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#4a5b7e,#7d8fb5)"></i><span class="rt__badge" style="display:flex"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 18:47</span><span class="rt__m">1234×768 px</span></span>
+              </div>
+            </div>
+          </div>
+        </div></figure>
+    </div>
+    <p class="planfoot">徽章的位置是缩略图<b>右上角外面 5 pt</b>（压在行内边距里，不会挤出面板）——
+      放在图面正中会挡内容，放在行尾会被误读成第三个动作。悬停整行还会给一行 7% 的底（图中未画，规则同 <code>::hover</code>）。</p>
+
+    <h3>两个动作的悬停 / 按下（1× 局部）</h3>
+    <div class="grid grid--2">
+      <figure class="stg"><figcaption>行悬停 · 两个动作同时浮出 10% 底（整行一起亮，不是各亮各的）</figcaption>
+        <div class="stage stage--dark">
+          <div class="zoombox" style="border-color:transparent;background:transparent;padding:0">
+            <div class="rt is-hover" style="width:330px"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#585047,#8a7d6e)"></i></span>
+              <span class="rt__t"><span class="rt__d">10月3日 16:02</span><span class="rt__m">840×520 px · 1 个标注</span></span>
+              <span class="rt__acts"><span class="btn--mini" style="background:rgba(255,255,255,.10);color:#fff">编辑</span><span class="btn--mini" style="background:rgba(255,255,255,.10);color:#fff">删除</span></span></div>
+          </div>
+        </div></figure>
+      <figure class="stg"><figcaption>按下 [删除]· 只压这一格，行不动（不弹窗、不跳行）</figcaption>
+        <div class="stage stage--dark">
+          <div class="zoombox" style="border-color:transparent;background:transparent;padding:0">
+            <div class="rt is-hover" style="width:330px"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#585047,#8a7d6e)"></i></span>
+              <span class="rt__t"><span class="rt__d">10月3日 16:02</span><span class="rt__m">840×520 px · 1 个标注</span></span>
+              <span class="rt__acts"><span class="btn--mini" style="background:rgba(255,255,255,.10);color:#fff">编辑</span><span class="btn--mini" style="background:rgba(255,255,255,.16);color:#fff">删除</span></span></div>
+          </div>
+        </div></figure>
+    </div>
+    <p class="planfoot">删除后的去处只有废纸篓一句话可说，所以在面板里<b>不留撤销条、不留灰行</b>：这一行直接消失，下一条补上来。
+      如果将来发现误删多，正确的修法是给面板加一行"已移到废纸篓"的短暂回执（同 C 块的三层回执），而不是加弹窗。</p>
+
+    <h3>空态 · 一句话 + 按什么键</h3>
+    <div class="grid grid--2">
+      <figure class="stg" data-od-id="empty"><figcaption>空态 · 面板总高 186（免费版，含底部一行）</figcaption>
+        <div class="stage stage--dark">
+          <div class="host-dark rc" style="--bk:291px">
+            <div class="rc__hd"><span class="rc__t">最近截图</span></div>
+            <div class="rc__empty">
+              <svg viewBox="0 0 24 24"><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8M21 16v2.5a2.5 2.5 0 0 1-2.5 2.5H16M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/><path d="M12 9.5v5M9.5 12h5"/></svg>
+              <b>还没有截图</b><span>按 ⌃Q 截第一张</span>
+            </div>
+            <div class="rc__ft">免费版只保留最近 12 张 · <b>升级到 Pro</b> 可保留全部</div>
+          </div>
+        </div></figure>
+      <figure class="stg"><figcaption>已购买 · 底部整条消失，面板高 588</figcaption>
+        <div class="stage stage--dark" style="align-items:flex-start">
+          <div class="host-dark rc" style="--bk:291px">
+            <div class="rc__hd"><span class="rc__t">最近截图</span><span class="rc__hint">点缩略图 = 复制</span></div>
+            <div class="rc__list">
+              <div class="rt"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#4a5b7e,#7d8fb5)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 18:47</span><span class="rt__m">1234×768 px · 3 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#3f4a52,#6b7a86)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 17:20</span><span class="rt__m">2560×1440 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#585047,#8a7d6e)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 16:02</span><span class="rt__m">840×520 px · 1 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+            </div>
+          </div>
+        </div></figure>
+    </div>
+    <p class="planfoot">空态的面板<b>仍然带着底部那一行</b>：空态正是最该说清"免费版只留 12 张"的时刻。
+      已购买的对照图只画 3 行示意高度差 —— 底部整条消失，标题带那行小字照旧。</p>
+
+    <h3>点了「升级到 Pro」· 就在面板里升起 ② 的载体 B</h3>
+    <div class="grid grid--2">
+      <figure class="stg" data-od-id="cardb-in-panel"><figcaption>不主动弹；点了才出现 —— ② 的载体 B（300 × 115），压在列表下沿，面板不变高</figcaption>
+        <div class="stage stage--dark">
+          <div class="host-dark rc" style="--bk:291px">
+            <div class="rc__hd"><span class="rc__t">最近截图</span><span class="rc__hint">点缩略图 = 复制</span></div>
+            <div class="rc__list" style="height:184px">
+              <div class="rt"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#4a5b7e,#7d8fb5)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 18:47</span><span class="rt__m">1234×768 px · 3 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#3f4a52,#6b7a86)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 17:20</span><span class="rt__m">2560×1440 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#585047,#8a7d6e)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 16:02</span><span class="rt__m">840×520 px · 1 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im" style="width:48px;height:34px"><i class="im" style="background:linear-gradient(135deg,#455e52,#7d9a8b)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 14:38</span><span class="rt__m">1120×640 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+            </div>
+            <div class="rc__ft">免费版只保留最近 12 张 · <b>升级到 Pro</b> 可保留全部</div>
+            <span class="scrim"></span>
+            <div class="card card--bd card--inpanel">
+              <div class="card__head">
+                <svg class="card__glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2.6 8a5.4 5.4 0 1 0 1.6-3.8"/><path d="M2.6 2.9v2.9h2.9"/><path d="M8 5.4V8l1.9 1.2"/></svg>
+                <span class="card__title">保留全部截图是 Pro 能力</span>
+              </div>
+              <p class="card__body">免费版只保留最近 12 张，更早的会被清掉。</p>
+              <div class="card__acts">
+                <span class="btn--txt">了解 Pro</span>
+                <span class="btn--pri">7 天免费试用</span>
+              </div>
+            </div>
+          </div>
+        </div></figure>
+      <figure class="stg"><figcaption>同一个卡片的两个去向</figcaption>
+        <div class="stage stage--dark" style="align-items:flex-start;padding:32px">
+          <ul class="rules" style="margin:0;max-width:44ch">
+            <li><b>卡片是面板里最浅的一层</b>（与覆盖层里 ② 的位置规则一致）：<code>Esc</code> 先收它，再按一下才收面板。</li>
+            <li><b>关掉卡片不丢任何东西</b>：列表还在原来的位置、原来的滚动位置（本块无滚动，所以是原样）。</li>
+            <li><b>两个按钮都不是"关闭"</b>（了解 Pro / 7 天免费试用）—— 与 ② 的规则一致：不存在"拒绝"按钮，
+              关卡片只有 Esc 或点别处。所以关闭之后没有任何"你刚才拒绝了什么"的残留。</li>
+            <li><b>免费版永远只有这一处入口</b>：底部一行字。列表行里不加锁、不加角标、不插入"升级"行。</li>
+            <li><b>卡片就是 ② 的载体 B（300 × 115）</b>：宽度、内边距、按钮高度、槽位规则（标题「&lt;功能&gt;是 Pro 能力」、
+              正文 ≤ 22 字）全部逐字来自 ②，只换填充 —— 所以它看起来是"同一张卡来了"，不是"面板里又长了一张"。
+              用户试用已结束时，换成 ② 三种填充里的另一种，骨架不变。</li>
+          </ul>
+        </div></figure>
+    </div>
+  </section>
+
+  <!-- ══════════ 05 浅色 ══════════ -->
+  <section data-od-id="light">
+    <h2><span class="n">05</span>浅色：同一块面板，跟随系统外观</h2>
+    <p class="lead">面板跟随系统外观（不像覆盖层那样恒深色）。缩略图里的<b>图像内容不变</b> ——
+      变的只有材质、文字与描边，这是"图片是内容、面板是外壳"的直接体现。</p>
+    <figure class="stg" data-od-id="light-panel"><figcaption>浅色 · 菜单栏 + 面板（5 行示意）</figcaption>
+      <div class="stage stage--light" style="justify-content:flex-start;padding:40px 60px">
+        <div style="position:relative;width:520px">
+          <div class="mbar host-light" style="width:460px">
+            <span>Marquee</span><span style="opacity:.62">访达</span><span style="opacity:.62">Safari</span>
+            <span class="mbar__sp"></span>
+            <span class="mbar__mb" style="background:rgba(0,0,0,.08)">
+              <svg viewBox="0 0 14 12"><rect x="1" y="1" width="12" height="10" rx="2" stroke-dasharray="2.4 2"/></svg>
+            </span>
+            <span style="opacity:.62;width:9px;text-align:center;flex:none">◔</span>
+          </div>
+          <div class="host-light rc" style="--bk:291px;margin:6px 0 0 180px">
+            <div class="rc__hd"><span class="rc__t">最近截图</span><span class="rc__hint">点缩略图 = 复制</span></div>
+            <div class="rc__list">
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#4a5b7e,#7d8fb5)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 18:47</span><span class="rt__m">1234×768 px · 3 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#3f4a52,#6b7a86)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 17:20</span><span class="rt__m">2560×1440 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt is-hover"><span class="rt__im is-hover"><i class="im" style="background:linear-gradient(135deg,#585047,#8a7d6e)"></i><span class="rt__badge" style="display:flex"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><path d="M4.5 10.5h5a1 1 0 0 0 1-1v-5"/></svg></span></span>
+                <span class="rt__t"><span class="rt__d">10月3日 16:02</span><span class="rt__m">840×520 px · 1 个标注</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#455e52,#7d9a8b)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 14:38</span><span class="rt__m">1120×640 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+              <div class="rt"><span class="rt__im"><i class="im" style="background:linear-gradient(135deg,#3d4a63,#7286a8)"></i></span>
+                <span class="rt__t"><span class="rt__d">10月3日 11:15</span><span class="rt__m">2880×1800 px</span></span>
+                <span class="rt__acts"><span class="btn--mini">编辑</span><span class="btn--mini">删除</span></span></div>
+            </div>
+            <div class="rc__ft">免费版只保留最近 12 张 · <b>升级到 Pro</b> 可保留全部</div>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="planfoot">浅色下三处需要单独交代：缩略图的描边换成 <code>rgba(0,0,0,.10)</code>（深色是白 10%）；
+      悬停行的底换成 <code>rgba(0,0,0,.06)</code>；徽章仍是 --c-fill 实心 + 白图标 —— <b>它在两套材质下是同一个蓝</b>，
+      因为它是"复制"这个动作的标记，不是外壳的一部分。第三行演示了浅色下的悬停（含徽章）。</p>
+  </section>
+
+  <!-- ══════════ 06 备注 ══════════ -->
+  <section data-od-id="notes">
+    <h2><span class="n">06</span>备注</h2>
+    <ul class="rules">
+      <li><b>与 ③ 的接缝：</b>菜单栏条（<code>.mbar</code>）与图标高亮底逐字来自 <code>first-use-coach.html</code>；
+        面板的舌尖与 ③ 的气泡/便条是同一枚 10 × 10（同一个 45° 旋转方块 + 两条描边）。这一块没有新发明任何外壳。</li>
+      <li><b>与 ② 的接缝：</b>面板里的升级卡是 ② 的<b>载体 B</b>（300 × 115，跟随系统外观 —— 面板跟随系统，卡就跟随面板），
+        类名与全部数值逐字来自 ②（<code>.card/.card--bd/.card__head/__title/__body/__acts</code>），只换填充。
+        所以"升级卡片"这个物件在整个产品里只有一张。一处登记：图标槽新增第 4 个成员「全部历史」（16 pt / 1.5 描边，
+        规格同 ② 已有的三个），建议回写进 ② 的图标槽成员表。</li>
+      <li><b>与 E 块的接缝：</b>「最近截图」在菜单里是一个普通菜单项（不是子菜单）—— 点它弹出的是这块面板。
+        子菜单放不下缩略图，而看不见缩略图就等于回到"我记不清哪张是哪张"。</li>
+      <li><b>缩略图的纵横比：</b>固定 48 × 34，不逐张跟随原图比例。理由：行高必须恒定，否则 12 行会变成 12 种高度，
+        扫视就断了。代价是宽图两端有内衬，这是可接受的。</li>
+      <li><b>12 这个数字的来历：</b>它同时是"看得过来"的上限、免费版的保留张数、和面板的最大行数 ——
+        三个 12 是同一个 12，不是巧合。任何时候要改，三个一起改。</li>
+      <li><b>未决项：</b>Pro 用户超出 12 条的更早截图不在这块面板里（面板只管"最近"）。如果将来需要"看全部"，
+        正确的做法是 Finder 里的保存位置（"在 Finder 中显示"），而不是把这面板扩成图库 —— 那正是 D 块开头拒绝的事。</li>
+      <li><b>稿面统一：</b>03 / 05 节 1× 实尺，04 节局部 1× 与 2×（标注在图注里写明）；单位 pt；对比度沿用 01 节两张表。</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>
