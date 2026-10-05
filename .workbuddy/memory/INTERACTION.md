@@ -149,3 +149,48 @@ SF Symbol **只有一份来源**（Core `AnnotationIcon`），覆盖层与编辑
 三条冒烟出图：`-marqueeSmokeCompliance`（偏好 4 页 / 最近截图 / 引导页）·
 `-marqueeSmokeEditor`（工具条 / 状态行 / 预设）· `-marqueeSmokeProCard`（卡片七态）。
 ⚠️ 覆盖层与菜单栏下拉**拍不到**（要真屏/授权；`NSMenu` 是系统临时面板）。
+
+
+## 材质（玻璃）—— 哪些件有、哪些件永远没有
+
+稿子 ⑩ §07 是**权威名单**。判定只有一处（`ChromeMaterial.resolved(glassAvailable:reduceTransparency:)`），
+视图侧只有一句 `ChromeBackground.makeBackgroundView(cornerRadius:)`。
+
+| 有玻璃 | 没有玻璃 |
+| --- | --- |
+| 覆盖层工具条 + 提示行（**共用一块**材质底，接缝天然无缝） | 冻结画面与选区遮罩（它们是被截的素材本体） |
+| 弹层（色板）· 升级卡片 | 编辑器画布 · 窗口内容面 · 状态行 |
+| 读数框 · 光标提示胶囊（2026-10-04 从实色改过来） | **放大镜那个色值框**（`Readout.opaqueBackdrop` —— 它读的是被采样的像素） |
+| 钉图控制条 · 编辑器标题栏（宿主注入） | **倒计时大数字**（2026-10-04 去掉了底板） |
+| 菜单栏下拉（原生 `NSMenu` 自带材质，非自绘） | 系统对话框 |
+
+⚠️ **回退**：「降低透明度」一开 → 全部切 `.opaque`（实色 `--c-panel`）。
+判据进 Core，顺序（`reduceTransparency` 优先于 `glassAvailable`）被单测钉住。
+⚠️ **不要试图给玻璃出离屏截图** —— 拍不到，只会拍到回退档（PITFALLS 187）。
+
+## 钉图图标是**唯一**一枚自绘图标
+
+`AnnotationGlyph.pin`（16 格：圆头 `circle 8 4.8 r2.4` + 横档 + 直针），
+渲染走 `ChromeGlyph`，工具条与卡片图标槽**同一个来源**（`AnnotationIcon.Icon` 枚举）。
+尺寸由 `AnnotationGlyph.toolbarInkHeight`（= 17，被换掉那枚 SF Symbol 的实测墨迹高）定，
+**换图形不换大小**。除钉图外，任何图标都必须是 `.symbol`（有断言拦）。
+
+
+## 覆盖层显示的是**实时桌面**，不是冻屏图
+
+蒙层只是把它压暗（veil 32%）；**冻住的只有采集到的像素**（供裁剪与放大镜取色用）。
+⇒ 所以材质那条 `blendingMode = .behindWindow` 是对的：它采到的正是用户在玻璃底下看到的东西。
+⚠️ 若哪天把冻屏图改成画在覆盖层窗口**内部**，这条会立刻反过来（玻璃开始糊桌面）。
+
+## 玻璃怎么验（只有一条路）
+
+`./DerivedData/Build/Products/Dev/Marquee.app` +
+
+```bash
+"…/Marquee" -marqueeDiagnostics | grep 屏幕录制     # 先看权限
+open -a "…/Marquee.app" --args -marqueeRequestPermission   # 必须 open -a
+open -a "…/Marquee.app" --args -marqueeSmokeOverlayShot    # → reports/overlay-shot.png
+```
+
+⚠️ **出图和离屏渲染都拍不到玻璃**（PITFALLS 187），而 `CGWindowListCreateImage`
+在 15+ 已被移除 ⇒ 没有"程序自己拍自己"的捷径（188）。

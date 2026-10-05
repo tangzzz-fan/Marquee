@@ -2,6 +2,28 @@ import AppKit
 import MarqueeCore
 import SwiftUI
 
+/// 造一块"浮件材质底"的接缝。
+///
+/// ## 为什么要注入而不是在这里自己画
+///
+/// 材质**只有一份实现**（`ChromeBackground`，在 `MarqueeOverlay`），
+/// 而按模块依赖方向 `MarqueeEditor` **不能** import 它。所以由宿主把工厂递进来。
+///
+/// 另一条路是"在编辑器里再画一块深色/玻璃底"—— 那条路更短，但两份实现迟早分叉，
+/// 而最容易分叉的恰好是那条看不见的规则：**「降低透明度」打开时要退回实色**。
+/// 分叉之后的表现是"开着辅助功能的人，覆盖层是对的不透明、编辑器标题栏还是半透明"——
+/// 而那种错只在辅助功能开着时才看得见。
+///
+/// ⚠️ 返回的视图**必须不参与命中测试**：它是垫在内容下面的，吃掉鼠标
+/// 就等于"工具条看得见、点它没反应"（`ChromeBackground` 那边已经包好了）。
+///
+/// - Parameter cornerRadius: 圆角。编辑器工具条是整条顶边，所以传 0。
+///
+/// ⚠️ 这里**不能**给 typealias 加 `@MainActor`（编译器不收："type alias cannot have
+/// a global actor"）。隔离由持有它的那两处提供：`AnnotationEditorPresenter` 是
+/// `@MainActor` 的，`NSViewRepresentable.makeNSView` 也只在主线程被调。
+public typealias EditorBackgroundFactory = (CGFloat) -> NSView
+
 /// 截图标注窗口。宿主拿到 PNG 后自己写剪贴板。
 @MainActor
 public final class AnnotationEditorPresenter {
@@ -9,9 +31,13 @@ public final class AnnotationEditorPresenter {
     /// 文字识别器（ticket 13）。`nil` 时编辑器里不出现「识别文字」——
     /// 依赖由宿主注入：`MarqueeEditor` 不依赖 `MarqueeCapture`（模块依赖方向）。
     private let recognizer: TextRecognizing?
+    /// 工具条的材质底（稿子 ⑩ §07：`.ebar` 进玻璃族）。同上，由宿主注入。
+    private let background: EditorBackgroundFactory?
 
-    public init(recognizer: TextRecognizing? = nil) {
+    public init(recognizer: TextRecognizing? = nil,
+                background: EditorBackgroundFactory? = nil) {
         self.recognizer = recognizer
+        self.background = background
     }
 
     /// 冒烟：把编辑器的工具条与状态行渲成 PNG，返回落盘路径。
@@ -34,7 +60,8 @@ public final class AnnotationEditorPresenter {
                                                           onCopyPNG: onCopyPNG,
                                                           onSave: onSave,
                                                           seed: seed,
-                                                          recognizer: recognizer)
+                                                          recognizer: recognizer,
+                                                          background: background)
         controller.onClosed = { [weak self, weak controller] in
             guard let self, let controller else { return }
             self.controllers.removeAll { $0 === controller }
@@ -70,7 +97,8 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
          onCopyPNG: @escaping @MainActor (Data) -> Void,
          onSave: @escaping @MainActor (CGImage) -> Void,
          seed: [Annotation] = [],
-         recognizer: TextRecognizing? = nil) {
+         recognizer: TextRecognizing? = nil,
+         background: EditorBackgroundFactory? = nil) {
         // ⚠️ **工具条即标题栏**（设计稿 §10 的登记项之一）：
         // `.fullSizeContentView` 让内容铺到标题栏底下，标题条透明且不画标题 ——
         // 于是那 48 点里放的是工具，而不是"标题 + 工具"两行。
@@ -95,7 +123,8 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
                                         onCopyPNG: onCopyPNG,
                                         onSave: onSave,
                                         seed: seed,
-                                        recognizer: recognizer) { [weak self] in
+                                        recognizer: recognizer,
+                                        background: background) { [weak self] in
             self?.close()
         }
         contentViewController = NSHostingController(rootView: root)
@@ -157,6 +186,11 @@ private struct AnnotationEditorView: View {
     let onSave: (CGImage) -> Void
     let onClose: () -> Void
 
+    /// 工具条的材质底（稿子 ⑩ §07：`.ebar` 进玻璃族）。
+    /// `nil` 时退回**实色** `--c-panel` —— 那不是"没做"，而是与
+    /// 「降低透明度」同一个回退档（`ChromeMaterial.opaque`）。
+    let background: EditorBackgroundFactory?
+
     /// 文字识别（ticket 13）。`nil` = 宿主没注入，工具栏上就不出现「识别文字」。
     @State private var ocr: TextRecognitionService?
     @State private var showOCRPanel = false
@@ -196,11 +230,13 @@ private struct AnnotationEditorView: View {
          onSave: @escaping (CGImage) -> Void,
          seed: [Annotation] = [],
          recognizer: TextRecognizing? = nil,
+         background: EditorBackgroundFactory? = nil,
          onClose: @escaping () -> Void) {
         self.image = image
         self.onCopyPNG = onCopyPNG
         self.onSave = onSave
         self.onClose = onClose
+        self.background = background
         // 识别器只在**首次**建视图时被用一次：`State(initialValue:)` 之后重建视图不会重置它，
         // 否则识别到一半重建一次就会把结果丢掉。
         _ocr = State(initialValue: recognizer.map { TextRecognitionService(recognizer: $0) })
@@ -337,8 +373,24 @@ private struct AnnotationEditorView: View {
         }
         .padding(.horizontal, EditorChrome.toolbarPadding)
         .frame(height: EditorChrome.toolbarHeight)
-        .background(ChromePalette.dark.panel.color)
+        .background { toolbarBackground }
         .overlay(alignment: .bottom) { hairline }
+    }
+
+    /// 工具条的底。
+    ///
+    /// 稿子 ⑩ §07 把 `.ebar` 列进了玻璃族，并附一条约束：
+    /// 「**与画布的接缝保持 1px `--c-hair`**」—— 那条接缝是下面那个 `hairline` overlay，
+    /// 换成玻璃之后它反而更要紧：透明材质与画布之间没有那条线，两者会糊成一片，
+    /// 而"工具条在哪结束、图从哪开始"正是这个窗口唯一的层级信息。
+    @ViewBuilder
+    private var toolbarBackground: some View {
+        if let background {
+            MaterialBackground(radius: 0, factory: background)
+        } else {
+            // 没有注入材质（命令行冒烟、SwiftUI 预览）→ 与「降低透明度」同一档的实色。
+            ChromePalette.dark.panel.color
+        }
     }
 
     /// 文字格：它与别的格**多一件事** —— 选中它时，预设弹层挂在它上面（§05）。
@@ -1596,4 +1648,19 @@ private extension RGB {
 @MainActor
 private struct SnapshotRecognizer: TextRecognizing {
     func recognize(in image: CGImage, languages: [String]) async throws -> [RecognizedTextLine] { [] }
+}
+
+/// 把宿主给的材质视图垫在内容下面。
+///
+/// ⚠️ **`updateNSView` 必须是空的**：材质视图是"造一次就固定"的东西，
+/// 在这里按 `radius` 重新摆一遍的话，它会**吃掉已经画在上面的内容**
+///（`NSGlassEffectView` / `NSVisualEffectView` 都是自己管绘制的）。
+/// 圆角在编辑器这一处恒为 0，本来也没有要更新的东西。
+private struct MaterialBackground: NSViewRepresentable {
+    let radius: CGFloat
+    let factory: EditorBackgroundFactory
+
+    func makeNSView(context: Context) -> NSView { factory(radius) }
+
+    func updateNSView(_ view: NSView, context: Context) {}
 }

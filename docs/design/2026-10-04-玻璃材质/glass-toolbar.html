@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marquee · 玻璃材质 · 浮动工具条效果图（⑩）</title>
+<style>
+/* ── 文档层：与 ①–⑨ 逐字相同 ── */
+:root{--bg:oklch(99% .002 240);--surface:oklch(100% 0 0);--fg:oklch(18% .012 250);--muted:oklch(54% .012 250);--border:oklch(92% .005 250);--accent:oklch(58% .18 255);--font-display:-apple-system,BlinkMacSystemFont,'SF Pro Display',system-ui,sans-serif;--font-body:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif}
+:root{--stage:oklch(96.6% .003 260);--ink:oklch(32% .01 260);--ink2:oklch(52% .008 260);--ink3:oklch(84% .006 260);--dim:oklch(53% .16 32);--mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 13.5px/1.75 var(--font-body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1248px;margin:0 auto;padding:56px 24px 120px}
+.doc__n{font:600 12px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+h1{margin:12px 0 0;font:600 30px/1.25 var(--font-display);letter-spacing:-.02em;color:var(--fg)}
+.doc__lede{margin:14px 0 0;max-width:76ch;color:var(--ink2);font-size:14px}
+.doc__meta{margin:18px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.tag{font:500 11px/1 var(--mono);color:var(--ink2);background:var(--stage);border:1px solid var(--border);border-radius:999px;padding:6px 10px}
+section{margin-top:72px;border-top:1px solid var(--border);padding-top:32px}
+h2{margin:0;font:600 19px/1.3 var(--font-display);letter-spacing:-.01em;color:var(--fg);display:flex;align-items:baseline;gap:12px}
+h2 .n{font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.08em}
+p{margin:12px 0 0;max-width:78ch;color:var(--ink2)}
+.lead{margin-top:14px;color:var(--ink)}
+ul.rules{margin:14px 0 0;padding:0;list-style:none;max-width:84ch}
+ul.rules li{position:relative;padding:8px 0 8px 22px;color:var(--ink2);border-top:1px dashed var(--border)}
+li::before{content:'';position:absolute;left:2px;top:18px;width:7px;height:7px;background:var(--dim);border-radius:1px}
+b{color:var(--ink);font-weight:600}
+code{font:500 12px/1 var(--mono);background:var(--stage);border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:var(--ink)}
+table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px 10px 0;border-bottom:1px solid var(--border)}
+th{font:600 11px/1.4 var(--mono);color:var(--ink2);letter-spacing:.04em;white-space:nowrap}
+td{color:var(--ink2)}
+td b{font-weight:600;color:var(--ink)}
+.toks{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px;margin-top:18px}
+.tok{border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.tok__chip{height:52px;display:flex;align-items:center;justify-content:center}
+.tok__b{padding:10px 12px 12px}
+.tok__n{font:600 12px/1.3 var(--font-body);color:var(--ink)}
+.tok__v{font:500 10.5px/1.6 var(--mono);color:var(--ink2);margin-top:3px}
+/* ── 图形层 ── */
+figure{margin:0}
+figcaption{font:600 10.5px/1.5 var(--mono);color:var(--ink2);margin:0 0 10px;letter-spacing:.02em}
+.stg{margin:18px 0 0}
+.stg figcaption{font:600 10.5px/1.4 var(--mono);color:var(--ink2);margin:8px 0 0;letter-spacing:.04em}
+.grid{display:grid;gap:18px;margin-top:20px}
+.grid--2{grid-template-columns:repeat(2,560px)}
+.stage{position:relative;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:24px;border:1px solid var(--border);overflow:hidden}
+.stage--white{background:#fff;border-color:transparent;box-shadow:inset 0 0 0 1px oklch(0% 0 0 / .06)}
+.stage--ed{background:oklch(22.5% 0 0);border-color:transparent}
+.stage--pho{border-color:transparent;background:oklch(30% .02 260)}
+.pho{position:absolute;inset:0;background:linear-gradient(135deg,oklch(64% .05 250),oklch(40% .04 255) 55%,oklch(56% .05 30))}
+.blob{position:absolute;border-radius:50%}
+.pk{position:absolute;background:rgba(0,0,0,.06);border-radius:3px}
+.pk--w{position:absolute;background:rgba(255,255,255,.10);border-radius:3px}
+.lbl{font:500 10.5px/1.7 var(--mono);color:var(--ink2)}
+.call{position:absolute;font:600 10.5px/1 var(--mono);color:var(--dim);background:rgba(255,255,255,.94);border:1px solid rgba(0,0,0,.06);padding:3px 6px;border-radius:4px;white-space:nowrap}
+.planfoot{margin-top:22px;font:500 11px/1.9 var(--mono);color:var(--ink2)}
+.dim{position:absolute;height:1px;background:var(--dim)}
+.dim::before,.dim::after{content:'';position:absolute;top:-3px;width:1px;height:7px;background:var(--dim)}
+.dim::before{left:0}.dim::after{right:0}
+.dim span{position:absolute;left:50%;top:-9px;transform:translate(-50%,-50%);font:600 10.5px/1 var(--mono);color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+.dim--v{position:absolute;width:1px;background:var(--dim)}
+.dim--v::before,.dim--v::after{content:'';position:absolute;left:-3px;width:7px;height:1px;background:var(--dim)}
+.dim--v::before{top:0}.dim--v::after{bottom:0}
+.dim--v span{position:absolute;left:12px;top:50%;transform:translateY(-50%);font:600 10.5px/1 var(--mono);color:var(--dim);background:var(--bg);padding:3px 5px;white-space:nowrap}
+/* ── 宿主令牌：逐字来自 ④，尾部三个是 ⑩ 新增的玻璃令牌 ── */
+.host-dark{--c-bg:oklch(26.5% 0 0);--c-panel:oklch(31.5% 0 0);--c-inset:oklch(22.5% 0 0);--c-cap:oklch(38% 0 0);--c-capbd:oklch(46% 0 0);--c-border:oklch(43% 0 0);--c-hair:rgba(255,255,255,.10);--c-label:#fff;--c-label2:rgba(255,255,255,.64);--c-fill:oklch(55% .19 254);--c-fill-h:oklch(56% .19 254);--c-fill-p:oklch(48% .19 254);--c-glyph:oklch(72% .14 254);--c-warn:oklch(84% .17 88);--c-ring:oklch(62% .17 254);--c-soft:rgba(255,255,255,.07);--c-soft-h:rgba(255,255,255,.09);--c-soft-p:rgba(255,255,255,.16);--c-ghost:rgba(255,255,255,.10);--c-err:oklch(72% .15 25);--o-veil:rgba(0,0,0,.32);--o-veil-s:rgba(0,0,0,.45);--o-cancel:#ff6b60;--o-done:#30d158;--glass:oklch(26.5% 0 0 / .72);--glass-bd:rgba(255,255,255,.16);--glass-hl:rgba(255,255,255,.15)}
+/* ── 控件层：逐字来自 ④ / ⑦ / ⑧ / ⑨ ── */
+.sc{position:relative;width:calc(var(--w)*2px);height:calc(var(--h)*2px)}
+.sc>*{position:absolute;left:0;top:0;transform:scale(2);transform-origin:0 0}
+.ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.ic--s{width:12px;height:12px}
+.cell{position:relative;flex:none;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.82)}
+.cell.is-hover{background:var(--c-soft-h);color:#fff}
+.cell.is-press{background:var(--c-soft-p);color:#fff}
+.cell.is-on{background:var(--c-fill);color:#fff}
+.cell.is-dim{color:rgba(255,255,255,.30)}
+.cell.is-cancel{color:var(--o-cancel)}
+.cell.is-done{color:var(--o-done)}
+.cell.gap{margin-left:8px}
+.cell--s{width:24px;height:24px;border-radius:5px}
+.vsep{flex:none;width:1px;height:18px;margin:0 6px;background:var(--c-hair)}
+.lk{position:absolute;right:2px;bottom:2px;width:9px;height:9px;stroke:currentColor;fill:none;stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round}
+.bar{display:flex;align-items:center;gap:2px;padding:5px;border-radius:10px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32)}
+.bar--s{padding:4px;border-radius:8px}
+.hz{flex:none;width:34px;height:24px}
+.ocell{display:flex;align-items:center;width:56px;justify-content:flex-start;gap:3px;padding:0 5px}
+.ocell b{font:500 11px/1 var(--mono);color:var(--c-label)}
+.tip{position:absolute;height:26px;padding:0 10px;border-radius:13px;display:flex;align-items:center;gap:6px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);color:var(--c-label);font:400 12px/1 var(--font-body);white-space:nowrap;box-shadow:0 10px 24px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28);-webkit-font-smoothing:antialiased}
+.tip em{font:500 11px/1 var(--mono);font-style:normal;color:var(--c-label2)}
+.strip{display:flex;align-items:center;gap:8px;height:22px;padding:0 10px;border:1px solid rgba(255,255,255,.12);border-top:0;border-radius:0 0 10px 10px;background:var(--c-panel);font:400 11px/1 var(--font-body);color:var(--c-label2)}
+.strip b{font-weight:400;opacity:.55}
+.rd{position:absolute;width:132px;height:44px;padding:6px 10px;border-radius:8px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 28px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28)}
+.rd b{display:block;font:600 14px/1.3 var(--font-display);color:var(--c-label)}
+.rd span{font:500 10.5px/1.3 var(--mono);color:var(--c-label2)}
+.pop{position:absolute;padding:12px;border-radius:10px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 28px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28)}
+.pop__lab{font:500 11px/14px var(--font-body);color:var(--c-label2)}
+.sw{width:22px;height:22px;border-radius:5px;flex:none}
+.menu{width:260px;padding:5px;border-radius:10px;background:var(--c-panel);border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 28px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.28)}
+.mi{display:flex;align-items:center;height:22px;padding:0 8px;border-radius:4px;gap:8px;font:400 13px/1 var(--font-body);color:var(--c-label)}
+.mi i{margin-left:auto;font:500 10.5px/1 var(--mono);font-style:normal;color:var(--c-label2)}
+.mi.is-hover{background:var(--c-fill);color:#fff}
+.mi.is-hover i{color:#fff}
+.mi .lk{position:static;display:inline-flex;align-items:center;margin-left:auto}
+.mi .lk svg{width:9px;height:9px;stroke:currentColor;fill:none;stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round}
+.ebar{display:flex;align-items:center;gap:2px;height:48px;padding:5px;background:var(--c-panel);border-bottom:1px solid var(--c-hair)}
+.tls{display:flex;align-items:center;gap:8px;padding:0 12px 0 8px;flex:none}
+.tl{width:12px;height:12px;border-radius:50%;display:block}
+.tl--r{background:#ff5f57}.tl--y{background:#febc2e}.tl--g{background:#28c840}
+.sp{flex:1}
+.zm{display:flex;align-items:center;gap:2px;flex:none}
+.zmc{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.82)}
+.zmv{width:44px;text-align:center;font:500 11px/1 var(--mono);color:var(--c-label)}
+/* ── ⑩ 玻璃层：全项目唯一新增的一层 ── */
+.glass{position:relative;background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);border-color:var(--glass-bd)}
+.glass::before{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 1px 0 var(--glass-hl);pointer-events:none}
+.glass--raw{background:transparent;border-color:transparent;box-shadow:none}
+.glass--film{background:var(--glass);border-color:transparent;box-shadow:none}
+.glass--raw::before,.glass--film::before{display:none}
+.glass--lt{background:oklch(97% 0 0 / .72);border-color:rgba(0,0,0,.10)}
+.glass--lt .cell{color:rgba(0,0,0,.72)}
+.glass--lt .cell.is-dim{color:rgba(0,0,0,.28)}
+.glass--lt .cell.is-hover{background:rgba(0,0,0,.06);color:#000}
+.glass--lt .cell.is-on{background:var(--c-fill);color:#fff}
+.glass--lt .cell.is-cancel{color:oklch(52% .19 25)}
+.glass--lt .cell.is-done{color:oklch(52% .16 150)}
+.glass--lt .vsep{background:rgba(0,0,0,.12)}
+.glass--lt .lk{color:rgba(0,0,0,.45)}
+.glass--lt .ocell b{color:rgba(0,0,0,.72)}
+.rd.glass,.pop.glass,.tip.glass{position:absolute}
+.sc>.glass{position:absolute;left:0;top:0}
+.ebar.glass{border-bottom-color:rgba(255,255,255,.10)}
+/* 深底上的标注换橙线 */
+.host-dark .dim,.host-dark .dim--v{background:oklch(66% .145 32)}
+.host-dark .dim span,.host-dark .dim--v span{color:oklch(80% .11 32);background:oklch(24% 0 0)}
+.host-dark .lbl{color:rgba(255,255,255,.64)}
+/* 对比度下限的实测条 */
+.ratios{display:flex;gap:14px;margin-top:18px}
+.ratio{flex:1;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.ratio__w{height:56px;background:#fff;display:flex;align-items:center;justify-content:center}
+.rc{height:28px;padding:0 12px;border-radius:8px;display:inline-flex;align-items:center;font:600 11px/1 var(--mono);color:#fff;white-space:nowrap}
+.ratio__b{padding:10px 12px 12px;font:500 11px/1.7 var(--mono);color:var(--ink2)}
+.ratio__b b{color:var(--dim);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="doc__n">⑩ · 玻璃材质（glasses）· 高保真稿</p>
+  <h1>浮动工具条 · 玻璃效果图</h1>
+  <p class="doc__lede">项目此前的浮件全部是不透明深色面板（<code>--c-panel</code>）。这一稿把材质层升级为<b>玻璃</b>：几何、格、状态、文案一字不动，只把「底」换成 深色色膜 + 背景模糊。先给你看工具条 —— 三块底上的效果图、与现在的对照、2× 拆解；末尾给出铺到全家的清单。另：本轮把条上第 13 格「钉图」的图形重画了（见 06）—— 旧的斜图钉在 16px 下糊成一团。</p>
+  <div class="doc__meta">
+    <span class="tag">blur 24 · saturate 160%</span>
+    <span class="tag">色膜 oklch(26.5% 0 0 / .72)</span>
+    <span class="tag">最坏情况 6.1:1</span>
+    <span class="tag">回退 = 现有不透明面</span>
+    <span class="tag">只换材质 · 结构不动</span>
+    <span class="tag">附 · 钉图按钮重设计（06）</span>
+  </div>
+</header>
+
+<!-- ══════════ 01 材质定义 ══════════ -->
+<section data-od-id="material">
+  <h2><span class="n">01</span>材质定义</h2>
+  <p class="lead">玻璃不是「把面板调透明」就完事：透明会吃掉可读性，而可读性是这个工具条在任何内容上都必须保住的。所以配方按<b>最坏情况优先</b>定 —— 先算清「底的邻域全是纯白」时白字还剩多少对比度，再回头选模糊半径与色膜浓度。</p>
+
+  <div class="toks">
+    <div class="tok">
+      <div class="tok__chip" style="position:relative;background:linear-gradient(115deg,oklch(70% .16 60),oklch(60% .2 320) 55%,oklch(65% .15 200))"><span style="width:118px;height:30px;border-radius:8px;background:oklch(100% 0 0 / .06);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)"></span></div>
+      <div class="tok__b"><div class="tok__n">背景模糊</div><div class="tok__v">blur(24px) saturate(160%)</div></div>
+    </div>
+    <div class="tok">
+      <div class="tok__chip" style="position:relative;background:linear-gradient(115deg,oklch(70% .16 60),oklch(60% .2 320) 55%,oklch(65% .15 200))"><span style="position:absolute;inset:0;background:oklch(26.5% 0 0 / .72);display:flex;align-items:center;justify-content:center;color:#fff;font:600 12px/1 var(--mono)">Aa 白字</span></div>
+      <div class="tok__b"><div class="tok__n">色膜</div><div class="tok__v">oklch(26.5% 0 0 / .72)</div></div>
+    </div>
+    <div class="tok">
+      <div class="tok__chip" style="background:oklch(26.5% 0 0)"><span style="width:170px;height:30px;border-radius:8px;background:oklch(33% 0 0);box-shadow:inset 0 1px 0 rgba(255,255,255,.15)"></span></div>
+      <div class="tok__b"><div class="tok__n">上缘高光</div><div class="tok__v">inset 0 1px 0 · rgba(255,255,255,.15)</div></div>
+    </div>
+    <div class="tok">
+      <div class="tok__chip" style="background:oklch(26.5% 0 0)"><span style="width:170px;height:30px;border-radius:8px;background:oklch(33% 0 0);border:1px solid rgba(255,255,255,.16)"></span></div>
+      <div class="tok__b"><div class="tok__n">描边</div><div class="tok__v">1px rgba(255,255,255,.16)（原 12%）</div></div>
+    </div>
+    <div class="tok">
+      <div class="tok__chip"><span style="width:170px;height:30px;border-radius:8px;background:oklch(33% 0 0);box-shadow:0 16px 36px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.32)"></span></div>
+      <div class="tok__b"><div class="tok__n">投影</div><div class="tok__v">0 16px 36px / 0 2px 8px（④ 原值）</div></div>
+    </div>
+    <div class="tok">
+      <div class="tok__chip" style="background:var(--stage)"><span style="width:170px;height:30px;border-radius:8px;background:oklch(31.5% 0 0);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.64);font:500 10.5px/1 var(--mono)">降低透明度 ↩ 回到它</span></div>
+      <div class="tok__b"><div class="tok__n">回退 · 不透明</div><div class="tok__v">--c-panel oklch(31.5% 0 0) · 13.0:1</div></div>
+    </div>
+  </div>
+
+  <figure class="stg" data-od-id="contrast-floor">
+    <figcaption>对比度下限 · 11px 白字压在三种色膜上的实测 —— 底＝纯白内容（最坏情况）</figcaption>
+    <div class="ratios">
+      <div class="ratio"><div class="ratio__w"><i class="rc" style="background:oklch(26.5% 0 0 / .65)">α .65 → 4.88:1</i></div><div class="ratio__b">系统下限 —— 再低一档就不足 4.5</div></div>
+      <div class="ratio"><div class="ratio__w"><i class="rc" style="background:oklch(26.5% 0 0 / .72)">α .72 → 6.10:1</i></div><div class="ratio__b"><b>本稿取值</b> —— 留出余量</div></div>
+      <div class="ratio"><div class="ratio__w"><i class="rc" style="background:oklch(26.5% 0 0 / .80)">α .80 → 7.94:1</i></div><div class="ratio__b">更保守 —— 但玻璃感开始变「板」</div></div>
+      <div class="ratio"><div class="ratio__w"><i class="rc" style="background:oklch(31.5% 0 0)">不透明 → 13.0:1</i></div><div class="ratio__b">回退形态 —— 现有 8 份稿的原值</div></div>
+    </div>
+    <p class="planfoot">模糊不参与这张表：被模糊的是玻璃后面的东西，不是玻璃自己。底越深对比度越高 —— 纯黑内容上 α .72 是 17.2:1，照片中灰是 10.7:1。<br>
+      「降低透明度」一开，全部玻璃切回最后一格的不透明面 —— 旧材质降级成无障碍回退，而不是被删掉。</p>
+  </figure>
+</section>
+
+<!-- ══════════ 02 效果图 A · 三块底 ══════════ -->
+<section data-od-id="effect-a">
+  <h2><span class="n">02</span>效果图 A · 工具条在三块底上</h2>
+  <p class="lead">同一个 15 格、同一条 513 宽的工具条，压在三块内容上：最白的、最深的、最花的。玻璃唯一的考卷就是这三张图 —— 三块底上，字和图标必须一样清楚。</p>
+
+  <div class="grid grid--2">
+    <figure class="stg" data-od-id="effect-white">
+      <div class="stage host-dark stage--white" style="width:560px;height:260px">
+        <i class="pk" style="left:36px;top:34px;width:210px;height:14px;background:rgba(0,0,0,.09)"></i>
+        <i class="pk" style="left:330px;top:34px;width:194px;height:96px;background:rgba(0,0,0,.05)"></i>
+        <i class="pk" style="left:36px;top:64px;width:380px;height:9px"></i>
+        <i class="pk" style="left:36px;top:84px;width:420px;height:9px"></i>
+        <i class="pk" style="left:36px;top:104px;width:340px;height:9px"></i>
+        <i class="pk" style="left:36px;top:132px;width:132px;height:22px;background:oklch(88% .06 254)"></i>
+        <i class="pk" style="left:36px;top:176px;width:470px;height:9px"></i>
+        <i class="pk" style="left:36px;top:196px;width:430px;height:9px"></i>
+        <i class="pk" style="left:36px;top:216px;width:390px;height:9px"></i>
+        <i class="pk" style="left:36px;top:236px;width:300px;height:9px"></i>
+        <div class="bar glass" style="position:absolute;left:24px;top:186px">
+          <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+        </div>
+      </div>
+      <figcaption>纯白文档 · 最坏情况 —— 合成 #626262，白字 6.1:1</figcaption>
+    </figure>
+    <figure class="stg" data-od-id="effect-dark">
+      <div class="stage host-dark stage--ed" style="width:560px;height:260px">
+        <i class="pk--w" style="left:36px;top:34px;width:180px;height:12px"></i>
+        <i class="pk--w" style="left:52px;top:66px;width:300px;height:8px"></i>
+        <i class="pk--w" style="left:52px;top:86px;width:340px;height:8px"></i>
+        <i class="pk--w" style="left:36px;top:118px;width:220px;height:8px"></i>
+        <i class="pk--w" style="left:52px;top:150px;width:360px;height:8px"></i>
+        <i class="pk--w" style="left:52px;top:170px;width:320px;height:8px"></i>
+        <i class="pk--w" style="left:52px;top:190px;width:400px;height:8px"></i>
+        <i class="pk--w" style="left:52px;top:210px;width:280px;height:8px"></i>
+        <i class="pk--w" style="left:52px;top:230px;width:340px;height:8px"></i>
+        <div class="bar glass" style="position:absolute;left:24px;top:186px">
+          <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+        </div>
+      </div>
+      <figcaption>深色编辑器 · 17.2:1 —— 玻璃在深色上只加分</figcaption>
+    </figure>
+  </div>
+  <p class="planfoot">整条 513 = 420 格 + 34 缝 + 39 分隔 + 10 内衬 + 8 前留白 + 2 边 —— 与 ④ 完全同一组数，回写时不重新发明尺寸。<br>
+    白底是最坏的底：28% 的底透过来会把它提到 #626262，刚好还在 4.5 之上。文字行从条下穿过，你能看见它们被模糊、却认不出具体是哪个字 —— 这正是要的效果：底有存在感，但不抢字。</p>
+
+  <figure class="stg" data-od-id="effect-photo">
+    <figcaption>彩色照片 · 玻璃的正脸照 · 1×</figcaption>
+    <div class="stage host-dark stage--pho" style="width:1148px;height:340px">
+      <i class="pho"></i>
+      <i class="blob" style="left:80px;top:40px;width:150px;height:150px;background:oklch(72% .17 55)"></i>
+      <i class="blob" style="left:300px;top:180px;width:120px;height:120px;background:oklch(62% .2 330)"></i>
+      <i class="blob" style="left:640px;top:60px;width:170px;height:170px;background:oklch(70% .15 190)"></i>
+      <i class="blob" style="left:900px;top:200px;width:130px;height:130px;background:oklch(75% .16 95)"></i>
+      <span class="tip glass" style="position:absolute;left:330px;top:206px">拖出要截的区域 <em>· ⏎ 截整屏</em></span>
+      <div class="bar glass" style="position:absolute;left:317px;top:252px">
+        <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+        <i class="vsep"></i>
+        <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+        <i class="vsep"></i>
+        <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+        <i class="vsep"></i>
+        <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+      </div>
+      <div class="dim--v" style="left:272px;top:252px;height:40px"><span>40</span></div>
+      <div class="dim" style="left:317px;top:308px;width:513px"><span>513 · 15 格</span></div>
+      <span class="call" style="left:64px;top:96px">彩色内容被模糊成色块、被提了饱和 —— 但你还认得出它是一张照片</span>
+      <span class="call" style="left:846px;top:252px">色膜 α .72：底是照片的，字永远是白的</span>
+    </div>
+    <p class="planfoot">这一格是「为什么值得做玻璃」的回答：条不再是一张贴纸，它和照片之间发生了关系 —— 色块的走向、明暗的分布都透过来了，但工具本身反而更清楚：因为底被搅匀了。<br>
+      提示胶囊与工具条是两件玻璃叠在一条视线上 —— 提示在 206，条在 252，中间留 20 给内容的颜色自己说话。</p>
+  </figure>
+
+  <figure class="stg" data-od-id="compare">
+    <div class="grid grid--2">
+      <figure>
+        <div class="stage host-dark stage--pho" style="width:560px;height:300px">
+          <i class="pho"></i>
+          <i class="blob" style="left:60px;top:30px;width:130px;height:130px;background:oklch(72% .17 55)"></i>
+          <i class="blob" style="left:360px;top:120px;width:140px;height:140px;background:oklch(62% .2 330)"></i>
+          <div class="bar" style="position:absolute;left:24px;top:238px">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+        </div>
+        <figcaption>现在 · 不透明 #313131 —— 13.0:1，但它是「贴」在内容上的</figcaption>
+      </figure>
+      <figure>
+        <div class="stage host-dark stage--pho" style="width:560px;height:300px">
+          <i class="pho"></i>
+          <i class="blob" style="left:60px;top:30px;width:130px;height:130px;background:oklch(72% .17 55)"></i>
+          <i class="blob" style="left:360px;top:120px;width:140px;height:140px;background:oklch(62% .2 330)"></i>
+          <div class="bar glass" style="position:absolute;left:24px;top:238px">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+        </div>
+        <figcaption>玻璃 · 色膜 .72 + 模糊 24 —— 最坏 6.1:1，内容从这里透过去</figcaption>
+      </figure>
+    </div>
+    <p class="planfoot">同一个位置、同一条条、同一张照片。左边「读得清，但它盖住了一切」；右边「读得清，同时你始终看得见底下是什么」。</p>
+  </figure>
+
+  <figure class="stg" data-od-id="anatomy">
+    <figcaption>2× 拆解 · 同一小段（3 格）的三步 —— 模糊是物理，色膜是安全，高光与描边是身份</figcaption>
+    <div class="stage host-dark stage--pho" style="width:1148px;height:300px">
+      <i class="pho"></i>
+      <i class="blob" style="left:120px;top:20px;width:140px;height:140px;background:oklch(72% .17 55)"></i>
+      <i class="blob" style="left:420px;top:170px;width:150px;height:150px;background:oklch(70% .15 190)"></i>
+      <i class="blob" style="left:900px;top:40px;width:120px;height:120px;background:oklch(62% .2 330)"></i>
+      <div class="sc" style="--w:98;--h:40;position:absolute;left:44px;top:22px"><div class="bar glass glass--raw">
+        <span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span>
+      </div></div>
+      <span class="lbl" style="position:absolute;left:270px;top:60px">① 只上模糊 —— 白图标在浅色内容上直接化掉</span>
+      <div class="sc" style="--w:98;--h:40;position:absolute;left:44px;top:106px"><div class="bar glass glass--film">
+        <span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span>
+      </div></div>
+      <span class="lbl" style="position:absolute;left:270px;top:144px">② + 色膜 α .72 —— 字回来了，但件还没有「边」</span>
+      <div class="sc" style="--w:98;--h:40;position:absolute;left:44px;top:190px"><div class="bar glass">
+        <span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span>
+      </div></div>
+      <span class="lbl" style="position:absolute;left:270px;top:228px">③ + 上缘高光 + 16% 描边 + 投影 —— 重新成为一个「件」</span>
+      <span class="call" style="left:640px;top:186px">上缘高光 · inset 1pt</span>
+      <span class="call" style="left:640px;top:210px">色膜 α .72（可读性的下限）</span>
+      <span class="call" style="left:640px;top:234px">模糊 24 + 饱和 160%（在件的后面）</span>
+    </div>
+    <p class="planfoot">2× 稿里模糊看起来是 48 —— 那是放大镜的账，1× 仍是 24。① 演示的正是「把面板调透明就完事」的下场：浅色内容一透，白图标先阵亡。</p>
+  </figure>
+</section>
+
+<!-- ══════════ 03 效果图 B · 状态 ══════════ -->
+<section data-od-id="effect-b">
+  <h2><span class="n">03</span>效果图 B · 状态</h2>
+  <p class="lead">玻璃会不会把状态吃掉？逐格验一遍：常态、悬停、激活、禁用。这四条是全项目格子的公共状态，玻璃下必须原样成立。</p>
+
+  <figure class="stg" data-od-id="states">
+    <div class="grid grid--2">
+      <figure>
+        <div class="stage host-dark stage--ed" style="width:560px;height:150px">
+          <div class="bar glass" style="position:absolute;left:24px;top:56px">
+            <span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span><i class="vsep"></i><span class="cell"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-redo"/></svg></span>
+          </div>
+        </div>
+        <figcaption>① 常态 —— 82% 白图标</figcaption>
+      </figure>
+      <figure>
+        <div class="stage host-dark stage--ed" style="width:560px;height:150px">
+          <div class="bar glass" style="position:absolute;left:24px;top:56px">
+            <span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell is-hover"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span><i class="vsep"></i><span class="cell"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-redo"/></svg></span>
+          </div>
+        </div>
+        <figcaption>② 悬停 · 遮罩格的底提亮 9%</figcaption>
+      </figure>
+      <figure>
+        <div class="stage host-dark stage--ed" style="width:560px;height:150px">
+          <div class="bar glass" style="position:absolute;left:24px;top:56px">
+            <span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span><i class="vsep"></i><span class="cell"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-redo"/></svg></span>
+          </div>
+        </div>
+        <figcaption>③ 激活 · --c-fill 实心 —— 仍是条上最亮的一块</figcaption>
+      </figure>
+      <figure>
+        <div class="stage host-dark stage--ed" style="width:560px;height:150px">
+          <div class="bar glass" style="position:absolute;left:24px;top:56px">
+            <span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span><i class="vsep"></i><span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span>
+          </div>
+        </div>
+        <figcaption>④ 禁用 · 30% 白 —— 还读得出，但明显退后</figcaption>
+      </figure>
+    </div>
+    <p class="planfoot">状态层一个字没改：悬停 = 软白 +9%、激活 = <code>--c-fill</code> 实心、禁用 = 30% 白。玻璃下这三条全部照旧成立，因为提亮/压暗压在深色色膜上，和压在不透明面上是同一道数学。</p>
+  </figure>
+</section>
+
+<!-- ══════════ 04 效果图 C · 浅色外观 ══════════ -->
+<section data-od-id="effect-c">
+  <h2><span class="n">04</span>效果图 C · 浅色外观</h2>
+  <p class="lead">浅色外观不是第二套材质，是同两个令牌的反相 —— 色膜从 26.5% 黑 .72 换成 97% 白 .72，图标从白换成 72% 黑。最坏情况也翻个个儿：从「纯白内容」变成「纯黑内容」。</p>
+
+  <figure class="stg" data-od-id="glass-light">
+    <div class="grid grid--2">
+      <figure>
+        <div class="stage host-dark stage--white" style="width:560px;height:220px">
+          <i class="pk" style="left:36px;top:34px;width:180px;height:12px"></i>
+          <i class="pk" style="left:36px;top:70px;width:400px;height:9px"></i>
+          <i class="pk" style="left:36px;top:90px;width:360px;height:9px"></i>
+          <i class="pk" style="left:36px;top:110px;width:300px;height:9px"></i>
+          <i class="pk" style="left:36px;top:150px;width:440px;height:9px"></i>
+          <i class="pk" style="left:36px;top:170px;width:380px;height:9px"></i>
+          <i class="pk" style="left:36px;top:190px;width:420px;height:9px"></i>
+          <div class="bar glass glass--lt" style="position:absolute;left:24px;top:150px">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+        </div>
+        <figcaption>浅色外观 · 压在白色文档上 —— 靠 10% 黑描边与投影立住</figcaption>
+      </figure>
+      <figure>
+        <div class="stage host-dark stage--ed" style="width:560px;height:220px">
+          <i class="pk--w" style="left:36px;top:40px;width:200px;height:10px"></i>
+          <i class="pk--w" style="left:36px;top:80px;width:340px;height:8px"></i>
+          <i class="pk--w" style="left:36px;top:100px;width:300px;height:8px"></i>
+          <i class="pk--w" style="left:36px;top:120px;width:260px;height:8px"></i>
+          <i class="pk--w" style="left:36px;top:170px;width:360px;height:8px"></i>
+          <i class="pk--w" style="left:36px;top:190px;width:300px;height:8px"></i>
+          <div class="bar glass glass--lt" style="position:absolute;left:24px;top:150px">
+            <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+            <i class="vsep"></i>
+            <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+          </div>
+        </div>
+        <figcaption>浅色外观 · 压在深色内容上（最坏）—— 合成 #B0B0B0，深字 7.6:1</figcaption>
+      </figure>
+    </div>
+    <p class="planfoot">件还是同一件，格还是同一格。浅色玻璃只在系统浅色外观下出现（① 的浅色面同族）；深色外观里永远用深色玻璃，不做「浅色玻璃压深色内容」这种花活 —— 那一条留给浅色外观自己选择。</p>
+  </figure>
+</section>
+
+<!-- ══════════ 05 整体 · 家族 ══════════ -->
+<section data-od-id="family">
+  <h2><span class="n">05</span>整体 · 同一材质铺到全家</h2>
+  <p class="lead">玻璃有资格门槛：只有<b>浮在用户内容上的件</b>才配。六件家族成员逐一过一遍 —— 然后是不准玻璃的名单。</p>
+
+  <div class="grid grid--2">
+    <figure class="stg" data-od-id="family-pin">
+      <div class="stage host-dark stage--pho" style="width:560px;height:150px">
+        <i class="pho"></i>
+        <i class="blob" style="left:70px;top:20px;width:110px;height:110px;background:oklch(72% .17 55)"></i>
+        <i class="blob" style="left:400px;top:40px;width:120px;height:120px;background:oklch(62% .2 330)"></i>
+        <div class="bar bar--s glass" style="position:absolute;left:203px;top:58px"><i class="hz"></i><span class="cell cell--s"><svg class="ic ic--s"><use href="#i-thru"/></svg></span><span class="ocell"><svg class="ic ic--s" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="2.2"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/></svg><b>100%</b></span><span class="cell cell--s"><svg class="ic ic--s"><use href="#i-x"/></svg></span></div>
+      </div>
+      <figcaption>⑨ 钉图 · 控制条（154 宽 · 4 格）—— 透过它能看到钉的图</figcaption>
+    </figure>
+
+    <figure class="stg" data-od-id="family-chips">
+      <div class="stage host-dark stage--pho" style="width:560px;height:150px">
+        <i class="pho"></i>
+        <i class="blob" style="left:340px;top:30px;width:130px;height:130px;background:oklch(70% .15 190)"></i>
+        <span class="tip glass" style="position:absolute;left:32px;top:34px">拖出要截的区域 <em>· ⏎ 截整屏</em></span>
+        <div class="rd glass" style="position:absolute;left:352px;top:28px"><b>1120 × 640</b><span>x 352 · y 192 px</span></div>
+      </div>
+      <figcaption>④ 提示胶囊 + 读数框 —— 读数框里 600 重的大字仍是原生对比</figcaption>
+    </figure>
+
+    <figure class="stg" data-od-id="family-menu">
+      <div class="stage host-dark stage--pho" style="width:560px;height:240px">
+        <i class="pho"></i>
+        <i style="position:absolute;left:0;top:0;width:560px;height:24px;background:oklch(24% 0 0)"></i>
+        <span style="position:absolute;right:12px;top:6px;color:rgba(255,255,255,.8)"><svg class="ic ic--s" style="width:13px;height:13px"><use href="#i-scan"/></svg></span>
+        <div class="menu glass" style="position:absolute;left:150px;top:24px">
+          <div class="mi"><span>截屏</span><i>⌃Q</i></div>
+          <div class="mi"><span>滚动截屏</span><i class="lk"><svg><use href="#i-lock"/></svg></i></div>
+          <div class="mi"><span>最近截图</span><i></i></div>
+          <div class="mi is-hover"><span>设置…</span><i>⌘,</i></div>
+        </div>
+      </div>
+      <figcaption>⑦ 菜单栏下拉 —— 5px 内衬 + 22 高的行，行悬停仍是实心 --c-fill</figcaption>
+    </figure>
+
+    <figure class="stg" data-od-id="family-ebar">
+      <div class="stage host-dark stage--ed" style="width:560px;height:240px">
+        <i class="pk--w" style="left:24px;top:86px;width:300px;height:9px"></i>
+        <i class="pk--w" style="left:24px;top:106px;width:340px;height:9px"></i>
+        <i class="pk--w" style="left:24px;top:126px;width:260px;height:9px"></i>
+        <i class="pk--w" style="left:24px;top:160px;width:380px;height:9px"></i>
+        <i class="pk--w" style="left:24px;top:180px;width:320px;height:9px"></i>
+        <div class="ebar glass" style="position:absolute;left:0;top:0;width:560px">
+          <span class="tls"><i class="tl tl--r"></i><i class="tl tl--y"></i><i class="tl tl--g"></i></span>
+          <span class="cell is-on"><svg class="ic"><use href="#i-select"/></svg></span><span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span>
+          <span class="sp"></span>
+          <span class="zm"><span class="zmc"><svg class="ic"><use href="#i-minus"/></svg></span><b class="zmv">34%</b><span class="zmc"><svg class="ic"><use href="#i-plus"/></svg></span></span>
+        </div>
+      </div>
+      <figcaption>⑧ 编辑器标题栏 —— 与画布的接缝保持 1px --c-hair</figcaption>
+    </figure>
+
+    <figure class="stg" data-od-id="family-joint">
+      <div class="stage host-dark stage--ed" style="width:560px;height:170px">
+        <div class="bar glass" style="position:absolute;left:24px;top:48px;border-radius:10px 10px 0 0">
+          <span class="cell"><svg class="ic"><use href="#i-rect"/></svg></span><span class="cell"><svg class="ic"><use href="#i-ellipse"/></svg></span><span class="cell"><svg class="ic"><use href="#i-emoji"/></svg></span><span class="cell"><svg class="ic"><use href="#i-arrow"/></svg></span><span class="cell is-on"><svg class="ic"><use href="#i-brush"/></svg></span><span class="cell"><svg class="ic"><use href="#i-mosaic"/></svg></span><span class="cell"><svg class="ic"><use href="#i-text"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-style"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell"><svg class="ic"><use href="#i-scan"/></svg><svg class="lk"><use href="#i-lock"/></svg></span>
+          <i class="vsep"></i>
+          <span class="cell is-dim"><svg class="ic"><use href="#i-undo"/></svg></span><span class="cell is-dim"><svg class="ic"><use href="#i-redo"/></svg></span><span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+        </div>
+        <div class="strip glass" style="position:absolute;left:24px;top:88px;width:513px">继续往下滚，或按空格自动滚 <b>·</b> ⏎ 结束 <b>·</b> ⌘S 结束并保存 <b>·</b> Esc 取消</div>
+      </div>
+      <figcaption>④ 工具条 + 提示行 —— 共材质的零缝：两层模糊在接缝处连成一片</figcaption>
+    </figure>
+
+    <figure class="stg" data-od-id="family-pop">
+      <div class="stage host-dark stage--pho" style="width:560px;height:200px">
+        <i class="pho"></i>
+        <i class="blob" style="left:60px;top:40px;width:120px;height:120px;background:oklch(72% .17 55)"></i>
+        <i class="blob" style="left:400px;top:60px;width:110px;height:110px;background:oklch(70% .15 190)"></i>
+        <div class="pop glass" style="position:absolute;left:186px;top:56px">
+          <div class="pop__lab">颜色</div>
+          <div style="display:flex;gap:6px;margin-top:8px"><i class="sw" style="background:oklch(58% .22 28)"></i><i class="sw" style="background:oklch(74% .16 65)"></i><i class="sw" style="background:oklch(85% .16 95)"></i><i class="sw" style="background:oklch(70% .17 150)"></i><i class="sw" style="background:oklch(58% .18 255)"></i><i class="sw" style="background:oklch(58% .2 300)"></i></div>
+        </div>
+      </div>
+      <figcaption>④ 弹层 · 色板 —— 出现时用户正需要看着底下的图挑颜色</figcaption>
+    </figure>
+  </div>
+  <p class="planfoot">六件里没有一件改变了别人的几何：钉图条还是 154 × 34 的 4 格、菜单还是 260 宽、标题栏还是 48 高。玻璃换的只是「底」，恰好这一层是它们共用的。<br>
+    工具栏与提示行的接缝是玻璃最讨巧的一处：两层同色膜叠着，模糊在接缝处不断流 —— 它们本来就该是「一个东西」。</p>
+</section>
+
+<!-- ══════════ 06 钉图按钮 · 重设计 ══════════ -->
+<section data-od-id="pin-redesign">
+  <h2><span class="n">06</span>钉图按钮 · 重设计</h2>
+  <p class="lead">条上第 13 格是「钉图」。旧图形是一只 45° 斜着的图钉 —— 思路对，画法不对，而且不对在放大镜看不见、只有缩回 16px 才发作的地方：<b>轮廓不闭合</b>（从 (0.7,11.3) 回到 (9.4,1.9) 的收口边根本没画），右肩又有<b>两条平行线只相距 0.92</b> —— 1.5 的笔画压下去并成一条 2.4 宽的糊带。重画：<b>摆正、圆头、直针</b>。</p>
+
+  <div class="grid grid--2">
+    <figure class="stg" data-od-id="pin-old">
+      <div class="stage host-dark stage--ed" style="width:560px;height:220px">
+        <span class="cell" style="position:absolute;left:64px;top:56px"><svg class="ic"><path d="M9.4 1.9 14 6.5l-1.7 1.7-1-.3-2.6 2.6.3 2-1.5 1.5L3.4 9.9l-1.7.4-1 1"/><path d="M4.3 11.7 1.9 14.1"/></svg></span>
+        <svg class="ic" style="position:absolute;left:150px;top:24px;width:64px;height:64px;color:rgba(255,255,255,.82)"><path d="M9.4 1.9 14 6.5l-1.7 1.7-1-.3-2.6 2.6.3 2-1.5 1.5L3.4 9.9l-1.7.4-1 1"/><path d="M4.3 11.7 1.9 14.1"/></svg>
+        <span class="lbl" style="position:absolute;left:64px;top:96px">16px 实格</span>
+        <span class="lbl" style="position:absolute;left:152px;top:96px">4×</span>
+        <span class="call" style="left:300px;top:34px">轮廓不闭合 —— 收口边（长 12.8）没有画</span>
+        <span class="call" style="left:300px;top:62px">右肩两笔相距 0.92，笔画 1.5 → 并成 2.4 的糊带</span>
+        <span class="call" style="left:300px;top:90px">中间还夹着一个 0.3 的来回拐点</span>
+        <span class="call" style="left:300px;top:118px">斜置 —— 全条唯一不站直的图标</span>
+      </div>
+      <figcaption>旧 · i-pin —— 缺陷只有缩到 1× 才发作</figcaption>
+    </figure>
+    <figure class="stg" data-od-id="pin-new">
+      <div class="stage host-dark stage--ed" style="width:560px;height:220px">
+        <span class="cell" style="position:absolute;left:64px;top:56px"><svg class="ic"><use href="#i-pin"/></svg></span>
+        <svg class="ic" style="position:absolute;left:150px;top:24px;width:64px;height:64px;color:rgba(255,255,255,.82)"><use href="#i-pin"/></svg>
+        <span class="lbl" style="position:absolute;left:64px;top:96px">16px 实格</span>
+        <span class="lbl" style="position:absolute;left:152px;top:96px">4×</span>
+        <span class="call" style="left:300px;top:34px">圆头 ⌀4.8 —— 领口从头的 45° 处接出</span>
+        <span class="call" style="left:300px;top:62px">横档 6.2 —— 图钉的「指纹」，也是它和笔的区别</span>
+        <span class="call" style="left:300px;top:90px">直针 4.5 —— 与横档同轴，一根线，不并线</span>
+      </div>
+      <figcaption>新 · 圆头 / 横档 / 直针 —— 三件事，各自到位</figcaption>
+    </figure>
+  </div>
+  <p class="planfoot">新版几何（16 格）：<code>circle 8 4.8 r2.4</code> · 领口 <code>M6.3 6.5 4.9 8.9h6.2l-1.4-2.4</code> · 针 <code>M8 8.9v4.5</code>。视觉边界 x 4.15–11.85 · y 1.65–14.15 —— 横竖向都居中；针只占 x 7.25–8.75，右下 9 × 9 完整留给 Pro 锁。<br>
+    为什么摆正：斜针在 1× 下不是风格问题而是故障（上面三条）；条上其余 14 格全部正面视图，它是唯一会「摇」的一个。正面图钉的公众认知（圆头 + 横档 + 针）一点没丢 —— <b>故意不随 macOS 的 45° 斜针惯例</b>，登记在案。</p>
+
+  <figure class="stg" data-od-id="pin-inbar">
+    <figcaption>在条里 · 钉图与左右邻居的真实邻接（save / 钉图+锁 / ✗ / ✓）· 1× 与 2×</figcaption>
+    <div class="stage host-dark stage--ed" style="width:1148px;height:170px">
+      <div class="bar glass" style="position:absolute;left:56px;top:64px">
+        <span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+      </div>
+      <div class="sc" style="--w:138;--h:40;position:absolute;left:280px;top:18px"><div class="bar glass">
+        <span class="cell"><svg class="ic"><use href="#i-save"/></svg></span><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span><span class="cell gap is-cancel"><svg class="ic"><use href="#i-x"/></svg></span><span class="cell is-done"><svg class="ic"><use href="#i-check"/></svg></span>
+      </div></div>
+      <span class="lbl" style="position:absolute;left:56px;top:112px">1× · 真实尺寸</span>
+      <span class="lbl" style="position:absolute;left:280px;top:102px">2×</span>
+      <span class="call" style="left:640px;top:52px">横档让它在「箭、叉、钩」之间一眼可辨 —— 与 save 的箭头完全不同族</span>
+      <span class="call" style="left:640px;top:80px">上一版在这里读起来像第二支笔 —— brush 就在同一条斜线上</span>
+      <span class="call" style="left:640px;top:108px">针与横档同轴：右下 9 × 9 的锁位分毫不动</span>
+    </div>
+  </figure>
+
+  <figure class="stg" data-od-id="pin-states">
+    <figcaption>钉图格 · 四种状态 —— 格、锁、位置一动不动，动的只是那 16 × 16 里的三条线</figcaption>
+    <div class="stage host-dark stage--ed" style="width:1148px;height:140px">
+      <div class="bar glass" style="position:absolute;left:120px;top:28px"><span class="cell"><svg class="ic"><use href="#i-pin"/></svg></span></div>
+      <div class="bar glass" style="position:absolute;left:360px;top:28px"><span class="cell is-hover"><svg class="ic"><use href="#i-pin"/></svg></span></div>
+      <div class="bar glass" style="position:absolute;left:600px;top:28px"><span class="cell is-press"><svg class="ic"><use href="#i-pin"/></svg></span></div>
+      <div class="bar glass" style="position:absolute;left:840px;top:28px"><span class="cell"><svg class="ic"><use href="#i-pin"/></svg><svg class="lk"><use href="#i-lock"/></svg></span></div>
+      <span class="lbl" style="position:absolute;left:132px;top:82px">常态 · 82% 白</span>
+      <span class="lbl" style="position:absolute;left:372px;top:82px">悬停 · 底 +9%</span>
+      <span class="lbl" style="position:absolute;left:612px;top:82px">按下 · 底 +16%</span>
+      <span class="lbl" style="position:absolute;left:852px;top:82px">Free · 锁在右下 9 × 9</span>
+    </div>
+  </figure>
+
+  <p class="planfoot">回写：<code>#i-pin</code> 已在 <b>④ capture-overlay（L305）· ⑨ pin-countdown-permissions（L548）</b> 同步替换 —— 一处定义、处处同形；⑨ 的令牌卡里那枚 28 / 24 的展示格也随之更新。<br>
+    锁、格、状态、位置全部没动 —— 这次只换了那 16 × 16 里的三条线。</p>
+</section>
+
+<!-- ══════════ 07 规则与回写 ══════════ -->
+<section data-od-id="rules">
+  <h2><span class="n">07</span>规则、边界与回写清单</h2>
+  <ul class="rules">
+    <li><b>玻璃只给浮件</b>：浮动工具条 / 提示行 / 读数框 / 提示胶囊 / 钉图控制条 / 弹层 / 菜单栏下拉 / 窗口标题栏 —— 共 8 类，一个不多。</li>
+    <li><b>永远不玻璃</b>：覆盖层的冻结画面与选区遮罩（它们是被截的素材本体）、编辑器画布、窗口内容面、倒计时大数字、系统对话框。</li>
+    <li><b>blur 不叠在滚动内容上</b>：模糊只出现在件上，内容面永远是平的 —— GPU 开销只跟浮件数量走（一屏最多 3 件）。</li>
+    <li><b>「降低透明度」是回退开关</b>：一开，全部 <code>.glass</code> 切回 <code>--c-panel</code> 不透明 —— 现有 8 份稿的不透明面就是回退稿，不需要第二套设计。</li>
+    <li><b>色膜 α 是硬下限</b>：.65 是最低（纯白内容 4.88:1），本稿取 .72（6.10:1）；浅色玻璃同理取 .72。</li>
+    <li><b>白芯黑边与玻璃各管各的</b>：玻璃管「条」，描边管「图」—— 钉图本体与选区描边不透明、不变。</li>
+  </ul>
+
+  <table data-od-id="ledger">
+    <tr><th>文件</th><th>替换点</th><th>说明</th></tr>
+    <tr><td><b>④ capture-overlay</b></td><td><code>.bar / .strip / .rd / .tip / .pop</code> 追加 <code>.glass</code></td><td>整条 513 与全部格不动</td></tr>
+    <tr><td><b>⑦ menubar-menu</b></td><td><code>.menu</code> 追加 <code>.glass</code></td><td>行悬停仍是实心 --c-fill</td></tr>
+    <tr><td><b>⑧ editor-window</b></td><td><code>.ebar</code> 追加 <code>.glass</code></td><td>与画布的接缝保持 1px --c-hair</td></tr>
+    <tr><td><b>⑨ pin-countdown</b></td><td><code>.bar--s</code> 追加 <code>.glass</code></td><td>倒计时无材质，不动</td></tr>
+    <tr><td><b>①⑤⑥ · 窗口类</b></td><td>标题栏带是否玻璃 —— <b>待定</b></td><td>内容面一律不动；回写前单独出一张对照再定</td></tr>
+    <tr><td><b>本稿 · 玻璃材质</b></td><td>尚未回写任何文件</td><td>先看效果图，点头后按上表逐稿回写；钉图图形替换是另一件事，已在 06 完成</td></tr>
+  </table>
+
+  <h3 style="margin:32px 0 0;font:600 14px/1.4 var(--font-display);color:var(--fg)">语言升级登记</h3>
+  <ul class="rules">
+    <li><b>材质层换底</b>：不透明 <code>--c-panel</code> → <code>.glass</code>（色膜 .72 + 模糊 24 + 饱和 160%）；<code>--c-panel</code> 保留为回退。</li>
+    <li><b>描边 12% → 16%</b>：透底后原 12% 会「化」，+4 个点才重新成为一条边。</li>
+    <li><b>上缘高光是独立层</b>（<code>.glass::before</code>），不用 box-shadow 归并 —— 每件原有投影不被归一。</li>
+    <li><b>浅色外观走 <code>.glass--lt</code> 反相</b>，不是第二套材质。</li>
+    <li><b><code>-webkit-backdrop-filter</code> 前缀随行</b> —— 目标里还有旧 WebKit。</li>
+    <li><b>本稿新增的只是材质层</b>；几何、排版、状态、文案一字未动。</li>
+  </ul>
+
+  <p class="planfoot">接缝（本稿与 ①–⑨ 的第一处材质分叉）：从 ⑩ 起，「不透明深面」在语言里的角色从「默认」变为「回退」。这不是新设计，是给旧设计一个新职位。</p>
+</section>
+
+</div>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <symbol id="i-rect" viewBox="0 0 16 16"><rect x="2.75" y="3.5" width="10.5" height="9" rx="1.5"/></symbol>
+  <symbol id="i-ellipse" viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="5.5" ry="4.5"/></symbol>
+  <symbol id="i-emoji" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M5.9 9.3c.5.9 1.2 1.3 2.1 1.3s1.6-.4 2.1-1.3"/><path d="M6.1 6.3h.01M9.9 6.3h.01"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3.2 12.8 12.6 3.4"/><path d="M6.7 3.2h6.3v6.3"/></symbol>
+  <symbol id="i-brush" viewBox="0 0 16 16"><path d="M3.4 12.6 4.9 9l5.7-5.7a1.45 1.45 0 0 1 2.1 2.1L7 11.1l-3.6 1.5Z"/><path d="M4.9 9 7 11.1"/></symbol>
+  <symbol id="i-mosaic" viewBox="0 0 16 16"><rect x="2.75" y="2.75" width="4.6" height="4.6"/><rect x="8.65" y="8.65" width="4.6" height="4.6"/><rect x="8.65" y="2.75" width="4.6" height="4.6" stroke-dasharray="1.7 1.4"/><rect x="2.75" y="8.65" width="4.6" height="4.6" stroke-dasharray="1.7 1.4"/></symbol>
+  <symbol id="i-text" viewBox="0 0 16 16"><path d="M3.2 4.3h9.6M8 4.3v8.4M6 12.7h4"/></symbol>
+  <symbol id="i-style" viewBox="0 0 16 16"><path d="M2.8 5h10.4M2.8 8h10.4M2.8 11h10.4"/><circle cx="6" cy="5" r="1.55" fill="currentColor" stroke="none"/><circle cx="10.2" cy="8" r="1.55" fill="currentColor" stroke="none"/><circle cx="5.2" cy="11" r="1.55" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 16 16"><path d="M2.75 5.2V3.6a.85.85 0 0 1 .85-.85h1.6M11.9 2.75h1.35a.85.85 0 0 1 .85.85v1.6M13.25 10.8v1.6a.85.85 0 0 1-.85.85h-1.6M4.1 13.25H3.6a.85.85 0 0 1-.85-.85v-1.6"/><path d="M4.6 8h6.8"/><path d="M5.7 5.6h4.6M5.7 10.4h2.6"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3.5 7.3h6.2a3.35 3.35 0 0 1 0 6.7H6"/><path d="M6 4.4 3.3 7.3 6 10.2"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 16 16"><path d="M12.5 7.3H6.3a3.35 3.35 0 0 0 0 6.7H10"/><path d="M10 4.4 12.7 7.3 10 10.2"/></symbol>
+  <symbol id="i-save" viewBox="0 0 16 16"><path d="M8 2.9v7.2"/><path d="M5.4 7.5 8 10.1l2.6-2.6"/><path d="M3.4 12.6h9.2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16"><circle cx="8" cy="4.8" r="2.4"/><path d="M6.3 6.5 4.9 8.9h6.2l-1.4-2.4"/><path d="M8 8.9v4.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5 6.6 11.6 12.5 4.6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 9 9"><rect x="1.5" y="3.9" width="6" height="4.1" rx="1.1"/><path d="M2.9 3.9V3a1.6 1.6 0 0 1 3.2 0v.9"/></symbol>
+  <symbol id="i-select" viewBox="0 0 16 16"><path d="M5 3v9l2.3-2.1 1.8 3.7 1.9-.9-1.8-3.6 3.3-.5z"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 16 16"><path d="M4.2 8h7.6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 4.2v7.6M4.2 8h7.6"/></symbol>
+  <symbol id="i-thru" viewBox="0 0 16 16"><path d="M5 2.2v8.5l2.2-2 1.7 3.5 1.8-.9-1.7-3.4 3.1-.5z"/><path d="M2.4 13.3h11.2" stroke-dasharray="2 1.6"/></symbol>
+</svg>
+</body>
+</html>

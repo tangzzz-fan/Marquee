@@ -78,14 +78,44 @@ struct AnnotationIconTests {
                 AnnotationIcon.cancel, AnnotationIcon.confirm,
                 AnnotationIcon.recognizeText, AnnotationIcon.recognizing,
                 AnnotationIcon.zoomIn, AnnotationIcon.zoomOut,
-                AnnotationIcon.lock, AnnotationIcon.pin,
+                AnnotationIcon.lock,
                 AnnotationIcon.presetText, AnnotationIcon.presetCounter]
         for symbol in all {
             #expect(!symbol.lowercased().contains("textformat"),
                     "\(symbol) 是会自动本地化的符号 —— 中文下会变成汉字")
             #expect(!symbol.isEmpty, "有空格子没有图标")
         }
-        #expect(Set(all).count >= 18)
+        // 17 = 七个标注类型 + 十枚动作/独有的。
+        // ⚠️ 这个数在 2026-10-04 **减了 1**：钉图不再是 SF Symbol，改走自绘几何
+        //（`AnnotationGlyph.pin`，稿子 ⑩ §06）。下面是这一条的全貌。
+        #expect(Set(all).count >= 17)
+    }
+
+    @Test("自绘的只有钉图一枚 —— 它是**一处自觉的例外**，不是图标体系换了路")
+    func onlyThePinIsHandDrawn() {
+        // ⚠️ 这条钉的是**边界**。稿子 ⑩ §06 把钉图换成了自绘几何，
+        // 而那件事很容易被顺手推广成"以后图标都自己画" —— 一旦那样，
+        // 图标就同时有了两个来源，而"哪一枚来自哪里"变成了只有读实现才知道的事。
+        for feature in ProFeature.allCasesForTesting {
+            let icon = AnnotationIcon.icon(for: feature)
+            if feature == .pin {
+                #expect(icon == .glyph(AnnotationGlyph.pin),
+                        "钉图必须是稿子 §06 那枚自绘图形")
+            } else {
+                guard case .symbol(let name) = icon else {
+                    Issue.record("\(feature) 也变成自绘了 —— 那是一次没人要求过的改动")
+                    return
+                }
+                #expect(!name.isEmpty)
+            }
+        }
+    }
+
+    @Test("钉图在工具条与卡片上取到的是**同一枚**")
+    func pinIsSharedBetweenToolbarAndCard() {
+        // 工具条那一格直接写 `AnnotationGlyph.pin`，卡片槽走 `icon(for:)`——
+        // 两处各写一遍路径的话不会报错，只会某天分叉成两个不一样的「钉图」。
+        #expect(AnnotationIcon.icon(for: .pin) == .glyph(AnnotationGlyph.pin))
     }
 
     @Test("七个标注类型的图标**互不相同**")
@@ -105,5 +135,12 @@ extension AnnotationKind {
     static var allSymbolsForTesting: [String] {
         let kinds: [AnnotationKind] = [.rectangle, .ellipse, .arrow, .pen, .text, .mosaic, .blur]
         return kinds.map { AnnotationIcon.symbol(for: $0) }
+    }
+}
+
+/// 同上，把四项 Pro 能力列全（`ProFeature` 也不是 `CaseIterable`）。
+extension ProFeature {
+    static var allCasesForTesting: [ProFeature] {
+        [.scrollCapture, .textRecognition, .pin, .unlimitedHistory]
     }
 }

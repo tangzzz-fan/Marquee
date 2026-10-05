@@ -10,6 +10,21 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
     private var coordinator: CaptureCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // **启动凭证**：只要带了命令行参数就落一行，记下**实际收到的**是什么。
+        //
+        // ⚠️ 存在的理由是一次真实的静默失败：用 `open --args <flag>` 启动时，
+        // 参数**有时根本送不到**，而那种失败**没有任何输出** ——
+        // 进程正常起来、正常进事件循环、什么都不做，看起来和"这个开关没实现"一模一样。
+        // 有了这一行，"参数没到" 与 "参数到了但分支没跑" 一眼分得开。
+        //
+        // 只在 `count > 1` 时写：正常启动（无参数）不该每开一次就落一个文件。
+        if ProcessInfo.processInfo.arguments.count > 1 {
+            Self.writeProbeReport(
+                "启动参数（\(Date())）：\n  "   // L10N-EXEMPT: 排障凭证（reports/launch-arguments.txt），只给我看
+                + ProcessInfo.processInfo.arguments.dropFirst().joined(separator: "\n  ") + "\n",
+                name: "launch-arguments.txt")
+        }
+
         let coordinator = CaptureCoordinator()
 
         // 菜单项的回调在构造时就注入（`MenuBarController` 的必填参数），
@@ -174,6 +189,22 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeScrollOverlay") {
             coordinator.performScrollCapture()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+
+        // 覆盖层**实机照片**：`Marquee -marqueeSmokeOverlayShot`
+        //
+        // 存在的理由：玻璃（`NSVisualEffectView` / `NSGlassEffectView`）**任何离屏渲染
+        // 都拍不到** —— 它要真实窗口才有东西可糊（PITFALLS 187）。于是"这一层像不像玻璃、
+        // 白字压在白色网页上还读不读得出"就只能靠**实机拍一张**。
+        // 而它需要屏幕录制授权，那一步只有人能点 —— 所以这条路的输出里
+        // **写清了怎么点**，而不是默默什么都不生成。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeOverlayShot") {
+            Task { [coordinator] in
+                let report = await coordinator.captureOverlayShot(into: AppIdentity().logDirectory())
+                print(report)
+                Self.writeProbeReport(report, name: "overlay-shot.txt")
                 NSApplication.shared.terminate(nil)
             }
         }

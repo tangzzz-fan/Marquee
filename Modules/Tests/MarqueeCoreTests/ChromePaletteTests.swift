@@ -138,6 +138,24 @@ struct ChromePaletteTests {
         #expect(dim > 1.5, "但也不能低到看不见")
     }
 
+    @Test("浮件描边：深色 16% / 浅色 10% —— 稿子 ⑩ §07 与 §04 各给了一个数")
+    func panelBordersMatchSpec() {
+        // 深色那条是 ⑩ §07 改的：「描边 12% → 16%：透底后原 12% 会「化」，
+        // +4 个点才重新成为一条边」。所以 16 这个数**不是随手加的**。
+        #expect(abs(ChromePalette.Overlay.panelBorder.alpha - 0.16) < 0.0001,
+                "深色浮件描边实为 \(ChromePalette.Overlay.panelBorder.alpha)")
+        #expect(ChromePalette.Overlay.panelBorder.red == 1
+                && ChromePalette.Overlay.panelBorder.green == 1
+                && ChromePalette.Overlay.panelBorder.blue == 1,
+                "它是**白**的描边（压在深色材质上），不是主题里那枚 `--c-border`")
+
+        // 浅色那条**不是**深色反过来（16%）：⑩ §04 给浅色玻璃写的就是 10% 黑。
+        #expect(abs(ChromePalette.Overlay.panelBorderLight.alpha - 0.10) < 0.0001,
+                "浅色浮件描边实为 \(ChromePalette.Overlay.panelBorderLight.alpha)")
+        #expect(ChromePalette.Overlay.panelBorder.alpha > ChromePalette.Overlay.panelBorderLight.alpha,
+                "深色那条要比浅色那条重 —— 反过来的话浅色浮件会变成一个被框住的东西")
+    }
+
     @Test("覆盖层那两枚承担判断的颜色：替换掉系统色是**必要**的")
     func overlaySemanticColorsEarnTheirValues() {
         // 这条不是在测常量，是在钉住「为什么不能用系统红/绿」。

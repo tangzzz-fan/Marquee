@@ -2741,6 +2741,31 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         }
     }
 
+    /// **只给 `-marqueeSmokeOverlayShot` 用**：把"拖出一个选区"这件事
+    /// 走一遍**真实的三段委托**（按下 → 拖 → 松）。
+    ///
+    /// ## 为什么必须走真路，而不是往会话里塞一个矩形
+    ///
+    /// 这个入口存在的意义是**给玻璃拍照**（玻璃任何离屏渲染都拍不到，见 PITFALLS 187），
+    /// 而"选区落在哪"决定了工具条贴哪、读数框贴哪、提示行跟不跟。
+    /// 直接塞一个矩形的话，拍出来的排布可能和用户真拖出来的**不是同一种** ——
+    /// 那就等于拿一张不能代表运行时的图去验收运行时。
+    ///
+    /// ⚠️ 松手**不提交**：`endedDragAt` 里 `.select` 那条路只是
+    /// `session.endDrag` + `refresh()`（"立即提交会让微调键永远走不到"）。
+    /// 所以调用之后覆盖层仍然开着、选区是"落点停住"的样子 —— 正是要拍的那一态。
+    ///
+    /// - Returns: 起笔点落在某块屏的面板上才返回 `true`。
+    @discardableResult
+    public func debugSimulateSelection(from start: CGPoint, to end: CGPoint) -> Bool {
+        guard let target = overlays.first(where: { $0.panel.frame.contains(start) }) else { return false }
+        overlayView(target.view, beganDragAt: start)
+        // 拖到终点：越过 `dragSlop` 之后 `session.beginDrag` 才会真的发生。
+        overlayView(target.view, draggedTo: end)
+        overlayView(target.view, endedDragAt: end, optionDown: false)
+        return true
+    }
+
     /// 更新那一行状态。`autoClearAfter` 为 `nil` 时一直留着（识别中就该一直显示）。
     private func setOCRStatus(_ text: String, autoClearAfter seconds: Double? = 8) {
         ocrStatus = text

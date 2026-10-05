@@ -65,7 +65,12 @@ final class CaptureCoordinator {
     /// 预热热的正是它之后要用的那份模型。
     private let textRecognizer = VisionTextRecognizer()
     private lazy var ocrPreheater = TextRecognitionPreheater(recognizer: textRecognizer)
-    private lazy var editor = AnnotationEditorPresenter(recognizer: textRecognizer)
+    private lazy var editor = AnnotationEditorPresenter(
+        recognizer: textRecognizer,
+        // 工具条的材质底由**宿主**注入（稿子 ⑩ §07：`.ebar` 进玻璃族）。
+        // 编辑器不认识 `ChromeBackground`（模块依赖方向），而"浮件的底怎么造"
+        // 必须只有一份实现 —— 包括那条看不见的规则：「降低透明度」打开时退回实色。
+        background: { ChromeBackground.makeBackgroundView(cornerRadius: $0) })
     /// 钉图（ticket 14）。持有所有钉住的窗口 —— 多张钉图互不干扰。
     private let pins = PinPresenter()
     private var overlay: SelectionOverlayController?
@@ -326,6 +331,90 @@ final class CaptureCoordinator {
                                currentPermission: { [permission] in permission.currentPermission() },
                                into: directory)
     }
+
+    /// 覆盖层**实机照片**（**只在 `-marqueeSmokeOverlayShot` 那条路用**）。
+    ///
+    /// ## 为什么非得"实机拍"不可
+    ///
+    /// 因为 `NSVisualEffectView` / `NSGlassEffectView` 都要**真实窗口**才有东西可糊 ——
+    /// 任何 `ImageRenderer` / `cacheDisplay` 都拍不出玻璃（PITFALLS 187）。
+    /// 而"这一层玻璃到底像不像玻璃、白字压在白色网页上还读不读得出"
+    /// 恰恰是**只有看才能判断**的那类事：它不崩不报错，只是不对。
+    ///
+    /// 所以这条路是：**真把覆盖层摆出来** → 走真实的三段委托拖一个选区 →
+    /// 用采集器抓一次屏。代价是它**需要屏幕录制授权**，而授权只有人能点。
+    ///
+    /// - Returns: 结论文本（成功时含落盘路径）。**失败也要有话说** ——
+    ///   没有权限时最容易发生的事是"什么都没生成，也没人说为什么"。
+    ///
+    // L10N-EXEMPT-START: `-marqueeSmokeOverlayShot` 的控制台报告（也落一份到 reports/）。
+    // 它是**给我看的**：告诉开发者下一步点哪里、以及抓屏为什么失败。
+    // 进 catalog 反而更糟 —— 那些"怎么点授权"的步骤句是操作说明，不是界面文案，
+    // 而且它们的读者只有一个人（贴回来给我看的那一位）。
+    func captureOverlayShot(into directory: URL) async -> String {
+        guard permission.currentPermission() == .granted else {
+            // 路径用**运行期的真实值**，不是占位符 —— 这份文本的目的就是让人复制粘贴。
+            let app = Bundle.main.bundleURL.path
+            return """
+            覆盖层实机照片：**需要屏幕录制授权**，当前是「\(Self.describe(permission.currentPermission()))」。
+
+            这一步只有你能做（系统不允许程序自己点那个开关）。**在你自己的终端里**跑：
+
+              open -a "\(app)" --args -marqueeRequestPermission
+
+            ⚠️ 必须用 `open -a`，别直接 exec 那个可执行文件：
+            TCC 会把这次访问算在**父进程（终端）**头上，于是登记进「屏幕录制」列表的
+            是终端而不是 Marquee —— 那正是"列表里根本找不到 Marquee"的一种成因。
+
+            弹框里点「打开系统设置」→ 隐私与安全性 → 屏幕录制 → 勾上 Marquee。
+            勾完**不必手工重启**：再跑一次下面这条就会新起一个进程。
+
+              open -a "\(app)" --args -marqueeSmokeOverlayShot
+
+            ⚠️ 跑完如果**什么反应都没有**，先看 `reports/launch-arguments.txt`：
+            没有这个文件 = 命令行参数根本没送到应用（`open --args` 在某些终端里会**静默丢参**，
+            本机实测：被沙箱包裹的 shell 里三种写法都丢）。换一个终端再试。
+            """
+        }
+
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
+            return "覆盖层实机照片：没找到可用的屏幕"
+        }
+        guard let display = displays.displayUnderPointer() else {
+            return "覆盖层实机照片：没找到鼠标所在的显示器"
+        }
+
+        performCapture()
+        // 让覆盖层落位、素材层建起来（`makeBackgroundView` 是子视图，摆位完才出现）。
+        try? await Task.sleep(for: .seconds(0.8))
+
+        // 拖一个**占屏幕中间、四周留足内容**的选区：这样才能同时看到
+        // "玻璃压在白 / 深 / 彩三种内容上"—— 那正是这一层唯一的考卷。
+        let frame = screen.frame
+        let insetX = frame.width * 0.22
+        let insetY = frame.height * 0.22
+        let dragged = overlay?.debugSimulateSelection(
+            from: CGPoint(x: frame.minX + insetX, y: frame.minY + insetY),
+            to: CGPoint(x: frame.maxX - insetX, y: frame.maxY - insetY)) ?? false
+        try? await Task.sleep(for: .seconds(0.8))
+
+        guard let captured = try? await capturer.captureFullScreen(display) else {
+            return "覆盖层实机照片：拖出选区=\(dragged)，但抓屏失败（权限刚勾上时系统可能还要一会儿才放行）"
+        }
+        guard let png = ImageEncoding.pngData(from: captured.image) else {
+            return "覆盖层实机照片：抓到图了，但 PNG 编码失败"
+        }
+
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("overlay-shot.png")
+        try? png.write(to: url)
+        return """
+        覆盖层实机照片：\(url.path)
+          尺寸 \(captured.image.width) × \(captured.image.height)（物理像素）
+          拖出选区：\(dragged ? "成功" : "失败（起笔点不在任何一块屏上）")
+        """
+    }
+    // L10N-EXEMPT-END
 
     /// IAP 审核截图（**只在 `-marqueeSmokeReview` 那条路用**）。
     ///

@@ -413,6 +413,7 @@ final class SelectionOverlayView: NSView {
             //   写 `needsDisplay = false` 是不对的：那会把上一帧还挂着的重绘请求一起取消掉。
             //   "什么都不做"才是这里准确的意思。
             syncToolbarChrome()
+            syncNoticeChrome()
             // 内容变了光标也可能变（选区落点、弹出面板、选中标注…），而**鼠标可能一动没动** ——
             // 只靠 `mouseMoved` 更新的话，用户会看到"控制点出来了、光标还是十字"。
             applyCursor(at: NSEvent.mouseLocation)
@@ -647,6 +648,138 @@ final class SelectionOverlayView: NSView {
         proCardForeground?.isHidden = false
         proCardForeground?.needsDisplay = true
         syncedProCard = card
+    }
+
+    // MARK: - 读数框与光标提示的材质（稿子 ⑩ §07）
+
+    /// 读数框（`.rd`）与光标提示胶囊（`.tip`）的材质底与前景。
+    ///
+    /// ## 为什么它们也要有材质底
+    ///
+    /// 稿子 ⑩ §07 的回写清单写的是「`.bar / .strip / **.rd** / **.tip** / .pop` 追加 `.glass`」——
+    /// 这两个浮件**和工具条同族**。而在此之前它们是就地自绘的一块**实色** `#313131`
+    ///（那时的理由是"半透明的底会让可读性取决于屏幕内容"，见 `ChromePalette.Overlay.Readout`
+    /// 那段：那个顾虑算漏了读数框其实坐在**暗幕之上**，不是直接压在原始内容上）。
+    ///
+    /// ⚠️ **放大镜那个色值框不在这里，也永远不来这里**：它读的是被采样出来的像素，
+    /// 底就是那张放大图。见 `ChromePalette.Overlay.Readout.opaqueBackdrop`。
+    private var readoutChrome: NSView?
+    private var readoutForeground: ChromeForegroundView?
+    private var tipChrome: NSView?
+    private var tipForeground: ChromeForegroundView?
+
+    /// 两个浮件当前各落在哪。`nil` = 这一件现在不该出现。
+    private struct NoticeFrames: Equatable {
+        var readout: CGRect?
+        var tip: CGRect?
+    }
+
+    private var syncedNotices = NoticeFrames(readout: nil, tip: nil)
+
+    /// 摆位。**与 `syncToolbarChrome` 同一套路**：材质与前景是并列的两个兄弟子视图，
+    /// 前景只负责画字（它自己不画底）。
+    private func syncNoticeChrome() {
+        let frames = NoticeFrames(readout: readoutFrame(), tip: tipFrame())
+        guard frames != syncedNotices else { return }
+        syncedNotices = frames
+
+        place(&readoutChrome, &readoutForeground, at: frames.readout) { [weak self] in
+            self?.drawReadoutForeground()
+        }
+        place(&tipChrome, &tipForeground, at: frames.tip) { [weak self] in
+            self?.drawTipForeground()
+        }
+    }
+
+    /// 一件"材质 + 前景"的建、摆、藏。两件共用，免得"隐藏时机"这种细节只修一处。
+    private func place(_ chrome: inout NSView?,
+                       _ foreground: inout ChromeForegroundView?,
+                       at frame: CGRect?,
+                       render: @escaping () -> Void) {
+        guard let frame else {
+            chrome?.isHidden = true
+            foreground?.isHidden = true
+            return
+        }
+        if chrome == nil {
+            let background = ChromeBackground.makeBackgroundView(cornerRadius: OverlayReadout.cornerRadius)
+            background.isHidden = true
+            addSubview(background)
+            chrome = background
+
+            let front = ChromeForegroundView()
+            front.isHidden = true
+            front.render = { _ in render() }
+            addSubview(front)
+            foreground = front
+        }
+        chrome?.frame = frame
+        chrome?.isHidden = false
+        foreground?.frame = frame
+        foreground?.isHidden = false
+        foreground?.needsDisplay = true
+    }
+
+    /// 现在有没有"一个正在框的东西"（选区，或单击停住的窗口）。
+    /// 两个浮件的落位都以它为准 —— 它与 `drawBase()` 的分支是同一套判据。
+    private var noticeAnchor: CGRect? {
+        let local = (presentation.globalRect ?? presentation.hoverRect).map { globalToLocal($0) }
+        guard let local, local.width >= 1, local.height >= 1 else { return nil }
+        return local
+    }
+
+    /// 读数框：贴选区（或窗口）的**右上外侧**，夹进视图内。
+    ///
+    /// ⚠️ 贴的是右上，不是左上。稿子 §03 的原话：「读数框换内容不换位置：还是 ② 那个
+    /// 132 × 44 的框，贴在**选区右上外侧**同一处 —— 用户不需要重新找它。」
+    /// 放右边还有一个实际理由：工具条贴在选区**左下外侧**，两个东西分居一角，
+    /// 谁也不压谁、也不会把用户正在看的内容挡在同一侧。
+    private func readoutFrame() -> CGRect? {
+        guard let anchor = noticeAnchor, let box = makeBox(lines: presentation.readout) else { return nil }
+        var origin = CGPoint(x: anchor.maxX - box.size.width, y: anchor.maxY + 6)
+        // 上方放不下 → 翻到选区下方；再放不下 → 贴进选区内部靠上
+        if origin.y + box.size.height > bounds.maxY {
+            origin.y = anchor.minY - box.size.height - 6
+        }
+        if origin.y < bounds.minY {
+            origin.y = anchor.minY + 6
+        }
+        return clamped(origin, size: box.size)
+    }
+
+    /// 光标旁那句提示：**只有在没有选区也没有窗口落点时才出现**（与 `drawBase` 一致）。
+    private func tipFrame() -> CGRect? {
+        guard noticeAnchor == nil,
+              let anchor = presentation.hintAnchor,
+              !presentation.hintText.isEmpty,
+              // 它**不要**读数框那个 132 × 44 的最小尺寸：那是"读数框只换内容不换大小"的前提，
+              // 而这句话是跟着光标跑的一句话（稿子 §01 管它叫「光标提示 高 26 pt」）。
+              // 套上读数框的尺寸，会在鼠标旁永远挂着一块 132 × 44 的空壳。
+              let box = makeBox(lines: [ReadoutLine(presentation.hintText, .primary)],
+                                minimumSize: .zero)
+        else { return nil }
+        let point = globalToLocal(anchor)
+        return clamped(CGPoint(x: point.x + 18, y: point.y - box.size.height - 12), size: box.size)
+    }
+
+    /// 夹进视图内（留 6 点边距）。框跑到屏幕外等于没框。
+    private func clamped(_ origin: CGPoint, size: CGSize) -> CGRect {
+        CGRect(origin: CGPoint(x: min(max(bounds.minX + 6, origin.x), bounds.maxX - size.width - 6),
+                               y: min(max(bounds.minY + 6, origin.y), bounds.maxY - size.height - 6)),
+               size: size)
+    }
+
+    /// 读数框的字。**只画字** —— 底是旁边那个材质视图的事。
+    /// 它的 `bounds` 就是框本身，所以按内边距落笔即可。
+    private func drawReadoutForeground() {
+        guard let box = makeBox(lines: presentation.readout) else { return }
+        box.text.draw(at: NSPoint(x: box.padding.width, y: box.padding.height))
+    }
+
+    private func drawTipForeground() {
+        guard let box = makeBox(lines: [ReadoutLine(presentation.hintText, .primary)],
+                                minimumSize: .zero) else { return }
+        box.text.draw(at: NSPoint(x: box.padding.width, y: box.padding.height))
     }
 
     /// 放大镜占的脏区（局部坐标）。色值框贴在盒子上下、文字还可能很宽，保守地多扩一圈。
@@ -938,7 +1071,10 @@ final class SelectionOverlayView: NSView {
             // 标注画在镂空**之后**：镂空是挖洞，标注要落在洞里那层图上
             drawAnnotations(clippingTo: localSelection)
             drawSnapGuides()
-            drawReadout(in: localSelection, lines: presentation.readout)
+            // ⚠️ **读数框不在这里画**。它是"材质 + 前景"两个子视图，由
+            // `syncNoticeChrome()` 摆位 —— 理由与工具条完全一样：
+            // 子视图永远画在父视图自己的 `draw` 之上，而它现在有材质底了。
+            //（原先这里是一句 `drawReadout(...)`，那次它还没有材质。）
             if presentation.showsSelectionHandles {
                 drawSelectionHandles(on: localSelection)
             }
@@ -954,7 +1090,6 @@ final class SelectionOverlayView: NSView {
             // 窗口落点（单击某扇窗停住）同样能就地标注、同样能拖角，所以这两句也要
             drawAnnotations(clippingTo: localHover)
             drawSnapGuides()
-            drawReadout(in: localHover, lines: presentation.readout)
             if presentation.showsSelectionHandles {
                 drawSelectionHandles(on: localHover)
             }
@@ -962,10 +1097,7 @@ final class SelectionOverlayView: NSView {
         }
 
         bounds.fill()
-        if let anchor = presentation.hintAnchor, !presentation.hintText.isEmpty {
-            drawHint(at: globalToLocal(anchor),
-                     lines: [ReadoutLine(presentation.hintText, .primary)])
-        }
+        // 光标旁那句提示同理，也是子视图（见 `syncNoticeChrome()`）。
     }
 
     /// 放大镜画在**最上层**：它要盖住蒙层、选区描边和任何读数框。
@@ -1035,7 +1167,7 @@ final class SelectionOverlayView: NSView {
         guard let textBox = makeBox(lines: lines) else { return }
         var origin = CGPoint(x: box.minX, y: box.minY - textBox.size.height - 4)
         if origin.y < bounds.minY { origin.y = box.maxY + 4 }
-        draw(textBox, at: origin)
+        drawOpaqueBox(textBox, at: origin)
     }
 
     private func fillMask(punching hole: CGRect, cornerRadius: CGFloat) {
@@ -1251,7 +1383,13 @@ final class SelectionOverlayView: NSView {
                        in: rect,
                        tint: Self.nsColor(iconTint))
         case .pin:
-            drawSymbol(AnnotationIcon.pin, in: rect, tint: Self.nsColor(iconTint))
+            // ⚠️ 钉图是**全项目唯一一枚自绘图标**（`AnnotationGlyph.pin`，稿子 ⑩ §06）。
+            // 走 `ChromeGlyph` 而不是 `ChromeSymbol`，与卡片图标槽那一侧**同一个来源** ——
+            // 两处各写一遍路径的话不会报错，只会某天分叉成两个不一样的「钉图」。
+            ChromeGlyph.draw(AnnotationGlyph.pin,
+                             in: rect,
+                             color: Self.nsColor(iconTint),
+                             inkHeight: AnnotationGlyph.toolbarInkHeight)
         case .undo:
             drawSymbol(AnnotationIcon.undo, in: rect, tint: Self.nsColor(iconTint), dimmed: !enabled)
         case .redo:
@@ -1298,7 +1436,10 @@ final class SelectionOverlayView: NSView {
         let outline = Self.roundedPath(box.insetBy(dx: 0.5, dy: 0.5),
                                        radius: OverlayToolbar.cornerRadius)
         outline.lineWidth = 1
-        NSColor.white.withAlphaComponent(0.12).setStroke()
+        // 浮件自己的描边：**16%**（稿子 ⑩ §07：「描边 12% → 16%」）。
+        // 原来这里是就地写死的 `white .12` —— 现在两处（这里与卡片）读同一枚令牌，
+        // 否则"描边提到 16%"这种改动必然只改到一处。
+        Self.nsColor(ChromePalette.Overlay.panelBorder).setStroke()
         outline.stroke()
 
         for entry in layout.items {
@@ -1560,57 +1701,21 @@ final class SelectionOverlayView: NSView {
         overlayLine(path, coreWidth: 1)
     }
 
-    private func drawReadout(in localSelection: CGRect, lines: [ReadoutLine]) {
-        guard let box = makeBox(lines: lines) else { return }
-
-        // ⚠️ 贴的是选区的**右上外侧**，不是左上。
-        //
-        // 稿子 §03 的原话：「读数框换内容不换位置：还是 ② 那个 132 × 44 的框，
-        // 贴在**选区右上外侧**同一处 —— 用户不需要重新找它。」
-        //
-        // 放右边还有一个实际理由：工具条贴在选区**左下外侧**（`OverlayToolbar.frame`），
-        // 两个东西分居一角，谁也不压谁、也不会把用户正在看的内容挡在同一侧。
-        var origin = CGPoint(x: localSelection.maxX - box.size.width,
-                             y: localSelection.maxY + 6)
-        // 上方放不下 → 翻到选区下方；再放不下 → 贴进选区内部靠上
-        if origin.y + box.size.height > bounds.maxY {
-            origin.y = localSelection.minY - box.size.height - 6
-        }
-        if origin.y < bounds.minY {
-            origin.y = localSelection.minY + 6
-        }
-        // 水平方向也要夹：选区贴屏左边时，"右对齐"会把框推到屏幕外
-        draw(box, at: origin)
-    }
-
-    /// 在光标旁挂一句提示。
+    /// 画一块**不透明**的小框（底 + 字）。
     ///
-    /// 贴右下角、再夹进视图内 —— 提示框跑到屏幕外等于没提示。
+    /// ⚠️ 从 2026-10-04 起**只有放大镜那个色值框走这里**。读数框与光标提示胶囊
+    /// 已经改成"材质 + 前景"两个子视图（见 `syncNoticeChrome()`）——
+    /// 它们是玻璃族的（稿子 ⑩ §07），而这一块是明文要**不透明**的：
+    /// 它读的是被采样的像素，底就是那张放大图，做成玻璃就等于让
+    /// "这个色值读不读得出"取决于那张图上恰好有什么
+    ///（`ChromePalette.Overlay.Readout.opaqueBackdrop` 那段有稿子 §08 的原话）。
     ///
-    /// ⚠️ 它**不要**读数框那个 132 × 44 的最小尺寸：那是"读数框只换内容不换大小"的前提，
-    /// 而这句话是跟着光标跑的**一句话**（稿子 §01 管它叫「光标提示 高 26 pt」）。
-    /// 给它套上读数框的尺寸，会在鼠标旁边永远挂着一块 132 × 44 的空壳。
-    private func drawHint(at point: CGPoint, lines: [ReadoutLine]) {
-        guard let box = makeBox(lines: lines, minimumSize: .zero) else { return }
-        let origin = CGPoint(x: point.x + 18, y: point.y - box.size.height - 12)
-        draw(box, at: origin)
-    }
-
-    private func draw(_ box: (text: NSAttributedString, size: NSSize, padding: NSSize),
-                      at origin: CGPoint) {
-        let clamped = CGPoint(x: min(max(bounds.minX + 6, origin.x), bounds.maxX - box.size.width - 6),
-                              y: min(max(bounds.minY + 6, origin.y), bounds.maxY - box.size.height - 6))
-        let rect = NSRect(origin: clamped, size: box.size)
-        // ⚠️ **不透明材质**，不是"平的黑 72%"。
-        //
-        // 半透明的底会让"这几行读不读得出"取决于屏幕上此刻是什么：
-        // 黑 72% 压在纯白内容上时，次要行有 5.02；压在纯黑内容上只剩 2.52 —— 连正文级都不到。
-        // 而不透明度这件事在设计稿里是有答案的：§01 把「工具条 / 弹层 / **读数**」
-        // 并列写在 `--c-panel` 那一行下面。
-        //
-        // 代价是它比"贴着一层薄纱"更像一块实心条 —— 但那正是 §04 那句
-        // "工具条永远比它压着的东西暗一档"所换来的东西：数字对任何底都成立。
-        Self.nsColor(ChromePalette.Overlay.Readout.backdrop).setFill()
+    /// **名字里的 `Opaque` 是判据不是描述** —— 少了它，将来有人看到"别的框都玻璃了"
+    /// 会顺手把这一块也改掉，而那种改动不会报错，只会在取色时看着糊。
+    private func drawOpaqueBox(_ box: (text: NSAttributedString, size: NSSize, padding: NSSize),
+                               at origin: CGPoint) {
+        let rect = clamped(origin, size: box.size)
+        Self.nsColor(ChromePalette.Overlay.Readout.opaqueBackdrop).setFill()
         NSBezierPath(roundedRect: rect,
                      xRadius: OverlayReadout.cornerRadius,
                      yRadius: OverlayReadout.cornerRadius).fill()

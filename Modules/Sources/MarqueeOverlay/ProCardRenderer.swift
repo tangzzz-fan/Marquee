@@ -91,17 +91,19 @@ public enum ProCardRenderer {
         outline.lineWidth = 1
         // 描边：深色宿主用白 12%，浅色宿主用黑 10%（稿子：`.card--bl{border:1px solid rgba(0,0,0,.10)}`）。
         // 判断依据是**卡片自己的底**而不是系统外观 —— 载体 A 在浅色系统下也仍是深色卡片。
+        // 描边 **16%**（稿子 ⑩ §07：「描边 12% → 16%：透底后原 12% 会「化」，
+        // +4 个点才重新成为一条边」）。浅色那侧仍是 10%（§04 的原值）。
         let outlineColor = theme == ChromePalette.dark
-            ? NSColor.white.withAlphaComponent(0.12)
-            : NSColor.black.withAlphaComponent(0.10)
+            ? ChromePalette.Overlay.panelBorder.nsColor
+            : ChromePalette.Overlay.panelBorderLight.nsColor
         outlineColor.setStroke()
         outline.stroke()
 
         // ① 图标：**用户刚点的那个功能**，用强调色（`--c-glyph`）
-        drawSymbol(AnnotationIcon.symbol(for: content.feature),
-                   in: layout.glyph.offsetBy(dx: box.minX, dy: box.minY),
-                   color: theme.glyph.nsColor,
-                   isDark: theme == ChromePalette.dark)
+        draw(AnnotationIcon.icon(for: content.feature),
+             in: layout.glyph.offsetBy(dx: box.minX, dy: box.minY),
+             color: theme.glyph.nsColor,
+             isDark: theme == ChromePalette.dark)
         // ② 标题
         drawLine(title(content.feature),
                  in: layout.title.offsetBy(dx: box.minX, dy: box.minY),
@@ -247,6 +249,24 @@ public enum ProCardRenderer {
                           weight: .medium,
                           color: color,
                           appearance: NSAppearance(named: isDark ? .darkAqua : .aqua))
+    }
+
+    /// 画一枚图标 —— **两个来源在这里合流**。
+    ///
+    /// 卡片槽与工具条走的是同一份判据（`AnnotationIcon.icon(for:)`），
+    /// 所以"用户在格子上看到什么、卡片上就是什么"是结构上成立的，不靠人记得同步。
+    private static func draw(_ icon: AnnotationIcon.Icon, in rect: CGRect,
+                             color: NSColor, isDark: Bool) {
+        switch icon {
+        case .symbol(let name):
+            drawSymbol(name, in: rect, color: color, isDark: isDark)
+        case .glyph(let glyph):
+            // 卡片槽与工具条**不是同一个尺寸** —— 工具条那枚按 17 点墨迹摆，
+            // 这里按卡片自己的图标槽高度摆（`ProCardLayout.glyphSize`）。
+            // 墨迹高度取 `glyphSize` 是刻意的：卡片上那一格就是给这么大一枚图形留的。
+            ChromeGlyph.draw(glyph, in: rect, color: color,
+                             inkHeight: ProCardLayout.glyphSize)
+        }
     }
 
     // MARK: - 文案

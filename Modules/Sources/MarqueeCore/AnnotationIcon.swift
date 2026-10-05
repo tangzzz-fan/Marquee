@@ -1,16 +1,26 @@
 import Foundation
 
-/// 标注与编辑器要用的**图标名** —— 全项目唯一一份。
+/// 标注与编辑器要用的**图标** —— 全项目唯一一份。
 ///
 /// ## 为什么必须唯一
 ///
 /// 设计稿 §01 把这条列成了编辑器的**验收第一条**：「同一个功能在两处用同一个图标。
 /// 覆盖层有『文字』工具，编辑器也有 —— 图标不同，用户会以为是两个东西。」
 ///
-/// 而"两处各写一遍字符串"正是这条最容易破的方式：它们**不会**报错，
+/// 而"两处各写一遍"正是这条最容易破的方式：它们**不会**报错，
 /// 只会在某一次改动里悄悄分叉，然后用户看到两个长得不一样的「文字」。
 /// 所以两个工具枚举都从这里取，`AnnotationEditorTool` 与 `OverlayTool` 各自的
-/// `switch` 只负责把"工具"翻译成"标注类型"，剩下的名字只有一处。
+/// `switch` 只负责把"工具"翻译成"标注类型"，剩下的来源只有一处。
+///
+/// ## 两个来源
+///
+/// 绝大多数是 **SF Symbol 名**（`Icon.symbol`）。唯一的例外是**钉图**，
+/// 它走 Core 里那份自绘几何（`Icon.glyph`）—— 理由见 `AnnotationGlyph.pin`，
+/// 以及 `docs/design/2026-10-04-玻璃材质/对照.md`。
+///
+/// ⚠️ **两个来源必须由同一个函数决定**，不能一处写 `"pin"`、另一处写 `.glyph(.pin)`。
+/// 那种分叉的后果不是崩，是"工具条上是一枚、升级卡片上是另一枚"——
+/// 而这个函数的全部意义就是防这个。
 ///
 /// ## 两条踩过的坑
 ///
@@ -21,6 +31,12 @@ import Foundation
 /// 2. **多色符号要 `.preferringMonochrome()`**（那条规矩在 `ChromeSymbol` 里）——
 ///    否则多色符号的第一层会被整片填充，`face.smiling` 会变成一个实心圆点。
 public enum AnnotationIcon {
+
+    /// 一枚图标长什么样 —— 要么系统符号，要么 Core 里那份自绘几何。
+    public enum Icon: Equatable, Sendable {
+        case symbol(String)
+        case glyph(AnnotationGlyph)
+    }
 
     // MARK: - 一种标注类型长什么样
 
@@ -53,15 +69,19 @@ public enum AnnotationIcon {
     /// 所以它必须是**用户刚点的那个功能**（也就是工具条上那一格里那枚），
     /// 而不是一枚笼统的锁或星星。
     ///
-    /// ⚠️ 与工具条**同源**：识别文字与钉图直接复用 `recognizeText` / `pin` ——
-    /// 用户在格子上看到什么，卡片上就是什么。另外两枚是这一槽独有的
-    /// （滚动截屏与最近截图在工具条上没有格子）。
-    public static func symbol(for feature: ProFeature) -> String {
+    /// ⚠️ 与工具条**同源**：识别文字与钉图直接复用工具条那两格用的**同一个**
+    /// `recognizeText` / `AnnotationGlyph.pin` —— 用户在格子上看到什么，卡片上就是什么。
+    /// 另外两枚是这一槽独有的（滚动截屏与最近截图在工具条上没有格子）。
+    ///
+    /// ⚠️ 返回 `Icon` 而不是 `String`：钉图已经换成自绘几何了，
+    /// 若还返回字符串，那个 case 只能写一个 `"pin"` 之类的占位 ——
+    /// 那种占位**不会编译失败**，只会在卡片上画出一枚和工具条不一样的钉图。
+    public static func icon(for feature: ProFeature) -> Icon {
         switch feature {
-        case .scrollCapture: "scroll"
-        case .textRecognition: recognizeText
-        case .pin: pin
-        case .unlimitedHistory: "photo.stack"
+        case .scrollCapture: .symbol("scroll")
+        case .textRecognition: .symbol(recognizeText)
+        case .pin: .glyph(AnnotationGlyph.pin)
+        case .unlimitedHistory: .symbol("photo.stack")
         }
     }
 
@@ -132,8 +152,12 @@ public enum AnnotationIcon {
     public static let zoomOut = "minus"
     /// Pro 小锁（9 × 9，白 55%）。
     public static let lock = "lock.fill"
-    /// 钉图。**卡片的图标槽也用它**。
-    public static let pin = "pin"
+    // ⚠️ 钉图**不再在这里**。它从 2026-10-04 起走自绘几何
+    //（`AnnotationGlyph.pin`，稿子 ⑩ §06 指定的形状）——
+    // 原来这里是 `public static let pin = "pin"`。
+    //
+    // 保留这条注释而不是默默删掉，是因为"钉图那一枚去哪了"是个真实的问题：
+    // 它现在是全项目**唯一**一枚不来自 SF Symbol 的图标，而这一条必须有地方写着。
     /// 文字预设置层里那两段的小图标。
     public static let presetText = "text.alignleft"
     public static let presetCounter = "list.number"

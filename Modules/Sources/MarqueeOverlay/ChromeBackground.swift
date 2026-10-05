@@ -6,16 +6,28 @@ import MarqueeCore
 /// 这是一个**工厂**，不是一个统一容器：覆盖层工具条要"玻璃在下、图标在上"，
 /// 钉图控制条要"玻璃在下、按钮在上"，各处的子视图结构不一样。
 /// 收敛成"给一个圆角、还你一块不含事件的背景视图"，才不会为了统一而把某处的绘制顺序拧反。
+///
+/// ## 它对模块外只有一个入口
+///
+/// `makeBackgroundView(cornerRadius:)` 是 `public` 的，其余全是实现细节
+///（材质怎么选、圆角怎么改、现场开关读哪个 key）。这样做是因为**编辑器窗口也需要这块底**
+///（稿子 ⑩ §07：`.ebar` 进玻璃族），而 `MarqueeEditor` 按依赖方向 import 不到这里 ——
+/// 于是由宿主把 `makeBackgroundView` 作为工厂注入过去。
+///
+/// ⚠️ 只公开"造一块底"，**不公开"当前用什么材质"**：后者一旦漏出去，
+/// 别处就会开始自己判断"现在该不该玻璃"，而那条判断里藏着辅助功能
+///（「降低透明度」）与系统版本两件事 —— 那种分叉只在特定机器上才看得见。
 @MainActor
-enum ChromeBackground {
+public enum ChromeBackground {
 
     /// 当前系统能不能用原生玻璃。**只有这里读版本号**；
-    /// 其余分支全由 `ChromeMaterial.resolved(glassAvailable:)` 决定（那部分可在 Core 脱机单测）。
+    /// 其余分支全由 `ChromeMaterial.resolved(glassAvailable:reduceTransparency:)` 决定
+    ///（那部分可在 Core 脱机单测）。
     ///
     /// 留了一个现场开关，用来在 26+ 的机器上**自检降级路径**（否则那条路只有 15.x 的机器能验）：
     /// ```
-    /// defaults write dev.tango.Marquee chrome.forceHUD -bool YES   # 强制走 HUD 材质
-    /// defaults delete dev.tango.Marquee chrome.forceHUD
+    /// defaults write com.tango.marquee.dev chrome.forceHUD -bool YES   # 强制走 HUD 材质
+    /// defaults delete com.tango.marquee.dev chrome.forceHUD
     /// ```
     /// 这里用 `bool(forKey:)` 是**对的**（与 PITFALLS 85 的结论不冲突）：
     /// "没写过" 返回 `false`，而这里 `false` 的含义正是"不强制降级" —— 缺省值恰好就是想要的。
@@ -25,9 +37,21 @@ enum ChromeBackground {
         return false
     }
 
+    /// 用户是否在系统设置里要求**降低透明度**。
+    ///
+    /// ⚠️ 这是一条**辅助功能**判据，不是外观偏好。稿子 ⑩ §07 把它写成了规则：
+    /// 「一开，全部 `.glass` 切回 `--c-panel` 不透明 —— 现有 8 份稿的不透明面就是回退稿」。
+    ///
+    /// 在这条接上之前，开了这个开关的用户拿到的仍然是**半透明**面板
+    ///（`.hud` 那一条也照样半透明）—— 而那正是他来开这个开关的原因。
+    static var reduceTransparency: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+    }
+
     /// 当前系统该用的材质。
     static var material: ChromeMaterial {
-        ChromeMaterial.resolved(glassAvailable: isGlassAvailable)
+        ChromeMaterial.resolved(glassAvailable: isGlassAvailable,
+                                reduceTransparency: reduceTransparency)
     }
 
     /// 造一块背景，**已包在事件透明的容器里**。
@@ -35,7 +59,7 @@ enum ChromeBackground {
     /// 包一层是必须的：`NSGlassEffectView` / `NSVisualEffectView` 默认会参与命中测试，
     /// 直接当子视图挂上去会把鼠标事件吃掉 —— 表现是"按钮看得见、点它没反应"。
     /// 容器（`ChromeForegroundView`）的 `hitTest` 恒为 nil，事件于是落到它下面的视图上。
-    static func makeBackgroundView(cornerRadius: CGFloat) -> NSView {
+    public static func makeBackgroundView(cornerRadius: CGFloat) -> NSView {
         let container = ChromeForegroundView()
         let chrome = makeMaterialView(cornerRadius: cornerRadius)
         chrome.frame = container.bounds
@@ -58,6 +82,11 @@ enum ChromeBackground {
                 glass.cornerRadius = radius
             } else if let effect = piece as? NSVisualEffectView {
                 effect.layer?.cornerRadius = radius
+            } else {
+                // 「降低透明度」那条实色路（`makeOpaqueView`）。
+                // 漏掉这一支的表现是：开着那个开关时圆角**不跟着面板高度收** ——
+                // 22 高的提示行上留着一个 10 点的圆角，看着像个胶囊。
+                piece.layer?.cornerRadius = radius
             }
         }
     }
@@ -81,7 +110,28 @@ enum ChromeBackground {
 
         case .hud:
             return makeEffectView(cornerRadius: cornerRadius)
+
+        case .opaque:
+            return makeOpaqueView(cornerRadius: cornerRadius)
         }
+    }
+
+    /// 「降低透明度」那条路：**实色**，一点模糊都不做。
+    ///
+    /// 用的是 `--c-panel`（`ChromePalette.dark.panel`）—— 稿子 ⑩ §07 那句
+    /// "现有 8 份稿的不透明面就是回退稿"正是指它。所以这里不是新调一个色，
+    /// 而是把**这套实装一直在用的那个深灰**请回来当回退。
+    ///
+    /// ⚠️ 取 `ChromePalette.dark` 而不是"当前外观那套"：这一族浮件
+    ///（覆盖层工具条 / 弹层 / 卡片 / 钉图条 / 倒计时）**永远压在别人的屏幕上、永远是深色的**，
+    /// 文字也是白的。跟着系统外观切浅色的话，表现是"浅色模式下白字压在近白面板上"。
+    private static func makeOpaqueView(cornerRadius: CGFloat) -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.cornerRadius = cornerRadius
+        view.layer?.masksToBounds = true
+        view.layer?.backgroundColor = ChromePalette.dark.panel.nsColor.cgColor
+        return view
     }
 
     private static func makeEffectView(cornerRadius: CGFloat) -> NSVisualEffectView {

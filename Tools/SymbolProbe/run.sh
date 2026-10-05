@@ -28,7 +28,12 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 
-swiftc -O -o "$APP/Contents/MacOS/SymbolProbe" main.swift
+# 自绘图形（钉图）也要一起编进来 —— 它与 SF Symbol 走的是两条渲染路
+#（`AnnotationGlyph` 给几何、`ChromeGlyph` 画）。两个文件都是自包含的：
+# 只依赖 CoreGraphics / AppKit，不牵动 Core 的其余部分。
+CORE="../../Modules/Sources/MarqueeCore"
+swiftc -O -o "$APP/Contents/MacOS/SymbolProbe" main.swift \
+    "$CORE/AnnotationGlyph.swift" "$CORE/ChromeGlyph.swift"
 "$APP/Contents/MacOS/SymbolProbe" en -AppleLanguages '(en)'
 "$APP/Contents/MacOS/SymbolProbe" zh -AppleLanguages '(zh-Hans)'
 
