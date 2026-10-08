@@ -85,6 +85,17 @@ public struct CaptureMetrics: Equatable, Sendable {
     public let savedSequence: Int?
     /// 刚截到的图。编辑器要用它；比较结果时不看这张图（`CGImage` 没有值相等）。
     public let image: CGImage?
+    /// 这条长图是**几段拼出来的**。非长截图一律 `nil` = 不知道（不是"0 段"）。
+    ///
+    /// ⚠️ 取的是 `ScrollStitchPlan.slices.count`（真落进长图的**片数**），不是采集帧数。
+    /// 在当前实现里**两者恒等** —— 停住的帧压根不进 `frames`，而入图的帧恰好各贡献一段。
+    /// 仍然用"片数"：它说的是**这张长图由什么构成**，而不是我们的采集细节；
+    /// 哪天一帧被切成两段（或反过来），该跟着变的是这个数，不是帧数。
+    /// 这条等值关系由 `ScrollCaptureSessionTests` 显式钉住 —— 一旦不成立它会红。
+    ///
+    /// 这个数唯一的去处是编辑器状态行那句「N 段拼接」，而 `EditorChrome.leading`
+    /// 的判据是"`nil` 或 1 都不说"—— 所以**说不知道**必须是 `nil`，不许拿帧数凑一个数上去。
+    public let stitchedSegments: Int?
 
     public init(pixelSize: CGSize,
                 pngByteCount: Int,
@@ -92,7 +103,8 @@ public struct CaptureMetrics: Equatable, Sendable {
                 savedFilePath: String? = nil,
                 saveFailureMessage: String? = nil,
                 savedSequence: Int? = nil,
-                image: CGImage? = nil) {
+                image: CGImage? = nil,
+                stitchedSegments: Int? = nil) {
         self.pixelSize = pixelSize
         self.pngByteCount = pngByteCount
         self.elapsedMilliseconds = elapsedMilliseconds
@@ -100,6 +112,7 @@ public struct CaptureMetrics: Equatable, Sendable {
         self.saveFailureMessage = saveFailureMessage
         self.savedSequence = savedSequence
         self.image = image
+        self.stitchedSegments = stitchedSegments
     }
 
     public static func == (lhs: CaptureMetrics, rhs: CaptureMetrics) -> Bool {
@@ -109,6 +122,7 @@ public struct CaptureMetrics: Equatable, Sendable {
             && lhs.savedFilePath == rhs.savedFilePath
             && lhs.saveFailureMessage == rhs.saveFailureMessage
             && lhs.savedSequence == rhs.savedSequence
+            && lhs.stitchedSegments == rhs.stitchedSegments
     }
 }
 

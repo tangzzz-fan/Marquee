@@ -36,10 +36,14 @@ public struct CaptureOutput {
     /// - Parameter inline: 覆盖层里**就地画**的标注。非空时先把它栅格化到图上，
     ///   再编码写剪贴板 —— 剪贴板里必须是一张**已经合并好**的图，
     ///   不能只有底图、把标注留在别处（用户粘贴出去的是他自己贴的图，不是对象）。
+    /// - Parameter stitchedSegments: 长截图**拼了几段**（普通截图没有这个概念，传 `nil`）。
+    ///   它只影响编辑器状态行那一句，但必须由知道真值的那一层传进来 ——
+    ///   猜一个数会让状态行说假话。
     public func finish(_ image: CGImage,
                        startedAt: Double,
                        save: CaptureSaveRequest? = nil,
-                       inline: InlineAnnotations? = nil) -> CaptureOutcome {
+                       inline: InlineAnnotations? = nil,
+                       stitchedSegments: Int? = nil) -> CaptureOutcome {
         let flatten: CGImage
         if let inline, !inline.isEmpty {
             let scaled = inline.scaled(toPixelSize: CGSize(width: image.width, height: image.height))
@@ -96,7 +100,8 @@ public struct CaptureOutput {
             savedFilePath: savedFilePath,
             saveFailureMessage: saveFailureMessage,
             savedSequence: savedSequence,
-            image: flatten
+            image: flatten,
+            stitchedSegments: stitchedSegments
         ))
     }
 

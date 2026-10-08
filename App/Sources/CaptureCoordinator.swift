@@ -435,12 +435,16 @@ final class CaptureCoordinator {
         editor.renderChromeSnapshots(image: Self.smokeImage(0), into: directory)
     }
 
-    func presentEditor(image: CGImage, seed: [Annotation] = []) {
+    /// - Parameter segments: 长截图拼了几段。只有长截图那条路知道 ——
+    ///   普通截图（就地标注）与两个自检入口都传 `nil`，状态行就不说这一句。
+    ///   见 `EditorChrome.leading`：编一个数比不说更糟。
+    func presentEditor(image: CGImage, seed: [Annotation] = [], segments: Int? = nil) {
         // 先记一条再开窗：用户说"编辑器窗口没出来"时，第一件要确认的是
         // **我们到底有没有走到这一步** —— 这与"点了没反应先验入口通不通"是同一条教训，
         // 否则会在窗口呈现那一层白查很久（实际根本没走到那里）。
-        logger.info("打开编辑器：\(image.width)×\(image.height) px，预置标注 \(seed.count) 个")
-        editor.present(image: image, seed: seed) { [weak self] png in
+        // `-` = 不知道（普通截图没有这个概念）。日志里不写中文，免得被文案扫描扫进来。
+        logger.info("打开编辑器：\(image.width)×\(image.height) px，预置标注 \(seed.count) 个，拼接段数 \(segments.map(String.init) ?? "-", privacy: .public)")
+        editor.present(image: image, seed: seed, segments: segments) { [weak self] png in
             self?.clipboard.writePNG(png)
             self?.logger.info("标注已复制到剪贴板：\(png.count) 字节")
         } onSave: { [weak self] rendered in
@@ -655,7 +659,8 @@ final class CaptureCoordinator {
                     logger.info("已钉在屏幕上，当前共 \(self.pins.count) 张")
                 }
                 if after.contains(.openEditor) {
-                    presentEditor(image: image)
+                    // 段数只对长截图有意义 —— 从采集度量里带过去（普通截图那里是 nil）。
+                    presentEditor(image: image, segments: metrics.stitchedSegments)
                 } else if !after.contains(.pin) {
                     logger.info("就地完成：不开编辑器窗口（ticket 20 起普通截图不再弹窗口）")
                 }

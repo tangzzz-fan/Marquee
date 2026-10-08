@@ -197,6 +197,28 @@ struct ScrollCaptureSessionTests {
         #expect(harness.session.progress.stitchMilliseconds != nil)
     }
 
+    @Test("段数 = 真落进长图的**片数**，且不可能多于帧数")
+    func segmentsAreSlicesNotFrames() async {
+        let harness = makeHarness(shifts: [.shift(300), .shift(300)])
+        _ = await harness.session.begin(selection: region, displays: [TestDisplays.retina])
+        await harness.session.captureFrame()
+        await harness.session.captureFrame()
+
+        let outcome = await harness.session.finish()
+        guard case .copiedToClipboard(let metrics) = outcome else {
+            Issue.record("期望复制成功，实际 \(outcome)")
+            return
+        }
+
+        // 基线一段 + 两次滚动各带来一段 = 3 段。
+        #expect(metrics.stitchedSegments == 3)
+        // ⚠️ **等值不变式**：段数取的是"真落进长图的片数"，而当前实现里
+        // 它与入图帧数**恒等**（停住的帧压根不进 `frames`；入图的帧恰好各贡献一段）。
+        // 把等值写出来而不是绕开它：哪天这条红了，说明长图的构成方式变了 ——
+        // 那时该重新想"状态行报哪个数"，而不是把断言的数字改掉。
+        #expect(metrics.stitchedSegments == harness.session.progress.frameCount)
+    }
+
     @Test("已经滚到底之后再结束：仍然交出可用的长图")
     func finishAfterBottomKeepsContent() async {
         let harness = makeHarness(shifts: [.shift(300), .shift(0), .shift(0), .shift(0)])

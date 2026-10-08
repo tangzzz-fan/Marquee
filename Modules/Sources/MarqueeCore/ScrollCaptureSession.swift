@@ -360,14 +360,23 @@ public final class ScrollCaptureSession {
         }
 
         let stitchStartedAt = clock.now()
-        guard let composed = ScrollStitchRenderer.render(plan: stitcher.plan, frames: frames) else {
+        // ⚠️ `plan` 只算一次，**渲染与段数用同一份**：分两次算的话，
+        // "说了 5 段、而拼出来的是 4 段"这种不一致不会有任何东西发现。
+        let plan = stitcher.plan
+        guard let composed = ScrollStitchRenderer.render(plan: plan, frames: frames) else {
             return .failed(CaptureFailure(message: L10n.t("拼接长图失败")))
         }
         progress.stitchMilliseconds = (clock.now() - stitchStartedAt) * 1000
         progress.phase = .finished
         progress.canvasHeight = composed.height
 
-        return output.finish(composed, startedAt: startedAt, save: save)
+        // 段数 = 真落进长图的**片数**（`slices.count`），不是采集帧数。
+        // ⚠️ 当前实现里两者恒等（停住的帧不进 `frames`，入图的帧各贡献一段）——
+        // 取"片数"是因为它描述的是**这张长图由什么构成**；那条等值关系由测试显式钉住。
+        return output.finish(composed,
+                             startedAt: startedAt,
+                             save: save,
+                             stitchedSegments: plan.slices.count)
     }
 
     public func cancel() {

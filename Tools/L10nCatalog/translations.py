@@ -23,6 +23,8 @@ EN = {
     # 第二行说下一步**。「没有文字」与「识别失败」两张脸必须一眼分得开：
     # 前者安静（次要色），后者红 + 警告三角，且多一个「重试」。
     "只读": "Read-only",
+    # 识别面板的标题条是它的把手 —— 纸没有边框把手，"能拖"只在这里说一次。
+    "拖动面板": "Drag to move",
     "正在识别…": "Recognizing…",
     "首次识别可能要十几秒，之后会快。": "The first run can take a while; later ones are fast.",
     "这张图里没有文字": "No text in this image",
@@ -48,6 +50,15 @@ EN = {
     "%@ · %lld 段拼接": "%@ · %lld frames stitched",
     "裁剪中 · 拖出保留框 · Esc 取消": "Cropping · drag the area to keep · Esc to cancel",
     "裁剪中 · ⏎ 应用 · Esc 取消": "Cropping · ⏎ to apply · Esc to cancel",
+    # 裁切读数框第二行（稿子 §07 c）：第一行是"裁完多大"，这一行是**原图多大**。
+    # 两行对照才说明白"这一刀切掉了多少" —— 只有第一行的话，用户得自己记住原图尺寸。
+    #
+    # ⚠️ 实测（`NSFont.monospacedDigitSystemFont(11, .medium)`，内宽预算 116 点）：
+    #   中文 `原图 1440 × 2000 px` = 111.3 ✓ ／ 英文 `Original …` = **131.2 ✗ 放不下**。
+    # 所以框按内容长出去（`CropReadout.size(textWidth:)`，132 只是**最小**）——
+    # 与覆盖层 `OverlayReadout.minimumSize` 是同一条语义。
+    # ⚠️ 别改成"写死 132"：长截图动辄 `1440 × 12000`，那样连中文都溢。
+    "原图 %@ px": "Original %@ px",
     # 「适应窗口 34%」：只有当前缩放**正好**是适应窗口那一个时才说这四个字。
     # ⚠️ 百分号不在 key 里（它拼在外面）—— 见 `EditorChrome.trailing` 的注释。
     "适应窗口 %lld": "Fit to window %lld",

@@ -110,6 +110,10 @@ struct FullScreenCaptureFlowPermissionTests {
             return
         }
         #expect(metrics.pixelSize == TestDisplays.retina.pixelSize)
+        // ⚠️ 普通截图**没有"拼了几段"这个概念** ⇒ 必须说"不知道"（`nil`）。
+        // 若哪天有人在这里填 1，编辑器状态行的判据（`nil` 或 1 都不说）会把它盖住 ——
+        // 表现上看着没事，但那个字段就成了一句假话。
+        #expect(metrics.stitchedSegments == nil)
     }
 
     @Test("未授权且用户拒绝 → 引导去系统设置，且**不**尝试采集")

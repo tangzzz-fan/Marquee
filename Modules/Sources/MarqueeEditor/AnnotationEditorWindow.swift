@@ -50,16 +50,21 @@ public final class AnnotationEditorPresenter {
 
     /// `seed` 用来预置标注（开发演示用：`-marqueeDemoEditor`），正常流程为空。
     ///
+    /// `segments` 是这张长图**拼了几段**（只有长截图那条路知道）。
+    /// `nil` = 不知道，状态行就不说这一句 —— 见 `EditorChrome.leading`。
+    ///
     /// `seed` 放在闭包**前面**：尾随闭包只能匹配最后一个参数，
     /// 把它放后面就没法用尾随闭包语法了（`present(image:seed:) { … }`）。
     public func present(image: CGImage,
                         seed: [Annotation] = [],
+                        segments: Int? = nil,
                         onCopyPNG: @escaping @MainActor (Data) -> Void,
                         onSave: @escaping @MainActor (CGImage) -> Void) {
         let controller = AnnotationEditorWindowController(image: image,
                                                           onCopyPNG: onCopyPNG,
                                                           onSave: onSave,
                                                           seed: seed,
+                                                          segments: segments,
                                                           recognizer: recognizer,
                                                           background: background)
         controller.onClosed = { [weak self, weak controller] in
@@ -97,6 +102,7 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
          onCopyPNG: @escaping @MainActor (Data) -> Void,
          onSave: @escaping @MainActor (CGImage) -> Void,
          seed: [Annotation] = [],
+         segments: Int? = nil,
          recognizer: TextRecognizing? = nil,
          background: EditorBackgroundFactory? = nil) {
         // ⚠️ **工具条即标题栏**（设计稿 §10 的登记项之一）：
@@ -123,6 +129,7 @@ final class AnnotationEditorWindowController: NSWindowController, NSWindowDelega
                                         onCopyPNG: onCopyPNG,
                                         onSave: onSave,
                                         seed: seed,
+                                        segments: segments,
                                         recognizer: recognizer,
                                         background: background) { [weak self] in
             self?.close()
@@ -194,6 +201,16 @@ private struct AnnotationEditorView: View {
     /// 文字识别（ticket 13）。`nil` = 宿主没注入，工具栏上就不出现「识别文字」。
     @State private var ocr: TextRecognitionService?
     @State private var showOCRPanel = false
+    /// 那张纸被拖到哪了。`nil` = **还没拖过**，贴默认的右下角。
+    ///
+    /// 为什么用"有没有拖过"而不是"记一个坐标"：默认位置要跟着画布尺寸走
+    ///（窗口一缩放，`nil` 这条路上的右下角自动重算），而拖过之后就是用户的决定了。
+    @State private var ocrPanelOrigin: CGPoint?
+    /// 那张纸有多大。拖动要夹取，而夹取要知道尺寸 —— 尺寸由内容决定（四张脸的高度不同），
+    /// 所以只能量（`GeometryReader` 垫在纸背后），不能写死。
+    @State private var ocrPanelSize = CGSize(width: 260, height: 120)
+    /// 拖动起点（画布坐标，只在一次拖动期间有值）。
+    @State private var ocrDragStart: CGPoint?
 
     @State private var session: AnnotationEditorSession
     @State private var viewport = CanvasViewport()
@@ -214,21 +231,30 @@ private struct AnnotationEditorView: View {
     @State private var editingText = ""
     @FocusState private var editingFocused: Bool
 
-    /// 色板与线宽档位来自 **Core 的共享定义**，与覆盖层浮动工具栏用的是同一份。
+    /// 色板来自 **Core 的共享定义**，与覆盖层浮动工具栏用的是同一份。
     ///
     /// 各写一份会分叉，而分叉的表现是"在覆盖层里挑的橙，进编辑器变成了另一个橙" ——
     /// 没人会往"两份常量"上面想，只会觉得颜色自己变了。
+    ///
+    /// ⚠️ **尺寸那三档刻意不在这里**：它们由 `OverlaySizeMeaning.editorValues` 给
+    ///（同一个位置按当前工具换含义：线宽 / 字号 / 打码强度），Core 是唯一来源。
+    /// 这里原先还躺着三个平行的数组（线宽 / 字号 / 打码强度），其中字号那个**已经与 Core 分叉**
+    ///（写的 24 / 36 / 56，而 Core 是 36 / 56 / 88）—— 而三个都**没有任何读取方**，是死代码。
+    /// 删掉比留着强：它们的分叉只在"有人顺手接入"的那天才发作，而那时没人会去比对 Core。
     private let colors = AnnotationPalette.colors
-    private let lineWidths = AnnotationPalette.editorLineWidths
-    /// 字号档位。文字标注的"粗细"就是字号，和线宽共用同一排控件。
-    private let fontSizes: [CGFloat] = [24, 36, 56]
-    /// 打码强度档位（马赛克＝块边长、模糊＝半径）。两档之间的差别要一眼看得出来。
-    private let redactionStrengths: [CGFloat] = [8, 16, 32]
+
+    /// 这张长图是**几段拼出来的**。`nil` = 宿主没传（不知道）。
+    ///
+    /// ⚠️ 不许在这里编一个数：状态行是"说真话"的地方，编出来的「4 段拼接」比不说更糟
+    ///（`EditorChrome.leading` 的判据就是按这条写的：`nil` 或 1 都不显示）。
+    /// 只有长截图那条路知道真值 —— 普通截图（就地标注）与 `-marqueeDemoEditor` 都是 `nil`。
+    let segments: Int?
 
     init(image: CGImage,
          onCopyPNG: @escaping (Data) -> Void,
          onSave: @escaping (CGImage) -> Void,
          seed: [Annotation] = [],
+         segments: Int? = nil,
          recognizer: TextRecognizing? = nil,
          background: EditorBackgroundFactory? = nil,
          onClose: @escaping () -> Void) {
@@ -237,6 +263,7 @@ private struct AnnotationEditorView: View {
         self.onSave = onSave
         self.onClose = onClose
         self.background = background
+        self.segments = segments
         // 识别器只在**首次**建视图时被用一次：`State(initialValue:)` 之后重建视图不会重置它，
         // 否则识别到一半重建一次就会把结果丢掉。
         _ocr = State(initialValue: recognizer.map { TextRecognitionService(recognizer: $0) })
@@ -257,7 +284,6 @@ private struct AnnotationEditorView: View {
             statusLine
         }
         .background(ChromePalette.dark.background.color)
-        .overlay(alignment: .bottomTrailing) { ocrPanel.padding(16) }
     }
 
     /// 把工具条与状态行各渲一张 PNG（**只在冒烟路径上跑**）。
@@ -298,9 +324,40 @@ private struct AnnotationEditorView: View {
         render(view.toolbar.frame(width: EditorChrome.defaultWindowSize.width,
                                   height: EditorChrome.toolbarHeight), name: "editor-toolbar.png")
         render(view.statusLine.frame(width: EditorChrome.defaultWindowSize.width), name: "editor-status.png")
+        // 状态行**带段数**那一版（长截图那条路才会出现的一句话）。
+        // 为什么要单独渲一张：段数是从宿主一路递进来的（`segments`），
+        // 而"递到了没有"在 Core 里测不出来 —— 它是接线，只能看。
+        let stitched = AnnotationEditorView(image: image,
+                                            onCopyPNG: { _ in },
+                                            onSave: { _ in },
+                                            segments: 12,
+                                            recognizer: SnapshotRecognizer(),
+                                            onClose: {})
+        render(stitched.statusLine.frame(width: EditorChrome.defaultWindowSize.width),
+               name: "editor-status-stitched.png")
         // 文字预设弹层那两段（它会因为「序号」多长出一截）
         render(view.textPresetPopover.background(ChromePalette.dark.panel.color), name: "editor-presets.png")
+        // 裁切读数框（稿子 §07 c）：**它平时只在拖保留框时出现**，
+        // 而"132 宽放不放得下两行字"只有渲出来才看得见 —— 这是它唯一的目视证据。
+        // ⚠️ 专门渲两张：一张按稿子的尺寸，一张用长截图的常规高度（`12000`），
+        // 后者会**把框撑宽**（写死 132 的话尾巴数字会被裁掉）。
+        render(panel(view.cropReadoutBox(CropReadout.lines(crop: CGSize(width: 1400, height: 620),
+                                                           original: CGSize(width: 1440, height: 2000)))),
+               name: "editor-crop-readout.png")
+        render(panel(view.cropReadoutBox(CropReadout.lines(crop: CGSize(width: 1440, height: 12000),
+                                                           original: CGSize(width: 1440, height: 12000)))),
+               name: "editor-crop-readout-tall.png")
+        // 识别面板的一张脸（它的外壳在这一轮成了"可拖的纸"，标题条是把手）
+        if let service = view.ocr {
+            render(panel(view.ocrPanelContent(service)), name: "editor-ocr-panel.png")
+        }
         return written
+    }
+
+    /// 给快照垫一层画布底色。**不能省**：面板与读数框都是深底上的浮件，
+    /// 直接渲在透明底上，边与投影都看不见（"看不见边"会被误读成"没有边"）。
+    private static func panel(_ content: some View) -> some View {
+        content.padding(20).background(ChromePalette.dark.inset.color)
     }
 
     // MARK: - 工具条（= 标题栏）
@@ -618,7 +675,7 @@ private struct AnnotationEditorView: View {
     private var statusLine: some View {
         HStack(spacing: 8) {
             Text(EditorChrome.leading(pixelSize: session.document.canvasPixelSize,
-                                      segments: nil,
+                                      segments: segments,
                                       mode: cropMode))
                 .lineLimit(1)
             Spacer(minLength: 8)
@@ -654,8 +711,14 @@ private struct AnnotationEditorView: View {
                                                   : AnnotationIcon.recognizeText,
                    isActive: showOCRPanel,
                    isEnabled: !service.isRunning) {
+            // ⚠️ 已有结果时**只把纸拿回来**，不重跑识别（稿子 §07 判断 5：
+            // 「看完就关，或者拖到不碍事的角落」—— 收拢过的纸要能一眼找回）。
+            // 重跑会让用户白等一次，而且结果可能与刚才那次不同（Vision 不是幂等的）。
+            // 「不要这个结果」由面板上的 `✕` 承担（它 reset 状态）。
+            if service.state == .idle {
+                Task { await service.recognize(image) }
+            }
             showOCRPanel = true
-            Task { await service.recognize(image) }
         }
     }
 
@@ -678,42 +741,90 @@ private struct AnnotationEditorView: View {
     ///    留白会让人以为坏了，而"正在识别"那一刻用户已经在等了。
     /// 3. **浮在画布上、不挤画布宽度**（判断 5）：识别结果只是"顺手看一眼"的东西。
     ///    侧栏会永久吃掉 260 宽 —— 而画布宽度是这扇窗存在的全部理由。
+    /// 4. **它是可以挪走的纸**（2026-10-08 补）：默认贴右下角、**按住标题条能拖**、
+    ///    **点画布就收拢**、`✕` 才关掉。判据（默认位置 / 夹取）在 Core
+    ///    （`EditorPanelPlacement`），这里只负责接手势 —— 拖出窗口是一条**有去无回**的路
+    ///    （`✕` 也在拖出去的那一半上），不该靠手拖去发现。
     @ViewBuilder
-    private var ocrPanel: some View {
+    private func ocrPaper(canvas: CGSize) -> some View {
         if showOCRPanel, let service = ocr {
-            VStack(alignment: .leading, spacing: 8) {
-                ocrHeader(service)
-                switch service.state {
-                case .idle, .running:
-                    ocrFace(symbol: AnnotationIcon.recognizing,
-                            title: L10n.t("正在识别…"),
-                            body: L10n.t("首次识别可能要十几秒，之后会快。"))
-                case .empty:
-                    // 颜色是**安静**的（次要色，无红）：没字不是错误，是这张图的属性。
-                    // 也没有「重试」—— 重试会得到同一个答案。
-                    ocrFace(symbol: "rectangle.dashed",
-                            title: L10n.t("这张图里没有文字"),
-                            body: L10n.t("纯图或图形界面都可能这样；识别只看整张图。"))
-                case .failed:
-                    // 红是给"坏了"的：图标（警告三角）+ 标题**双通道**，
-                    // 而它比「没有文字」那张多一行按钮 —— 有路可走的和没路可走的不该一样高。
-                    ocrFace(symbol: "exclamationmark.triangle",
-                            title: L10n.t("识别失败了"),
-                            body: L10n.t("重试不会影响已经画好的标注。"),
-                            tint: ChromePalette.dark.danger.color,
-                            retry: { Task { await service.recognize(image) } })
-                case .ready(let result):
-                    ocrResult(result, service: service)
+            let origin = ocrPanelOrigin ?? EditorPanelPlacement.defaultOrigin(panel: ocrPanelSize,
+                                                                             canvas: canvas)
+            ocrPanelContent(service)
+                // 量它自己的尺寸：四张脸高度不同（90–172），夹取必须知道真实大小。
+                // ⚠️ 尺寸只喂给**夹取数学**，不参与纸自己的布局 ⇒ 不会形成回路。
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onChange(of: proxy.size, initial: true) { _, size in
+                                ocrPanelSize = size
+                            }
+                    }
                 }
-            }
-            .padding(12)
-            .frame(width: Self.ocrPanelWidth, alignment: .leading)
-            .background(ChromePalette.dark.panel.color)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1))
-            .shadow(color: .black.opacity(0.42), radius: 18, y: 8)
+                .offset(x: origin.x, y: origin.y)
         }
+    }
+
+    @ViewBuilder
+    private func ocrPanelContent(_ service: TextRecognitionService) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 标题条是这张纸的**把手**（稿子 §07：「按住标题条可以拖」）。
+            // `contentShape` 不能省：这一行里只有文字与按钮有命中区，中间那段空白拖不动。
+            // `help` 也不省：纸没有边框把手，"能拖"这件事没有别的说明处
+            //（与钉图控制条的按钮同一条做法 —— tooltip 是它唯一的说明）。
+            ocrHeader(service)
+                .contentShape(Rectangle())
+                .help(L10n.t("拖动面板"))
+                .gesture(panelDragGesture)
+            switch service.state {
+            case .idle, .running:
+                ocrFace(symbol: AnnotationIcon.recognizing,
+                        title: L10n.t("正在识别…"),
+                        body: L10n.t("首次识别可能要十几秒，之后会快。"))
+            case .empty:
+                // 颜色是**安静**的（次要色，无红）：没字不是错误，是这张图的属性。
+                // 也没有「重试」—— 重试会得到同一个答案。
+                ocrFace(symbol: "rectangle.dashed",
+                        title: L10n.t("这张图里没有文字"),
+                        body: L10n.t("纯图或图形界面都可能这样；识别只看整张图。"))
+            case .failed:
+                // 红是给"坏了"的：图标（警告三角）+ 标题**双通道**，
+                // 而它比「没有文字」那张多一行按钮 —— 有路可走的和没路可走的不该一样高。
+                ocrFace(symbol: "exclamationmark.triangle",
+                        title: L10n.t("识别失败了"),
+                        body: L10n.t("重试不会影响已经画好的标注。"),
+                        tint: ChromePalette.dark.danger.color,
+                        retry: { Task { await service.recognize(image) } })
+            case .ready(let result):
+                ocrResult(result, service: service)
+            }
+        }
+        .padding(12)
+        .frame(width: Self.ocrPanelWidth, alignment: .leading)
+        .background(ChromePalette.dark.panel.color)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .stroke(ChromePalette.Overlay.panelBorder.color, lineWidth: 1))
+        .shadow(color: .black.opacity(0.42), radius: 18, y: 8)
+    }
+
+    /// 拖动那张纸。
+    ///
+    /// 按「起点 + 位移」算，**不是**「上一帧 + 增量」：后者会把被夹掉的那一段
+    /// 累进下一次移动，表现是**纸越拖越贴边、再也拽不回来**（`EditorPanelPlacement.dragged` 里写着）。
+    private var panelDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let start = ocrDragStart
+                    ?? ocrPanelOrigin
+                    ?? EditorPanelPlacement.defaultOrigin(panel: ocrPanelSize, canvas: canvasSize)
+                if ocrDragStart == nil { ocrDragStart = start }
+                ocrPanelOrigin = EditorPanelPlacement.dragged(from: start,
+                                                              by: value.translation,
+                                                              panel: ocrPanelSize,
+                                                              canvas: canvasSize)
+            }
+            .onEnded { _ in ocrDragStart = nil }
     }
 
     /// 面板宽。稿子 §07：「260 宽 · 高 90–172」—— 三张脸只差高度。
@@ -951,6 +1062,11 @@ private struct AnnotationEditorView: View {
                     .allowsHitTesting(false)
             }
             .overlay(alignment: .topLeading) { textEditor }
+            // 识别结果那张纸：浮在台面上，默认贴右下角、可以拖走（稿子 §04/§07）。
+            // 它住在**画布这一层**而不是窗口那一层 ——「默认右下 + 夹进画布」判据算的都是画布坐标。
+            .overlay(alignment: .topLeading) { ocrPaper(canvas: geo.size) }
+            // 裁切读数框：跟着保留框，实时报"裁完多大"（稿子 §07 c）。
+            .overlay(alignment: .topLeading) { cropReadoutLayer(canvas: geo.size) }
             .onAppear {
                 fitIfNeeded(in: geo.size)
                 rebuildRedactionCache()
@@ -999,6 +1115,9 @@ private struct AnnotationEditorView: View {
     private var drag: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                // 点画布 = 让那张纸**收拢**（稿子 §07：「点画布它就收拢」）。
+                // 它是**副作用**，不是模式 —— 这一下该干的活（选标注 / 画东西）照旧往下走。
+                if showOCRPanel { showOCRPanel = false }
                 // 正在输入时，这一下点击只用来结束输入 —— 否则会在输入框旁边再画一个框
                 if editingID != nil {
                     commitTextEditing()
@@ -1065,6 +1184,79 @@ private struct AnnotationEditorView: View {
             if hypot(viewPoint.x - center.x, viewPoint.y - center.y) <= 12 { return handle }
         }
         return nil
+    }
+
+    // MARK: - 裁切读数框（设计稿 §07 c）
+
+    /// 拖保留框时实时报"裁完是多大"。
+    ///
+    /// ## 它是"不设二次确认"的代价与前提
+    ///
+    /// 裁切是画布级的破坏性操作，而稿子的结论是**不加确认弹窗**
+    ///（那会造出整个产品唯一的模态，与"标注可反复改"正好相反）。
+    /// 这一步的职责由这台读数框来付：**还不等按 `⏎`，用户已经看到这一刀会切掉多少**。
+    ///
+    /// ⚠️ 只要**进了裁切模式**就显示（不等"框被拖过"）：框从进模式那一刻就在
+    /// （初始 = 整张图），此时报"裁完 = 原图"是句实话 —— 而按"改过没有"来决定显不显示，
+    /// 会让用户把框拖回原尺寸时它突然消失。
+    @ViewBuilder
+    private func cropReadoutLayer(canvas: CGSize) -> some View {
+        if session.isCropping, let draft = session.cropDraft {
+            let lines = CropReadout.lines(crop: draft.size, original: session.document.pixelSize)
+            let box = CropReadout.frame(
+                cropFrame: viewport.viewRect(forImage: draft,
+                                             cropOrigin: session.document.cropRect.origin),
+                canvas: canvas,
+                size: CropReadout.size(textWidth: readoutTextWidth(lines))
+            )
+            cropReadoutBox(lines)
+                .frame(width: box.width, height: box.height, alignment: .topLeading)
+                // ⚠️ **不可点**：它是读数不是控件。吃掉鼠标就等于在保留框的右下挖了
+                // 一个"拖不动"的洞 —— 而那里正是右下角握把所在。
+                .allowsHitTesting(false)
+                .offset(x: box.minX, y: box.minY)
+        }
+    }
+
+    private func cropReadoutBox(_ lines: CropReadout.Lines) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // 两行都用**等宽数字**、中等字重 —— 与覆盖层那个读数框同一套
+            //（`OverlayReadout` 的行阶 13 / 11）。数字对齐，尺寸读起来才不用逐位比。
+            Text(lines.headline)
+                .font(.system(size: CropReadout.primaryFontSize, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(ChromePalette.dark.label.color)
+            Text(lines.detail)
+                .font(.system(size: CropReadout.secondaryFontSize, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(ChromePalette.dark.label2.color)
+        }
+        .lineLimit(1)
+        .padding(.horizontal, OverlayReadout.textPadding.width)
+        .padding(.vertical, OverlayReadout.textPadding.height)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ChromePalette.dark.panel.color)
+        .clipShape(RoundedRectangle(cornerRadius: OverlayReadout.cornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: OverlayReadout.cornerRadius)
+            .stroke(ChromePalette.Overlay.panelBorder.color, lineWidth: 1))
+        .shadow(color: .black.opacity(0.38), radius: 12, y: 6)
+    }
+
+    /// 两行里较长的那一行有多宽。
+    ///
+    /// ## 为什么要量，而不是写死 132
+    ///
+    /// 框宽 = `max(132, 内容 + 两侧内边距)`。写死之后，`原图 1440 × 12000 px`
+    /// 这种长截图的**常规**尺寸会被静默裁掉尾巴 —— 而尾巴上那几个数字
+    /// 正是这个框存在的理由。实测（11 点等宽数字、内宽 116）：
+    /// 中文 `原图 1440 × 2000 px` = 111.3，四位数已经用掉 96%；英文 `Original …` = 131.2，**放不下**。
+    private func readoutTextWidth(_ lines: CropReadout.Lines) -> CGFloat {
+        func width(_ text: String, _ fontSize: CGFloat) -> CGFloat {
+            let font = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .medium)
+            return (text as NSString).size(withAttributes: [.font: font]).width
+        }
+        return max(width(lines.headline, CropReadout.primaryFontSize),
+                   width(lines.detail, CropReadout.secondaryFontSize))
     }
 
     private struct CropDrag {

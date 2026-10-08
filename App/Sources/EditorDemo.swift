@@ -7,7 +7,7 @@ import MarqueeCore
 ///
 /// 编辑器的渲染（尤其是文字走 CoreText、箭头头部、画笔折线）无法在自动化测试里目视确认，
 /// 而走真实截图流程又要屏幕录制权限 —— 链条太长，验证一次的成本很高。
-/// 这里用一张**合成图**（纯 CoreGraphics，不需要任何权限）把**七类**标注一次摆全
+/// 这里用一张**合成图**（纯 CoreGraphics，不需要任何权限）把**八类**标注一次摆全
 /// （矩形 / 椭圆 / 箭头 / 画笔 / 文字 / 序号 / 马赛克 / 模糊）：
 ///
 /// ```bash
@@ -54,7 +54,10 @@ enum EditorDemo {
         return context.makeImage()!
     }
 
-    /// 五类标注各一个。坐标用**图像像素**（原点左上），与标注模型一致。
+    /// 八类标注各一个。坐标用**图像像素**（原点左上），与标注模型一致。
+    ///
+    /// ⚠️ 这里原先写的是"五类"（后来又写成"七类"），而实际摆了 **8 个** ——
+    /// 数一遍再写字，别让注释比代码多一个说法。
     static var annotations: [Annotation] {
         let red = AnnotationStyle(stroke: .red, lineWidth: 4, fontSize: 36)
         let blue = AnnotationStyle(stroke: AnnotationColor(red: 0.05, green: 0.48, blue: 1),
