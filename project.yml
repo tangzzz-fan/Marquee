@@ -100,6 +100,38 @@ schemes:
     archive:
       config: Release
 
+  # ── 上架专用 scheme（2026-10-08 加）──────────────────────────────────────
+  #
+  # 存在的理由：上面那个 scheme 的 **Archive 指向 `Release`** —— 那是 Developer ID
+  # （`scripts/package.sh`，打 DMG 给人下载）那条路，**刻意不带沙盒**。
+  # 而 App Store **要求沙盒**：拿它归档出来的包会在**上传那一刻**被拒，
+  # 本地一点错都不报（"归档成功"与"这个包能上架"是两件事）。
+  #
+  # ⇒ 与其靠"每次归档前记得去 Edit Scheme 把 Archive 改成 MAS"——
+  #    那种约定迟早会忘，而忘了的表现恰好是"一切正常、上传被拒"——
+  #    不如让**选 scheme 就等于选对了配置**。
+  #
+  # 用法：Xcode 左上角 scheme 选 **Marquee MAS** → Product → Archive →
+  #       Organizer → Distribute App → App Store Connect → Upload。
+  # 命令行那条路仍是 `scripts/package-mas.sh`（产出的归档与这里等价）。
+  "Marquee MAS":
+    build:
+      targets:
+        Marquee: all
+    run:
+      # 用它跑起来的就是**要上架的那个**（带沙盒 + 正式 id）——
+      # 所以它也是"上架前先自己跑一遍"最合适的一档。
+      #
+      # ⚠️ 刻意**不挂** `Products.storekit`：本地商店配置是 Dev 那条路的东西；
+      # 这一档要面对的是**真实商店**，挂上本地配置就成了自己跟自己对账。
+      config: MAS
+    profile:
+      config: MAS
+    analyze:
+      config: Debug
+    archive:
+      config: MAS
+
 targets:
   Marquee:
     type: application

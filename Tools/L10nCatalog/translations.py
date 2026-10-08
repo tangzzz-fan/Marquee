@@ -91,6 +91,11 @@ EN = {
     # ── 偏好设置（稿子 §C）─────────────────────────────────────
     # 窗底那行字：它是"没有应用按钮"这件事的**总回执**。
     "所有更改会立刻生效并自动保存": "Every change takes effect immediately and is saved automatically",
+    # 偏好窗口右下角那个入口（Guideline 5.1.1(i)：隐私政策链接要在 app 内也有一处）。
+    # 英文用 Apple 自己元数据字段的叫法（Privacy Policy），别另造一个词。
+    "隐私政策": "Privacy Policy",
+    "Marquee 不收集任何数据 · 在默认浏览器中打开": "Marquee collects nothing · opens in your default browser",
+    "查看": "View",
     "截图后播放提示音": "Play a sound after a capture",
     "截成功时播一声系统音效 · 关掉适合连着截很多张的时候":
         "A system chime on success · turn it off when you shoot many in a row",

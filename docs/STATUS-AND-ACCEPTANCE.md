@@ -1,10 +1,14 @@
 # Marquee · 进度、阻塞项与人工验收方案
 
 > 用途：一份可照着跑的**桌面验收清单**（ticket 06 的交付物），同时回答"现在到哪了、卡在哪"。
-> 日期：**2026-10-08（本轮：编辑器三件收尾已落地 —— 裁切读数框 · 识别面板可拖 · 状态行段数）**
+> 日期：**2026-10-08（本轮：编辑器三件收尾 + app 商店截图成套 + 两处真缺陷修复）**
 > 分支：`main`（`feat/ui-polish`、`feat/onboarding` 均已并入）
 > 自动化现状：`./scripts/test.sh` → **781 测试全绿**
 > （Core 741 / 80 套 · 历史仓库 18 · 商店 16 · 真实 Vision 装置自检 6；2026-10-08 复跑）
+>
+> 🆕 **App 商店截图已出成套**（中 / 英各 5 张，2880 × 1800）：
+> `docs/review/app-shots/{zh-Hans,en}/`，重跑命令与"哪一张出不了"见
+> `docs/APP-STORE-CONNECT.md` §7。
 >
 > ⚠️ 本文件是"验收与汇报的起点"，**数字与状态一变就要在这里改** ——
 > 上一版停在 588 / 2026-10-01，之后发生的 29–34、设计稿五轮、玻璃回写全都不在里面。
@@ -100,7 +104,7 @@
 | 31 StoreKit 2 接入 | 🟡 **代码全部完成**，待真机沙盒验证 | 第一批：商品目录 / 交易事实 / 纯映射 / 权益缓存（22 条）。第二批：Core 接缝 + **启动编排** + `MarqueeStore` 适配器 + `Products.storekit` + `-marqueeEntitlement` 自检入口（27 条）。**界面已收口**：三个入口的锁与升级卡片 · 偏好状态区 · 免费版历史配额（§Z 的 Z9–Z16）。真机沙盒验证前需先在 ASC 建 `com.tango.marquee.pro` |
 | 34 首次启动引导 | ✅ **已完成**（后加的，未进原台账）| 三步、每步可跳过：它是什么 / 挑一个键 / 屏幕录制权限。判据在 Core：**带 `-marquee` 前缀的自检运行一律不弹**。改键复用 `ShortcutRecorderView`，与偏好页同一套逻辑。验收 Z17–Z21 |
 | 32 沙盒化改造 | 🟡 **进行中**（2026-10-03 起）| 已落：第四个配置 **`MAS`（只有它带沙盒）** + `App/Marquee.entitlements`（`app-sandbox` / `files.user-selected.read-write` / `assets.pictures.read-write` 三项）+ **`ENABLE_HARDENED_RUNTIME` 四份配置都开**（原先只有它没开，而公证要求开）+ 沙盒判据 `AppIdentity.isSandboxed` + **默认落盘改 `~/Pictures/Marquee`** + 自动滚动降级（`AutoScrollGate`）。**剩**：§3 末尾的 **AA1–AA8** 人工过一遍；数据/偏好迁移**已查明在沙盒内做不到**（见 ticket 32 §2） |
-| 33 MAS 打包与提审 | ⏳ 依赖 32 |
+| 33 MAS 打包与提审 | ⏳ **依赖 32；证书这一关已过**（2026-10-08 装上 `Apple Distribution`）—— 剩下的是 `archive → exportArchive(app-store) → 上传预检` 那条脚本路线（脚本现在只有 `method: developer-id`）。⚠️ 上传前必须核一遍包里**没有** `get-task-allow`（`APP-STORE-CONNECT.md` §6.4） |
 
 ⚠️ **路线 B 的代价**：**自动滚动必须砍掉**（沙盒禁止向其它 app 投递输入事件），
 只保留手动滚动长截图。有先例：腾讯 Snip 的 App Store 版同样「滚动截屏不可用」。
@@ -178,9 +182,11 @@ Developer ID 那条路作为后路**并存**。
 | # | 项 | 卡在哪 |
 | --- | --- | --- |
 | D1 | `./scripts/package.sh` 七步 | **一次都没跑过** —— 要你的 Developer ID 证书。整条上架路线唯一的单点风险（ticket 18 / 33 §3） |
-| D2 | `31` 的真机沙盒验证 | 前提：先在 ASC 建 `com.tango.marquee.pro`（¥36 非消耗型）与 `com.tango.marquee.pro.trial`（0 价）。勾选表见 `docs/APP-STORE-CONNECT.md` §5 |
+| D2 | `31` 的真机沙盒验证 | 前提：先在 ASC 建 `com.tango.marquee.pro`（¥36 非消耗型）与 `com.tango.marquee.pro.trial`（0 价）。**点按钮的步骤见 `docs/APP-STORE-CONNECT.md` §1.4 / §1.5** |
 | D3 | `32` 沙盒构建下的整份回归 | `CONFIGURATION=MAS` 能构建出产物，但**没人跑过 §3 的 A–AA**（入口是 §3 末尾的 AA1–AA8）。⚠️ 数据/偏好迁移**已查明在沙盒内做不到**（读不到容器外的 Application Support）⇒ 沙盒版首发本来就没有老数据 |
 | D4 | 玻璃的实机照 | 见 §3 **GL1**（要先在系统设置里授权屏幕录制） |
+| D5 | **MAS 打包 / 上传路线没写**（ticket 33 第 1–3 项） | `scripts/package.sh` 只有 `method: developer-id` 一条路。**证书这一关已经过了**（2026-10-08 装了 `Apple Distribution`），剩下的是脚本与 exportOptions |
+| D6 | **App 商店截图** | ✅ **已出成套**（中 / 英各 5 张，2880 × 1800，入库 `docs/review/app-shots/`）。⚠️ **覆盖层那一张仍要真机拍**（它的背景是实时桌面，见 `APP-STORE-CONNECT.md` §7.3） |
 
 ### D′. 有意暂缺（有 ticket 兜着，不是遗漏）
 
@@ -809,9 +815,10 @@ defaults delete com.tango.marquee.dev onboarding.completed
 | Z23 | 打开「设置 → 通用」 | 那颗按钮是 `升级到 Pro · ¥36` —— **点下去之前就能看见价格** |
 | Z24 | 断网（或用连不到商店的构建）再走 Z22 / Z23 | 退化成**少说一句**：卡片回旧句、按钮回 `升级到 Pro`。**不留空、也不猜一个数** |
 
-> ⚠️ `docs/review/` 里那两张审核图是**退化句**版（画它们的机器连不到商店）。
-> 想要带价格的那一版：`open -a "$PWD/DerivedData/Build/Products/Dev/Marquee.app" --args -marqueeSmokeReview`
-> 再把产物 `cp` 回 `docs/review/`；**上传给 ASC 的用 Release 构建**（页脚会写 bundle id）。
+> ℹ️ `docs/review/` 里那两张审核图**已经是带价格的那一版**（2026-10-08）——
+> 按钮 `升级到 Pro · ¥36.00`、卡片 `试用 7 天 · 之后 ¥36.00 · 免费版仍可用`。
+> 出图：`…/Release/Marquee.app -marqueeSmokeReview -marqueeSmokePrice "¥36.00"`，
+> 那个值要**与 ASC 逐字一致**（理由与"为什么它有存在的必要"见 `APP-STORE-CONNECT.md` §4）。
 
 #### GL 组：玻璃回写与实机照（第 ⑩ 稿，2026-10-04）
 
@@ -870,6 +877,13 @@ defaults delete com.tango.marquee.dev onboarding.completed
 > **ED16 / ED17 是这一批最该认真看的两条**：它们分别是"破坏性操作的提前告知"与
 > "一张能挪走的纸"。前者的错法是不崩不报错地压住保留框，后者的错法是**把面板拖出窗口** ——
 > 而 `✕` 正好在被拖出去的那一半上（那时唯一的出口是关掉整扇窗，丢掉刚画的标注）。
+
+**ED19 / ED20 是 2026-10-08 出商店截图时顺带修掉的两处**（都不是出图工具的事，是 app 本身）：
+
+| # | 步骤 | 预期 |
+| --- | --- | --- |
+| ED19 | 进编辑器，看**画布（台面）与窗口四周** | 画布比窗底**再暗一档**（`--c-inset` `#1C1C1C` vs `--c-bg` `#252525`）。⚠️ 原先画布那层**根本没有背景**，一片区域一直透出窗底色 —— 两者只差一档，所以肉眼很容易放过；是离屏出图把那一块渲成占位色才翻出来的（PITFALLS 191 的第二个实例） |
+| ED20 | 进编辑器**看第一眼**（别等） | 已经画好的马赛克/模糊**当场就在**，不会先露一下原图再盖上。⚠️ 打码缓存原先只在 `onAppear` 里建，于是"不跑视图生命周期的渲染"（所有离屏出图）拿到的都是空缓存，而空缓存的画法是**什么都不画**（`guard let patch else { return }`）——那一块内容会原样露出来 |
 | ED15 | 点「裁切」→ 拖框 → `⏎` | 画布变小、缩放百分比重算。拖框时**右上/右下外侧跟着一台读数框**（见 ED16） |
 
 #### 沙盒构建下的自查（ticket 32）
@@ -950,6 +964,11 @@ DerivedData/Build/Products/Debug/Marquee.app/Contents/MacOS/Marquee -marqueeDiag
 # 编辑器演示：合成图 + 八类标注各一个，**不自动退出**，也不需要屏幕录制权限
 ... -marqueeDemoEditor
 
+# App 商店截图（2880 × 1800，中英各一套）—— 落在 <数据根>/reports/app-shots/<语言>/
+# ⚠️ 用 Release 构建出图（页脚写 bundle id）；英文那套加 -AppleLanguages "(en)"
+... -marqueeSmokeAppShots
+... -marqueeSmokeAppShots -AppleLanguages "(en)"
+
 # 编辑器版面快照（离屏，**不需要屏幕录制授权**）—— 落在 <数据根>/reports/：
 #   editor-toolbar / editor-status / editor-status-stitched（带「N 段拼接」那一句）
 #   editor-presets / editor-crop-readout / editor-crop-readout-tall / editor-ocr-panel
@@ -963,8 +982,9 @@ open -a "$PWD/DerivedData/Build/Products/Release/Marquee.app" --args -marqueeSmo
 # 图落在 ~/Library/Application Support/com.tango.marquee/reports/overlay-shot.png
 # ⚠️ 跑完没反应，先看同目录 reports/launch-arguments.txt —— 没有它就是参数压根没送到
 
-# IAP 审核图（1280×800，需能连到商店才有价格；否则是退化句）
-... -marqueeSmokeReview
+# IAP 审核图（1280×800）。⚠️ 价格：命令行**拿不到**本地商店配置，
+#   要么用 -marqueeSmokePrice 报上 ASC 的实际价，要么等商品建好且能连商店（见 ASC 文档 §4）
+... -marqueeSmokeReview -marqueeSmokePrice "¥36.00"
 
 # 内购四态（只查看 / 真买一次 / 走 0 价试用 / 恢复）
 ... -marqueeEntitlement [purchase|trial|restore]

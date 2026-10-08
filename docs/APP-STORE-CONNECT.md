@@ -9,9 +9,11 @@
 > | 为什么要买断 ¥36、Pro 含哪四项 | `docs/MAS-AND-MONETIZATION.md` §1 |
 > | 开发版与正式版怎么分、商品为什么不能挂 `.dev` id | `docs/DEV-VS-PROD.md` §3.1 / §3.2 |
 > | 打包、公证、公证后的验收 | `docs/RELEASE.md` |
-> | **本文档** | **ASC 上的按钮 + 提审前必须补的代码缺口** |
+> | **商店文案**（名称 / 描述 / 关键词 / 隐私标签 / App 审核备注 / 沙盒怎么答） | **`docs/APP-STORE-LISTING.md`** |
+> | **导出上架用的构建**（archive → .pkg → 预检） | **`scripts/package-mas.sh`** |
+> | **本文档** | **ASC 上的按钮 + 提审前必须补的代码缺口 + app 商店截图怎么出** |
 >
-> 最后核对时间：**2026-10-04**。ASC 的界面改版很勤，措辞可能变，但**每一步的判据（"做完之后你能验证什么"）不会变** —— 卡住时对着那一列查。
+> 最后核对时间：**2026-10-08**。ASC 的界面改版很勤，措辞可能变，但**每一步的判据（"做完之后你能验证什么"）不会变** —— 卡住时对着那一列查。
 
 ---
 
@@ -54,6 +56,7 @@ App Review 指南 3.1.1 原文（已核对，`developer.apple.com/app-store/revi
 | **付费应用协议（Paid Apps Agreement）已生效** | ASC →「协议、税务和银行业务」 | 商品建得出来但**取不到**；StoreKit 调用静默失败 |
 | **银行 + 税务信息填完** | 同上 | 同上（协议会停在"待生效"） |
 | App ID `com.tango.marquee` 已注册、且**开启 App 内购买能力** | 开发者后台 →「证书、标识符和描述文件」→ Identifiers | 建 IAP 时找不到对应的 app，或 IAP 无法关联 |
+| **`Apple Distribution` 证书**（上传那一步要） | Xcode → Settings → Accounts → Manage Certificates | 见 §6.4：没有它，`archive` 出来的包**带着开发签名**（`get-task-allow=true`），上传被拒 |
 
 ⚠️ **这三条是纯阻塞项**，且都不在代码里 —— 代码那边可以全绿而这里一步没做。
 
@@ -83,6 +86,40 @@ App Review 指南 3.1.1 原文（已核对，`developer.apple.com/app-store/revi
 - [ ] App 信息里的「价格与销售范围」：**app 本身免费**（钱从内购收）
 
 ⚠️ **app 本身必须免费**：买断 ¥36 是那个 IAP 的价格，不是 app 的价格。设成付费 app 会变成"先花 ¥36 买 app，再花 ¥36 解锁"，是两笔钱。
+
+#### ⚠️ 创建时报「名称已被使用」/「SKU 已被使用」
+
+这两个错**同时出现**时，最可能的解释**不是"有人抢了名字"**，而是**记录已经建好了**
+（第一次提交其实成功了，页面又提交了一次）—— 名字与 SKU 是同一份记录的两个字段，
+被同时占掉正好说明这一点。
+
+**先去「我的 App」看一眼，别再点创建。**
+
+| 你看到的 | 判断 | 怎么办 |
+| --- | --- | --- |
+| 列表里已有一条 Marquee，且**套装 ID = `com.tango.marquee`** | 就是它 | **直接用**，这一步已完成。接着做 §1.2（给这个 App ID 开内购能力）与 §1.4 / §1.5 |
+| 已有一条 Marquee，但**套装 ID 不是它** | 是另一个 app 占用了名字与 SKU | 见下面那张表 |
+| 列表里没有 | 缓存 / 看错账号 | 刷新重登再看，确认用的是同一个开发者账号 |
+
+三个字段建完之后**可改性完全不同**（Apple《App 信息》原文，别记错）：
+
+| 字段 | 建完之后还能改吗 |
+| --- | --- |
+| **名称** | ✅ 能。提交审核前随时可改；之后在**创建新版本**、或版本状态允许编辑时也能改 |
+| **套装 ID（Bundle ID）** | ❌ **上传过构建之后**就不能改 |
+| **SKU** | ❌ **加入账号后立刻锁死**（原文：「当您将该 App 添加至您的帐户后，便不能再更改 SKU」） |
+
+⇒ 所以「腾出被占用的名字」很便宜（把那个 app 改个名即可），
+**「腾出 SKU」很贵** —— 只有一条路：**删掉那条记录**
+（ASC → 该 app →「App 信息」→ 拉到底 → 删除 App；仅限未上架 / 可移除状态）。
+
+**SKU 一次定死**：只能含字母、数字、连字符、句号、下划线，且**不能以 `-` `.` `_` 开头**。
+建议 `marquee-macos-2026`。别写 `test`、别带版本号 —— 它标识的是**这条产品记录**，
+不是这次提交的构建。
+
+**名称的备选**（确实腾不出来时）：`Marquee 截图` / `Marquee 截屏标注`（都 ≤ 30 字）。
+⚠️ 名称与副标题里的词也算进 App Store 搜索，备选名因此顺带承担一点关键词职能 ——
+但别为了塞词把名字搞成关键词堆。
 
 ### 1.4 创建第一个商品：买断
 
@@ -134,14 +171,16 @@ iOS 至少 640 × 920，**macOS 要 1280 × 800**。随手拍的窗口图（偏�
 
 ```bash
 CONFIGURATION=Release MARQUEE_DISABLE_COMPILER_SANDBOX=1 ./scripts/build.sh
-open -a "$PWD/DerivedData/Build/Products/Release/Marquee.app" --args -marqueeSmokeReview
+open -a "$PWD/DerivedData/Build/Products/Release/Marquee.app" \
+     --args -marqueeSmokeReview -marqueeSmokePrice "¥36.00"
 cp "$HOME/Library/Application Support/com.tango.marquee/reports/iap-review-"*.png docs/review/
 ```
 
 ⚠️ 用 **Release** 构建出图：图上页脚会写下 bundle id，开发版那个会写成 `.dev`。
 ⚠️ 图上的标注框是**按运行期算出来的矩形**画的（`proPanelFrameInContent` /
 `ProCardLayout.Content.primary`），不是从源码里估的坐标 —— 布局一改，估的坐标会静静指到别处。
-⚠️ 界面补上价格之后（见 §4），这两张图要**重出一遍**。
+⚠️ **`-marqueeSmokePrice` 的值要与 ASC 上那个店面价逐字一致**（`¥36.00`）。
+它为什么存在、又为什么不是"编一个数"，见 §4。
 
 建议的备注内容（三个商品各写一条）：
 
@@ -262,18 +301,36 @@ Apple 这条 0 价 IAP 的路径**已知**有这个性质（社区与开发者�
 判据在 Core（`ProCard.bodyVariant(for:priceAvailable:)` + 新的一档 `.trialWithPrice`），
 句子在视图 —— 沿用 PITFALLS 178 那条分工；而"哪一档说哪句"是可断言的。
 
-### 那两张审核图要不要重出
+### 那两张审核图：**已出带价格版**（2026-10-08）
 
-`docs/review/` 里那两张**现在是退化句**（画它们的那台机器连不到商店，取不到价格）——
-这如实反映了"取不到价格时"的样子。想要**带价格**的那一版，在一个能拿到价格的
-环境里重跑一次即可（例如从 Xcode 运行 Dev 配置 —— scheme 里挂着 `Products.storekit`）：
+之前 `docs/review/` 里是**退化句**版（画它们的机器取不到价格）。现在两张都是带价格的那一版：
+按钮 `升级到 Pro · ¥36.00`、卡片 `试用 7 天 · 之后 ¥36.00 · 免费版仍可用`。
+**试用那张尤其要紧** —— 图上那句 `之后 ¥36.00` 正是 3.1.1 要求的"开始前说清后续费用"，
+审核员看的就是它。
 
-```bash
-open -a "$PWD/DerivedData/Build/Products/Dev/Marquee.app" --args -marqueeSmokeReview
-cp "$HOME/Library/Application Support/com.tango.marquee.dev/reports/iap-review-"*.png docs/review/
-```
+**价格从哪来**（这段要说清，否则下次没人知道 `¥36.00` 是谁给的）：
 
-⚠️ 上传给 ASC 的那两张建议**用 Release 构建**出（图上页脚会写 bundle id）。
+| 路 | 通不通 |
+| --- | --- |
+| Xcode 运行 Dev 配置（scheme 里挂着 `Products.storekit`） | ✅ 通。但页脚会写 `.dev`，不适合交给审核 |
+| 命令行 `open` / 直接 exec（Release 或 Dev） | ❌ **拿不到**。Xcode 是通过它自己的启动环境注入 `.storekit` 的，命令行没有；Dev 构建也带 hardened runtime（`flags=0x10000`）⇒ `DYLD_*` 会被直接剥掉，把 `DYLD_FRAMEWORK_PATH` 指向 Xcode 的 Developer 框架也无效 |
+| 真商店 | ❌ 商品还没在 ASC 建好时答不出来 |
+
+⇒ 给截图那条路留了一个**显式**注入口：`-marqueeSmokePrice "¥36.00"`。
+它**只在真实取价答不出来时**才生效（`MarqueeAppDelegate.prepareScreenshotPrice` 先给真实取价 2.5 秒），
+而且**只在截图路径**上用 —— 生产路径永远走 `start()` 那次真实取价
+（`ProEntitlement.overridePriceForScreenshots`）。
+
+⚠️ **两件事要同时成立**，否则图上仍是退化句：
+
+1. 那条冒烟分支**必须是异步的**（`Task`）。原来是同步渲染，而取价是个 `Task` ——
+   主线程那一轮不跑完就轮不到它，于是**即使商店能返回价格，图上也不会有**。
+   这才是它一直没出现过的真正原因，不是"那台机器连不到商店"。
+2. 注入口给的字符串要与 **ASC 上那个价逐字一致**（`¥36.00`）。它是给审核看的，
+   写错等于告诉审核一个不存在的价格。
+
+> 商品在 ASC 建好、且机器能连到商店之后，**不带** `-marqueeSmokePrice` 重跑一次，
+> 图上的价格就是**商店自己答的**那一个 —— 那比注入口更可信。
 
 ### 顺带记下：三个"已经在做对"的地方，别改坏
 
@@ -291,14 +348,24 @@ cp "$HOME/Library/Application Support/com.tango.marquee.dev/reports/iap-review-"
 [ ] 1.3 app 记录创建；app 本身免费
 [ ] 1.4 IAP com.tango.marquee.pro：非消耗型 · ¥36 · 家人共享开 · 中英双语
 [ ] 1.5 IAP com.tango.marquee.pro.trial：非消耗型 · 价格等级 0 · 显示名含「7 天」
-[x] 1.6 两个商品的审核截图 —— `docs/review/iap-review-pro.png` / `-trial.png`（**已生成**）
+[x] 1.6 两个商品的审核截图 —— `docs/review/iap-review-pro.png` / `-trial.png`（**已生成，带价格**）
 [ ] 1.6b 两个商品的审核备注（试用那条要解释为什么单独建）
 [ ] 1.7 与首个 app 版本一起提交
 [ ] 1.8 沙盒测试员（新邮箱）
 [ ] 1.9 逐地区核对价格
 [ ] 2.0 Release + 沙盒账号跑一遍 -marqueeEntitlement purchase
+[ ] 3.0 建第二张证书 Mac Installer Distribution + Xcode 里登录 Apple ID（见 §6.5）
+[ ] 3.1 ./scripts/package-mas.sh —— 归档 + 导出 + 预检（2026-10-08：归档已通，导出等 3.0）
+[ ] 3.2 商店文案：名称 / 描述 / 关键词 / 隐私标签 / App 审核备注（见 docs/APP-STORE-LISTING.md）
+[ ] 3.3 隐私政策已发布，且**无痕窗口能打开**（正文与发布步骤见 docs/PRIVACY-POLICY.md）
+[x] 3.4 ✅ **app 内已有隐私政策入口**（2026-10-08）—— Guideline 5.1.1(i) 要求
+       "App Store Connect metadata field **and within the app**"。落点：**设置 → 通用页最后一行**
+       （「隐私政策 · 查看」），点开走系统默认浏览器。
+       链接唯一来源在 Core `ExternalLinks.privacyPolicyURLString`，有测试守着
+       （https、非占位符、指向具体页）；**链接解析不出来时整行连同分隔线一起不显示**，
+       绝不留死链。改动见 `PreferencesWindowController.makeGeneralPage`
 [x] 4.0 补上「试用前告知后续费用」—— **已补**（卡片正文 + 偏好页按钮都带价格）
-[ ] 4.1 想给审核图带上价格的话，在能连到商店的环境里重跑 -marqueeSmokeReview（见 §4）
+[x] 4.1 两张审核图**已出带价格版**（`-marqueeSmokePrice "¥36.00"`，见 §4）
 ```
 
 ---
@@ -309,3 +376,163 @@ cp "$HOME/Library/Application Support/com.tango.marquee.dev/reports/iap-review-"
   真到提审前，用沙盒账号在 Mac App Store 里看一眼它长什么样（会不会出现在"App 内购买项目"列表里）。
 - **ASC 侧栏在最近改版后的确切叫法**（"App 内购买项目" vs "Monetization → In-App Purchases"）。
   本文按中文界面写，英文界面按括号里的英文找。
+
+### 6.4 上传那一步的一个硬卡点：包里不许有 `get-task-allow`
+
+**2026-10-08 实测**：只装了 `Apple Development` 证书时，`CONFIGURATION=MAS ./scripts/build.sh`
+出来的包**带着 `com.apple.security.get-task-allow = true`** —— 那是开发签名的标记，
+App Store 上传会被直接拒。同一次实测里另外三项都是对的（bundle id `com.tango.marquee`、
+沙盒三项 entitlement、hardened runtime `flags=0x10000`）。
+
+⇒ 判据（一条命令）：
+
+```bash
+codesign -d --entitlements - --xml DerivedData/Build/Products/MAS/Marquee.app \
+  | plutil -p - | grep get-task-allow
+# 有输出 = 这一版**不能上传**
+```
+
+⚠️ **`build` 与 `archive` 在这一点上不一样**，别把上面那条结论套到归档产物上：
+同一天的归档实测（`.build-mas/Marquee.xcarchive/…/Marquee.app`）**不带** `get-task-allow` ——
+因为 `archive` 不注入调试用的基础 entitlement，而 `build` 会。
+所以上传那条路真正要核的是**导出的那个包**，脚本预检第 3 步就是干这个的。
+
+### 6.5 导出上架包：**两张证书 + 一把 API Key**（2026-10-08 实测）
+
+整条链路在 `scripts/package-mas.sh`（归档 `MAS` 配置 → 导出 `app-store-connect` → 预检）。
+实测把「已经通的」与「卡住的」分得很清楚：
+
+| 阶段 | 结果 |
+| --- | --- |
+| 归档（`-configuration MAS`） | ✅ **`ARCHIVE SUCCEEDED`**。产物核过：身份 `com.tango.marquee`、三项沙盒 entitlement、hardened runtime `flags=0x10000`、无 `get-task-allow` |
+| 导出 | ❌ 卡在「命令行拿不到账号」—— **环境性质，不是配置错误**。下面那条结论被实测推翻过一次，值得读完 |
+
+三条报错分别是什么：
+
+| 报错 | 实际含义 |
+| --- | --- |
+| `No "Mac Installer Distribution" signing certificate … was found` | **缺第二张证书**。`Apple Distribution` 签 app 本体；`Mac Installer Distribution` 签导出的 `.pkg` —— **是两张，不是一张** |
+| `exportArchive No Accounts` | ⚠️ **不是"没登账号"。** `xcodebuild` 读不到 Xcode 里那个 Apple ID —— 凭证在钥匙串里只授权给 Xcode.app 自己。实测：Xcode 早已登录、团队也已选中（`IDEProvisioningTeamManagerLastSelectedTeamID = UKXWZ3FS84`），这条报错照旧 |
+| `No profiles for 'com.tango.marquee' were found` | 上一条的连带结果。**登账号解决不了它** |
+
+**这条把 `build` 与 `archive` 也区分开了**：`build.sh` 的 MAS 产物带 `get-task-allow`，
+而归档产物**不带**（archive 不注入调试用的基础 entitlement）。
+
+#### 导出那一步的两条出路（登账号不在其中）
+
+| 路 | 怎么做 | 适合 |
+| --- | --- | --- |
+| **A. 走 Xcode 的 Organizer** | Xcode 左上角 scheme 选 **`Marquee MAS`** → Product → Archive → Organizer → Distribute App → App Store Connect → Upload | **首次提审最省事**。GUI 用得上账号，而且顺带把包传上去（省掉 Transporter 那一步） |
+| **B. 给命令行一把 ASC API Key** | ASC → 用户和访问 → 集成 → App Store Connect API → 生成密钥（`.p8` **只能下载一次**，同时记下 Key ID 与 Issuer ID），然后 `ASC_KEY_PATH=… ASC_KEY_ID=… ASC_ISSUER_ID=… ./scripts/package-mas.sh` | 想自动化 / 以后反复发版 |
+
+⚠️ **走 A 之前先确认 scheme 选的是 `Marquee MAS`，不是 `Marquee`。**
+两个 scheme 的仓库默认值不同（见 `project.yml`）：
+
+| scheme | Run | Archive | 那是哪条路 |
+| --- | --- | --- | --- |
+| `Marquee` | Dev | **Release** | Developer ID（`scripts/package.sh`，打 DMG）—— **不带沙盒，不能上架** |
+| `Marquee MAS` | MAS | **MAS** | App Store —— 带沙盒、正式 id |
+
+选错了的表现是**归档成功、上传被拒**，而本地不会给任何提示。
+
+#### 证书自检：⚠️ 两个坑，每个都会把"明明装好了"显示成"找不到"
+
+```bash
+security find-identity -v -p codesigning | grep "Apple Distribution"
+security find-identity -v | grep -i installer | grep -vi "Developer ID"
+```
+
+1. **不能加 `-p codesigning`** —— installer 身份不属于 codesigning 策略，加了过滤永远查不到。
+2. **同一样东西有两个名字**（2026-10-08 实测踩到）：证书的**类型名**在开发者后台 / Xcode 的
+   `+` 菜单里是 `Mac Installer Distribution`，而钥匙串里打出来的是**身份名**
+   `3rd Party Mac Developer Installer: zhenzhi Tang (UKXWZ3FS84)`。
+   按类型名 grep 会一无所获，而那时最自然的反应是"再去装一遍" —— 装一张本来就装好的证书。
+   ⇒ 所以上面第二条查的是 `installer` 这个**词根**，并排除 `Developer ID Installer`
+   （那也是 installer，但属**站外分发**；拿它签 App Store 的 .pkg 会被拒，报 ITMS-90237）。
+   `scripts/package-mas.sh` 的预检按同一套写法，并把命中的**身份名原样打出来**，
+   免得下次还要靠猜。
+
+⚠️ 归档**必须用 `MAS` 配置**。用 `Release` 归档出来的是 Developer ID 那条路、
+**不带沙盒**，上传会被拒 —— 而它在本地一点错都不报。脚本把配置钉死了，预检再核一遍。
+
+---
+
+## 7. App 商店截图（与 §1.6 那两张**不是**一回事）
+
+| | 给谁看 | 尺寸 |
+| --- | --- | --- |
+| §1.6 那两张（`-marqueeSmokeReview`） | **内购审核**：这两个商品在哪买、在哪开始试用 | 1280 × 800 |
+| 本节这一套（`-marqueeSmokeAppShots`） | **app 本身**：它长什么样、能干什么 | **2880 × 1800** |
+
+### 7.1 规格（已核 Apple 原文，2026-10-08）
+
+- **尺寸：16:10，四档之一** —— `1280×800` / `1440×900` / `2560×1600` / **`2880×1800`**
+- **张数：至少 1 张、最多 10 张**（每个本地化各一套）
+- **格式：PNG / JPEG，RGB，不许有 alpha**
+  —— Apple 截图规格页原话：*"Images can't include alpha channels or transparencies"*。
+  ⚠️ 这条**两边都管**：app 截图与 IAP 审核截图用的是**同一份规格**
+  （审核截图的要求是 "meets any of the screenshot specifications your app supports"）。
+  所以出图的 `CGContext` 一律用 `noneSkipLast` 而不是 `premultipliedLast` ——
+  带 alpha 的 PNG 在开发机上**看不出任何异常**（每个像素都不透明），只在上传那一刻被退。
+- 出**最高那一档**：ASC 会自动向下缩放，反过来（小图被放大显示）只会糊
+
+### 7.2 出图（离屏，**不需要屏幕录制授权**）
+
+```bash
+CONFIGURATION=Release MARQUEE_DISABLE_COMPILER_SANDBOX=1 ./scripts/build.sh
+open -a "$PWD/DerivedData/Build/Products/Release/Marquee.app" --args -marqueeSmokeAppShots
+# 产物：~/Library/Application Support/com.tango.marquee/reports/app-shots/<语言>/
+```
+
+⚠️ 用 **Release** 构建出图：页脚写 bundle id，开发版那个会写成 `.dev`。
+
+**英文那一套**（ASC 按本地化分别要）—— 同一个开关加一句语言参数：
+
+```bash
+open -a "$PWD/DerivedData/Build/Products/Release/Marquee.app" \
+     --args -marqueeSmokeAppShots -AppleLanguages "(en)"
+# 落在 app-shots/en/
+```
+
+⚠️ 两套图的**窗口内容大半是图标**，光看图分不出哪套是哪套 —— 所以页脚里写了 UI 语言。
+
+### 7.3 出不了的那一张：覆盖层
+
+**覆盖层（选区 + 工具条 + 读数框）出不了**：它是逐屏全屏面板，背后是**实时桌面**，
+而拿实时桌面要 ScreenCaptureKit = 屏幕录制授权；离屏渲染只能拍到"没有桌面的蒙层"。
+所以这一张**只能真机拍**，而它正好也是产品最该展示的一张：
+
+```bash
+# ① 授权（一次就够；⚠️ 必须用 `open -a`，直接 exec 会让 TCC 把授权记在终端头上）
+open -a "$PWD/DerivedData/Build/Products/Release/Marquee.app" --args -marqueeRequestPermission
+# ② 真覆盖层 + 真拖一次选区 + 抓屏
+open -a "$PWD/DerivedData/Build/Products/Release/Marquee.app" --args -marqueeSmokeOverlayShot
+# 产物：~/Library/Application Support/com.tango.marquee/reports/overlay-shot.png（整屏）
+```
+
+⚠️ 跑完**什么都没发生**时先看同目录的 `reports/launch-arguments.txt`：
+没有这个文件 = 参数压根没送到（`open --args` 在被沙箱包裹的 shell 里会静默丢参，PITFALLS 189）。
+⚠️ 这张是**整屏**，桌面上的东西都在图里 —— 传 ASC 之前自己裁/挑一张干净的桌面。
+
+### 7.4 这一套图里有什么、没有什么
+
+出的是**真窗口的离屏渲染**，不是示意图；状态行/读数框里的数字都是**真算出来的**。两条边界要记住：
+
+1. **工具条的玻璃质感看不见** —— 离屏一律回退到实色档（PITFALLS 187）。这不是缺陷，是这条路固有的边界。
+2. **面板里没有我们没做的东西**：图上的每一项能力都在代码里（`-marqueeSmokeAppShots` 的出图清单在
+   `App/Sources/AppShots.swift`）。**不许往图上放"计划中"的功能** —— 那是审核与差评的双重来源。
+
+### 7.5 上传前复核（一条命令，两张硬性条件一起查）
+
+尺寸与 alpha 这两样，在**被退之前看不出来**，所以上传前先跑一遍：
+
+```bash
+for f in docs/review/iap-review-*.png docs/review/app-shots/*/*.png; do
+  printf "%-56s " "$f"
+  sips -g pixelWidth -g pixelHeight -g hasAlpha -g space "$f" | tail -4 | tr -d '\n' | tr -s ' '
+  echo
+done
+```
+
+期望：`iap-review-*` = `1280 × 800`，`app-shots/*` = `2880 × 1800`，
+**全部** `hasAlpha: no`、`space: RGB`。（2026-10-08 实测：12 张全过。）

@@ -43,6 +43,10 @@
   ⚠️ **读数框宽 = `max(132, 内容)`**（不是写死 132）；**面板的默认位置必须走同一个 clamp**（画布小到一定程度才分叉）。
 - **"收拢"与"关掉"是两件事**：点画布收拢（**结果留着**，再点「识别文字」直接拿回来）；
   `✕` 才丢弃（reset，下次重新识别）。
+- **编辑器画布（台面）= `--c-inset`**，比窗底 `--c-bg` 暗一档（"图是亮的，桌子要比墙暗"）；
+  **打码缓存在 `init` 里建**，不许只挂在 `onAppear` 上（任何不跑视图生命周期的渲染都会缺）。
+- **离屏出图不能带任何 `NSViewRepresentable`** —— `ImageRenderer` 渲不了 AppKit 视图，
+  会画成**黄/红占位色**（不在色板里就是线索）；编辑器的键盘监听在出图那条路要关掉（PITFALLS 195）。
 
 ## 构建与测试（走脚本，不要手敲裸命令）
 
@@ -110,7 +114,10 @@ CONFIGURATION=Release ./scripts/build.sh   # 发版 / 内购真实沙盒验证
 | **`.workbuddy/memory/INTERACTION.md`** | **逐条交互实现细节**（写 UI 前必读） |
 | **`docs/PITFALLS.md`** | **189 条实现陷阱**（写代码前必扫） |
 | **`docs/APP-STORE-CONNECT.md`** | **ASC 操作清单**（两个商品怎么建 · 提审前必须补的代码缺口） |
-| `docs/review/` · `-marqueeSmokeReview` | **IAP 审核截图**（1280×800，ASC 对 macOS 的硬性尺寸）：真界面 2 倍离屏渲 + 超采样缩进画布 + 运行期算的标注框。**不需要屏幕录制授权** |
+| **`docs/APP-STORE-LISTING.md`** | **ASC 逐格可粘贴的文案**（名称/描述/关键词 中英 · URL · 隐私标签 · App 审核备注 · "沙盒信息"怎么答） |
+| **`docs/PRIVACY-POLICY.md`** | **隐私政策正文**（中英）+ **飞书发布三步**（⚠️ 默认"仅组织内可读" ⇒ 审核员打不开 ⇒ 5.1.1 被拒；必须改「互联网上获得链接的人可阅读」并**无痕验证**） |
+| **`scripts/package-mas.sh`** | **App Store 那条路**（与 `package.sh` 并存）：archive `MAS` → export `app-store-connect` → 三条预检。⚠️ 需**两张证书**：`Apple Distribution` 签 app + `Mac Installer Distribution` 签 `.pkg`。⚠️ **同一张证书两个名字**：类型名 `Mac Installer Distribution` ≠ 钥匙串身份名 `3rd Party Mac Developer Installer`；查它用 `grep -i installer` 且**不能加 `-p codesigning`**（PITFALLS 198）。⚠️ **导出那一步 `xcodebuild` 拿不到 Xcode 的账号**（登了也没用，凭证只授权给 Xcode.app）⇒ 要么走 Xcode Organizer 的 Distribute App，要么给 `ASC_KEY_PATH/ASC_KEY_ID/ASC_ISSUER_ID` 三个环境变量（PITFALLS 199） |
+| `docs/review/` · `-marqueeSmokeReview` · `-marqueeSmokeAppShots` | **ASC 用图**（审核 1280×800 / 商店 2880×1800）：真界面离屏渲 + 超采样缩进画布 + **运行期算的**标注框。**不需要屏幕录制授权**。两条硬约束：**不许有 alpha**（`noneSkipLast`，Apple 规格页原话）；**审核图上的价格**靠 `-marqueeSmokePrice "¥36.00"` —— 命令行拿不到本地商店配置，值必须与 ASC 逐字一致（PITFALLS 196/197） |
 | **`docs/MAS-AND-MONETIZATION.md`** | 收费与上架方案（已定）：¥36 · 路线 B · Pro 边界与**「被挡住时」的界面行为** · ticket 29–33 施工图 |
 | **`docs/DEV-VS-PROD.md`** | 开发版与正式版怎么区分（两个 id · 三个配置 · 改名时间窗） |
 | **`docs/STATUS-AND-ACCEPTANCE.md`** | **进度 / 阻塞项 / 人工验收清单**。验收与汇报从这份起 |

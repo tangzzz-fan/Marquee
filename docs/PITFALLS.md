@@ -1848,6 +1848,14 @@
     ⇒ 一条可执行的检查：**注释里断言存在的那个东西，去 grep 它的绘制/构造代码**。
     我这次是顺手核"E1 到底做没做"才发现的 —— 而当时我正准备照着注释去"修"一个不存在的东西。
 
+    > **同一类的第二个实例（2026-10-08）**：`AnnotationEditorWindow` 的窗口注释写着
+    > 「台面另有一块更暗的 `--c-inset`，在画布那层」—— 而画布那一层**根本没有背景**，
+    > 那片区域一直透出窗底色 `--c-bg`。它之所以一直没被发现，是因为两者只差一档
+    >（`0x252525` vs `0x1C1C1C`），而且**没有任何东西会因此报错**；
+    > 直到离屏出图把画布区渲成一块占位色，才顺带把这件事翻出来。
+    > ⇒ 一条更狠的教训：**注释里的"设计意图"最好在实现处能搜到一个对应的调用**，
+    > 搜不到就当它没做。
+
 192. **死代码里躺着一个**已经分叉**的常量。**
     编辑器视图里有三个平行的档位数组（线宽 / 字号 / 打码强度），**没有一个有读取方**：
     真正在用的一直是 Core 的 `OverlaySizeMeaning.editorValues`。
@@ -1883,3 +1891,154 @@
     只在画布小到一定程度时才分叉，而那时人已经拖不动了。
     ⇒ `defaultOrigin` 内部**调用同一个 `clamp`**，并把这条写成断言
     （"默认位置 == 把右下角那个点夹一遍"）。
+
+195. **`ImageRenderer` 渲不了 AppKit 视图 —— 它会画成"渲染不了"的占位色（黄 / 红），
+     而那既不是崩溃也不是空白。**
+     症状：整块区域变成**纯色块**，看起来像"某个视图忘了设底色"或"主题取错了色"，
+     而实际是 SwiftUI 在说"这个我渲不了"。实测（最小复现：一个 `NSViewRepresentable`
+     返回裸 `NSView`，其余什么都没有）：
+
+     ```
+     --- Canvas + 裸 NSViewRepresentable (200×200) ---
+       (100,150)  r=1.00 g=0.22 b=0.24 a=1.00     ← 红：AppKit 视图占位
+     ```
+
+     另一处同源的现象是**黄**（`r=1.00 g=0.80 b=0.00`）。两者都**不在 `ChromePalette` 里**
+     —— 而"颜色不在色板里"正是定位它的那把钥匙。
+
+     ⇒ 两条判据：
+
+     1. **离屏出图那条路不能带 `NSViewRepresentable`。** 编辑器里有两个：
+        键盘监听（`EditorEventMonitor`）与材质底（`MaterialBackground`）。
+        前者现在由 `installsKeyMonitor` 关掉（静态图不需要键盘，这不是妥协）；
+        后者在没注入工厂时本来就是实色档。
+     2. **渲染出来的颜色如果不在色板里，先怀疑"有 AppKit 视图没渲出来"，别去改配色。**
+        我这次是先采样像素发现"这个黄不属于任何一件调色板"，再写 20 行最小复现定性的 ——
+        如果从"配色"那一头查，会一路改 `ChromePalette`，越改越远。
+
+     > 顺带一条：`NSBitmapImageRep.colorAt(x:y:)` 的 **y 是从上往下**的，
+     > 采样时别把它当成 CGContext 那套 y 向上 —— 我第一遍就是这个坐标搞混，
+     > 读出来的"红在右边"其实是"红在上边"。
+
+196. **截图规格里有一条「不许有 alpha 通道」—— 而 `premultipliedLast` 出来的 PNG 张张都带。**
+    Apple 的截图规格页原话：*"Images can't include alpha channels or transparencies"*。
+    我们出图的 `CGContext` 一直用 `CGImageAlphaInfo.premultipliedLast`（= RGBA）——
+    于是**每一张**都带一条 alpha 通道，`sips -g hasAlpha` 报 `yes`。
+
+    这条坑的特征是**它在你身上一点症状都没有**：每个像素都是不透明的，图看着完全正常，
+    开发机上永远发现不了。而它在**上传那一刻**才炸，报错还只说"图有问题"。
+    更绕的是：它同时管 **app 商店截图**与**内购审核截图** ——
+    后者的要求是 "meets any of the screenshot specifications your app supports"，
+    所以规格页那条没写"app 截图专用"。
+
+    ⇒ 出图那条路的 `CGContext` 一律写 `CGImageAlphaInfo.noneSkipLast`（RGBX，无 alpha）。
+    实测对照（64 × 64、同一段绘制代码）：
+
+    | bitmapInfo | `image.alphaInfo` | `NSBitmapImageRep.hasAlpha` | `sips -g hasAlpha` |
+    | --- | --- | --- | --- |
+    | `premultipliedLast` | 1 | true | **yes** |
+    | `noneSkipLast` | 5 | false | **no** |
+
+    ⇒ 可执行的检查（上传前跑，别等被退）：
+
+    ```bash
+    for f in docs/review/**/*.png; do printf "%-56s " "$f"; sips -g hasAlpha "$f" | tail -1; done
+    ```
+
+197. **「同步渲染 + 异步取数」的组合，会让文档里承诺的那张图**永远**出不来 ——
+     而它会伪装成"那台机器连不到商店"。**
+     `-marqueeSmokeReview` 那条分支原来是**同步**渲染的，而价格是
+    `ProEntitlement.start()` 里一个 `Task` 取的。主线程那一轮不跑完就轮不到那个 Task ⇒
+    **即使商店真的返回了价格，截图上也永远没有**。
+
+    这件事被算错了两轮：`APP-STORE-CONNECT.md` §4 里写的是"那两张图现在是退化句
+    （**画它们的那台机器连不到商店**）"，并给出`从 Xcode 运行 Dev 配置`这条解法。
+    而真相是**两条路都出不来**：命令行那条（Dev/Release 都一样）本来就取不到价，
+    Xcode Dev 那条即使取到了价，也已经晚于渲染。文档把一个**结构性**问题
+    写成了**环境**问题 —— 于是每换一台机器都会再"确认"一次那个错误结论。
+
+    ⇒ 判据：**凡是"某条自检路径产出的东西里少了一块"，先看那一块是不是异步到的。**
+    同步渲染吃不到异步结果这件事不报错、不留痕，只有把两者放在一条时间线上才看得见。
+
+198. **同一样东西的「类型名」与「身份名」是两个字符串 —— 判据写窄了，就会在"明明装好了"
+     的时候报"找不到"，而报错会把你引向一个错误的动作。**
+     2026-10-08 实测：用户在 Xcode 里建好了 Mac Installer Distribution 证书，脚本仍说没有。
+     查下去发现证书**就在**，只是名字不一样：
+
+     | 在哪看 | 叫什么 |
+     | --- | --- |
+     | 开发者后台 / Xcode 的 `+` 菜单（**类型名**） | `Mac Installer Distribution` |
+     | 钥匙串，`security find-identity -v` 那一行（**身份名**） | `3rd Party Mac Developer Installer: zhenzhi Tang (UKXWZ3FS84)` |
+
+     脚本按类型名 grep ⇒ 一无所获。而**这个报错的指向是错的**：
+     "找不到这张证书"最自然的反应是"再去装一张" —— 装一张本来就装好的证书，
+     装完还是报同样的错，然后开始怀疑账号、怀疑 team、怀疑钥匙串坏了。
+
+     同源的第二个坑：`security find-identity -p codesigning` 会把 **installer 身份过滤掉**
+     （Apple 文档专门用 IMPORTANT 标过："Installer signing identities are different from
+     code signing identities and the -p codesigning option filters them out"）——
+     于是"加了过滤查不到"看起来也像"没装"。
+
+     ⇒ 两条写法上的规矩：
+
+     1. **匹配词根，不匹配品牌名**：`grep -i installer`，并把**同类里错的那张**排除掉
+        （`grep -vi "Developer ID"` —— 它也是 installer，但属站外分发，
+        拿去签 App Store 的 .pkg 会被拒 ITMS-90237，而那个报错同样不指出证书选错了）。
+     2. **把命中的身份名原样打出来**。打出来之后，"装的是哪一张"就不需要猜了 ——
+        这一条比任何断言都便宜。
+
+199. **GUI 里配好的凭证，命令行读不到 —— 而报错说的是「没有」，于是你会去反复确认
+     那个明明就在的东西。**
+     `xcodebuild -exportArchive … -allowProvisioningUpdates` 报
+       exportArchive No Accounts
+       No profiles for 'com.tango.marquee' were found
+     最自然的读法是"Xcode 里没登账号"。实测**登了也没用** —— Xcode 的账号凭证存在钥匙串里、
+     只授权给 Xcode.app 自己，命令行进程读不到。所以这条报错**不可能通过"去登一次"消失**。
+
+     它的危险在于：报错指向一个**你能看见、且看起来确实有问题**的东西（Accounts 面板），
+     于是整个排查会陷在"我再登一次 / 我再选一次团队"里 —— 而那件事本来就是对的。
+     ⇒ 遇到"缺凭证"类报错，先问一句：**这个凭证是给谁用的**？
+     GUI 用的凭证与 CLI 用的凭证是两套，能读到前者的进程不等于能读到后者的进程。
+
+     出路只有两条：把凭证**以 CLI 能读到的方式**再给一份（这里是 App Store Connect
+     API Key：`-authenticationKeyPath/-ID/-IssuerID`），或者干脆**换回 GUI 那条路**
+     （Xcode → Organizer → Distribute App）。**"再登一次"不在其中。**
+
+200. **别拿一个**猜来的**偏好键名当判据 —— 猜错时它不会报错，只会给出一个看起来合理的错结论。**
+     我在脚本里加过一条"友好提示"，判据是
+       defaults read com.apple.dt.Xcode IDEProvisioningTeams
+     打不出 ⇒ 打印"Xcode 似乎没有登录 Apple ID"。而真实的键是
+     `IDEProvisioningTeamByIdentifier` 与 `IDEProvisioningTeamManagerLastSelectedTeamID` ——
+     账号**早就登好了**，我的提示是错的。（当时我确实把"猜的键名"写进了注释，
+     但**注释救不了它**：跑起来还是一句斩钉截铁的"似乎没有登录"。）
+
+     ⇒ 三条：
+     1. **猜来的判据只能当提示、不能当门禁**（这一条我当时做对了 —— 它是 warn 不是 exit）；
+     2. 但**提示同样会把人带偏**，所以它必须**带上它自己的不确定**（"读不到 X，可能意味着 A，
+        也可能是这个键在你这个版本里不叫这个名"），而不是直接下一个结论；
+     3. **有"直接问那个东西"的办法时，别用间接推断**。这次的正确做法是：
+        导出失败后照着报错给下一步，而不是事前猜账号在不在。
+     ⇒ 后来把那条提示换成了**失败时的对号入座**：报什么错 → 缺什么 → 走哪条路。
+
+201. **给一个"本来不参与定宽"的视图加一条约束，会悄悄改变窗口尺寸 —— 而看图看不出来。**
+     2026-10-08 实测：偏好窗是 `440 × 430` 起的、内容不够就自己长。想把隐私政策入口放进
+     **窗底那行页脚**（四页都在，最显眼），于是给页脚加了一条右边界
+     `footer.trailing <= 按钮.leading - 8`（保证两者不重叠）。
+
+     结果：**英文下窗口从 440 被撑到 525。** 因为在那之前页脚只有一条
+     `footer.leading = margin` —— 它**根本没参与**窗口的定宽计算；加了右边界之后它参与了，
+     而英文那句页脚（"Every change takes effect immediately and is saved automatically"）
+     比中文长得多。
+
+     最阴的地方是**渲出来的图看着挺好**：布局没错位、没有重叠、没有任何报错，
+     你只会觉得"这张图就是宽一点"—— **而 440 是稿子定的窗宽**。
+     ⇒ 判据是**量**尺寸，不是看图：`sips -g pixelWidth` 四页各量一遍，
+     中英各一遍（英文串普遍更长，问题总是先在英文里露头）。
+
+     ⇒ 最终改法：入口移到**通用页最后一行**。那一页本来就有余量（窗高是按最高的输出页定的），
+     加一行完全不碰窗宽 —— 并且用**对照实验**量过（把链接临时清空、那一行不生成，
+     英文窗宽仍是 455 ⇒ 新行对宽度的贡献是 **0**）。
+
+     > 顺带记下当时的取舍：页脚方案不是"不好看"，是**代价算错了** ——
+     > 我按"页脚已经在那儿、加个按钮不占高度"估，而真正被改的是**窗口的宽度约束系统**。
+     > 加约束之前先问一句：**这条约束会不会把这个视图拉进窗口的定宽计算？**

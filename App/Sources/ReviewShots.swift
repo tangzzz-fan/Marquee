@@ -208,10 +208,15 @@ enum ReviewShots {
                                 body: (CGContext) -> Void) -> URL? {
         let size = canvasSize
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        // ⚠️ **不许带 alpha 通道** —— `noneSkipLast`，不是 `premultipliedLast`。
+        // Apple 的截图规格页原话："Images can't include alpha channels or transparencies"，
+        // 而 IAP 审核截图的要求是 "meets any of the screenshot specifications your app supports"
+        // ⇒ 这条对它同样成立。带 alpha 的 PNG 在开发机上**看不出任何异常**
+        //（每个像素都是不透明的），只在上传那一刻被退回。
         guard let context = CGContext(data: nil,
                                       width: Int(size.width), height: Int(size.height),
                                       bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
         else { return nil }
 
         let graphics = NSGraphicsContext(cgContext: context, flipped: false)

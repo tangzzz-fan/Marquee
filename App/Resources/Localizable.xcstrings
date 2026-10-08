@@ -221,6 +221,16 @@
         }
       }
     },
+    "Marquee 不收集任何数据 · 在默认浏览器中打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marquee collects nothing · opens in your default browser"
+          }
+        }
+      }
+    },
     "Marquee 就在菜单栏": {
       "localizations": {
         "en": {
@@ -1421,6 +1431,16 @@
         }
       }
     },
+    "查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View"
+          }
+        }
+      }
+    },
     "标注": {
       "localizations": {
         "en": {
@@ -2567,6 +2587,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Always available · works system-wide"
+          }
+        }
+      }
+    },
+    "隐私政策": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy Policy"
           }
         }
       }

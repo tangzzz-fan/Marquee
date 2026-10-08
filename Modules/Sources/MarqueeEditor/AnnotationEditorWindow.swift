@@ -48,6 +48,23 @@ public final class AnnotationEditorPresenter {
         AnnotationEditorView.renderChromeSnapshots(image: image, into: directory)
     }
 
+    /// 把**整扇编辑器窗口**离屏渲成一张图（App Store 截图用，`-marqueeSmokeAppShots`）。
+    ///
+    /// 与 `renderChromeSnapshots` 的区别见那边的注释：这边渲整窗，
+    /// 用来当产品截图（工具条 / 画布 / 状态行**同框**）。
+    ///
+    /// - Returns: 像素尺寸 = `defaultWindowSize × scale`；`nil` = 没渲出来。
+    @MainActor
+    public func windowSnapshot(image: CGImage,
+                               segments: Int? = nil,
+                               seed: [Annotation] = [],
+                               scale: CGFloat = 2) -> CGImage? {
+        AnnotationEditorView.windowSnapshot(image: image,
+                                           segments: segments,
+                                           seed: seed,
+                                           scale: scale)
+    }
+
     /// `seed` 用来预置标注（开发演示用：`-marqueeDemoEditor`），正常流程为空。
     ///
     /// `segments` 是这张长图**拼了几段**（只有长截图那条路知道）。
@@ -250,11 +267,20 @@ private struct AnnotationEditorView: View {
     /// 只有长截图那条路知道真值 —— 普通截图（就地标注）与 `-marqueeDemoEditor` 都是 `nil`。
     let segments: Int?
 
+    /// 装不装键盘/滚轮监听（`EditorEventMonitor`）。
+    ///
+    /// **只有离屏出图那条路会传 `false`** —— 它是一个 `NSViewRepresentable`，
+    /// 而 `ImageRenderer` 渲不了 AppKit 视图（那块区域会变成 SwiftUI 的"渲染不了"占位色）。
+    /// 静态图不需要键盘，所以这不是妥协，是那条路本来就不该装。
+    private let installsKeyMonitor: Bool
+
     init(image: CGImage,
          onCopyPNG: @escaping (Data) -> Void,
          onSave: @escaping (CGImage) -> Void,
          seed: [Annotation] = [],
          segments: Int? = nil,
+         initialCanvasSize: CGSize? = nil,
+         installsKeyMonitor: Bool = true,
          recognizer: TextRecognizing? = nil,
          background: EditorBackgroundFactory? = nil,
          onClose: @escaping () -> Void) {
@@ -264,6 +290,7 @@ private struct AnnotationEditorView: View {
         self.onClose = onClose
         self.background = background
         self.segments = segments
+        self.installsKeyMonitor = installsKeyMonitor
         // 识别器只在**首次**建视图时被用一次：`State(initialValue:)` 之后重建视图不会重置它，
         // 否则识别到一半重建一次就会把结果丢掉。
         _ocr = State(initialValue: recognizer.map { TextRecognitionService(recognizer: $0) })
@@ -275,6 +302,22 @@ private struct AnnotationEditorView: View {
                                              style: AnnotationPalette.editorDefaultStyle)
         initial.document.annotations = seed
         _session = State(initialValue: initial)
+        // 打码缓存**在 init 里就算好** —— 见 `buildRedactionCache` 的注释：
+        // 只靠 `onAppear` 的话，任何"不跑视图生命周期"的渲染（也就是所有离屏出图）
+        // 拿到的都是空缓存，而打码块会**不画**。
+        _redactionCache = State(initialValue: Self.buildRedactionCache(
+            image: image,
+            annotations: initial.visibleAnnotations()))
+
+        // ⚠️ **只有离屏渲染那条路会传它**。`ImageRenderer` 不跑视图生命周期，
+        // 于是 `onAppear` 里那次「适应窗口」永远不会发生 —— 画布会按 100% 画，
+        // 长图被裁得只剩左上角（而那种图看起来像"渲染坏了"，不像"少了一步"）。
+        if let initialCanvasSize, initialCanvasSize.width > 1, initialCanvasSize.height > 1 {
+            _viewport = State(initialValue: CanvasViewport.fitted(
+                pixelSize: initial.document.canvasPixelSize, in: initialCanvasSize))
+            _didFit = State(initialValue: true)
+            _zoomIsFitted = State(initialValue: true)
+        }
     }
 
     var body: some View {
@@ -284,6 +327,41 @@ private struct AnnotationEditorView: View {
             statusLine
         }
         .background(ChromePalette.dark.background.color)
+    }
+
+    /// 把**整扇编辑器窗口**离屏渲成一张 PNG（App Store 截图用）。
+    ///
+    /// 与 `renderChromeSnapshots` 的分工：那边渲的是零件（工具条 / 状态行 / 弹层），
+    /// 用来对着设计稿看"摆得对不对"；这里渲的是**整窗**，用来当产品截图 ——
+    /// 它要同时说清三件事：工具条在顶上、长图在画布上、状态行在地板上。
+    ///
+    /// ⚠️ 两个只在这条路上才成立的机关：
+    /// - `initialCanvasSize`：`ImageRenderer` **不跑视图生命周期**，
+    ///   所以 `onAppear` 里那次"适应窗口"不会发生 —— 不给的话画布按 100% 画，
+    ///   一张长图会被裁得只剩左上角。
+    /// - 工具条的材质底**拍不到**（`NSGlassEffectView` 要真实窗口才有效果，PITFALLS 187），
+    ///   所以图上是**回退档的实色** `--c-panel`。这不是缺陷，是这条路固有的边界。
+    @MainActor
+    static func windowSnapshot(image: CGImage,
+                              segments: Int? = nil,
+                              seed: [Annotation] = [],
+                              size: CGSize = EditorChrome.defaultWindowSize,
+                              scale: CGFloat = 2) -> CGImage? {
+        let canvas = CGSize(width: size.width,
+                            height: EditorChrome.canvasHeight(windowHeight: size.height))
+        let view = AnnotationEditorView(image: image,
+                                        onCopyPNG: { _ in },
+                                        onSave: { _ in },
+                                        seed: seed,
+                                        segments: segments,
+                                        initialCanvasSize: canvas,
+                                        installsKeyMonitor: false,
+                                        recognizer: SnapshotRecognizer(),
+                                        onClose: {})
+            .frame(width: size.width, height: size.height)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = scale
+        return renderer.cgImage
     }
 
     /// 把工具条与状态行各渲一张 PNG（**只在冒烟路径上跑**）。
@@ -1028,6 +1106,10 @@ private struct AnnotationEditorView: View {
             Canvas { context, _ in
                 draw(in: context)
             }
+            // 台面：**比窗底再暗一档**（`--c-inset`）。"图是亮的，桌子要比墙暗" ——
+            // 这条在 `EditorChrome` 的注释里写着，但一直是**只有注释、没有代码**
+            //（离屏出图时才露出来：那片区域原本透出窗底色 `--c-bg`）。
+            .background(ChromePalette.dark.inset.color)
             .gesture(drag)
             // 双击文字进入改内容。用 `SpatialTapGesture` 是因为 `TapGesture` 不给坐标，
             // 而"双击了哪一个"必须靠坐标命中。
@@ -1035,31 +1117,37 @@ private struct AnnotationEditorView: View {
                 beginEditingText(at: value.location)
             })
             .background {
-                EditorEventMonitor(
-                    // `Esc` 要退哪一层所需的**全部**状态，一次给全。
-                    // 层级顺序**不在这里** —— 判据在 Core 的 `EditorEscapeState.escapeStep()`。
-                    // 顺序若写在视图里，就一定会和覆盖层那份分叉，
-                    // 而分叉的表现只有用户按下去才知道："退掉的东西不对"。
-                    escapeState: EditorEscapeState(isEditingText: editingID != nil,
-                                                   isCropping: session.isCropping,
-                                                   tool: session.tool,
-                                                   selection: session.selection),
-                    onEscapeStep: { handleEscapeStep($0) },
-                    onConfirm: copyAndClose,
-                    onSave: saveAndClose,
-                    onDelete: { session.deleteSelection() },
-                    onUndo: { session.undo() },
-                    onRedo: { session.redo() },
-                    onPan: { dx, dy in
-                        zoomIsFitted = false
-                        viewport.pan(by: CGPoint(x: dx, y: dy))
-                    },
-                    onZoom: { factor, point in
-                        zoomIsFitted = false
-                        viewport.zoom(by: factor, around: point)
-                    },
-                    onCommitCrop: { _ = session.commitCrop() })
-                    .allowsHitTesting(false)
+                // ⚠️ **离屏出图那条路不装它**：它是一个 `NSViewRepresentable`，
+                // 而 `ImageRenderer` 渲不了 AppKit 视图 —— 被渲成 SwiftUI 的
+                // "渲染不了"占位色（黄/红），整块画布都成了色块。
+                // 静态图不需要键盘监听，所以这条分支不是"为了出图而妥协"，是本来就该有。
+                if installsKeyMonitor {
+                    EditorEventMonitor(
+                        // `Esc` 要退哪一层所需的**全部**状态，一次给全。
+                        // 层级顺序**不在这里** —— 判据在 Core 的 `EditorEscapeState.escapeStep()`。
+                        // 顺序若写在视图里，就一定会和覆盖层那份分叉，
+                        // 而分叉的表现只有用户按下去才知道："退掉的东西不对"。
+                        escapeState: EditorEscapeState(isEditingText: editingID != nil,
+                                                       isCropping: session.isCropping,
+                                                       tool: session.tool,
+                                                       selection: session.selection),
+                        onEscapeStep: { handleEscapeStep($0) },
+                        onConfirm: copyAndClose,
+                        onSave: saveAndClose,
+                        onDelete: { session.deleteSelection() },
+                        onUndo: { session.undo() },
+                        onRedo: { session.redo() },
+                        onPan: { dx, dy in
+                            zoomIsFitted = false
+                            viewport.pan(by: CGPoint(x: dx, y: dy))
+                        },
+                        onZoom: { factor, point in
+                            zoomIsFitted = false
+                            viewport.zoom(by: factor, around: point)
+                        },
+                        onCommitCrop: { _ = session.commitCrop() })
+                        .allowsHitTesting(false)
+                }
             }
             .overlay(alignment: .topLeading) { textEditor }
             // 识别结果那张纸：浮在台面上，默认贴右下角、可以拖走（稿子 §04/§07）。
@@ -1423,11 +1511,30 @@ private struct AnnotationEditorView: View {
     /// **必须在 `onChange` 里做，不能在 `Canvas` 的绘制闭包里做** ——
     /// 在渲染过程中改 `@State` 是 SwiftUI 明令禁止的（会让画面与状态不同步）。
     private func rebuildRedactionCache() {
+        redactionCache = Self.buildRedactionCache(image: image,
+                                                 annotations: session.visibleAnnotations(),
+                                                 reusing: redactionCache)
+    }
+
+    /// 打码缓存 = **图 + 标注**的纯函数。
+    ///
+    /// ⚠️ 抽成 `static` 是为了**在 `init` 里也能算一遍**：
+    /// 原先只有 `onAppear` 会建它，于是"第一帧"在任何离屏路径上都是**空的缓存**
+    /// —— 表现是打码块**不画**（`guard let patch ... else { return }`），
+    /// 而那种缺失不报错、只是那块内容原样露出来。
+    /// 在 init 里算完之后，真实路径与出图路径拿到的是同一份。
+    ///
+    /// - Parameter reusing: 上一版缓存（键没变的直接复用，不重跑 CoreImage）。
+    private static func buildRedactionCache(
+        image: CGImage,
+        annotations: [Annotation],
+        reusing previous: [UUID: RedactionCacheEntry] = [:]
+    ) -> [UUID: RedactionCacheEntry] {
         var next: [UUID: RedactionCacheEntry] = [:]
-        for annotation in session.visibleAnnotations() where annotation.kind == .mosaic || annotation.kind == .blur {
+        for annotation in annotations where annotation.kind == .mosaic || annotation.kind == .blur {
             let box = annotation.frame.standardized.integral
             let key = "\(box)|\(annotation.style.effectStrength)|\(annotation.kind)"
-            if let cached = redactionCache[annotation.id], cached.key == key {
+            if let cached = previous[annotation.id], cached.key == key {
                 next[annotation.id] = cached
                 continue
             }
@@ -1436,7 +1543,7 @@ private struct AnnotationEditorView: View {
             }
             next[annotation.id] = RedactionCacheEntry(key: key, image: patch)
         }
-        redactionCache = next
+        return next
     }
 
     // MARK: - 文字编辑

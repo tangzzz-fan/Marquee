@@ -38,6 +38,8 @@ final class PreferencesWindowController: NSWindowController {
     private let tabBar = ChromeTabBar()
     private let container = NSView()
     private let footer = NSTextField(labelWithString: "")
+    /// 窗底右侧的「隐私政策」（Guideline 5.1.1(i)：app 内也要有入口）。见 `buildShell`。
+    private let privacyButton = ChromeTextButton()
     private var pages: [SettingsPage: NSView] = [:]
     private var currentPage: SettingsPage = .general
 
@@ -218,6 +220,17 @@ final class PreferencesWindowController: NSWindowController {
         select(.general)
     }
 
+    /// 打开隐私政策。
+    ///
+    /// **用系统默认浏览器打开，不在 app 里内嵌网页**：内嵌 `WKWebView` 会引入一整套
+    /// 网络栈，而沙盒版**连 `network.client` entitlement 都没有** ——
+    /// 隐私标签答的「不采集任何数据」正是靠这一点站住的。
+    /// 交给浏览器，app 自己一个字节都不出网（`NSWorkspace.open` 是让 LaunchServices 去开）。
+    private func openPrivacyPolicy() {
+        guard let url = ExternalLinks.privacyPolicy else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     /// 切到某一页。**对照材料也用它**（`ComplianceSheet` 要把四页各渲一张）——
     /// 那条路与真机的点标签走的是**同一份代码**，专门另开一条就分叉了。
     func select(_ page: SettingsPage) {
@@ -247,7 +260,23 @@ final class PreferencesWindowController: NSWindowController {
         launchRow.installNoticeRow()
 
         let proPanel = makeProPanel()
-        let general = page([
+
+        // 隐私政策入口。Guideline 5.1.1(i) 的原文要求链接出现在
+        // "the App Store Connect metadata field **and within the app** in an easily
+        // accessible manner" —— 只填 ASC 那一格是不够的。
+        //
+        // ## 为什么放**这一页的最后一行**
+        //
+        // - 通用页是"设置里第一个会点开的地方"，法规要的正是"容易找到"；
+        // - 先试过放在**窗口页脚**（四页都在、更"显眼"），否掉了：页脚那句话中英都不短，
+        //   一旦给它一条右边界（保证不与链接重叠），**英文下会把窗口从 440 撑到 525** ——
+        //   而 440 是稿子定的窗宽，不该被一句话撑破。放这一页里则完全不碰窗宽
+        //（这一页本来就有余量，窗高是按最高的输出页定的）。
+        privacyButton.title = L10n.t("查看")
+        privacyButton.emphasis = .quiet
+        privacyButton.onActivate = { [weak self] in self?.openPrivacyPolicy() }
+
+        var items: [NSView] = [
             ChromeRow(title: L10n.t("截图后播放提示音"),
                       subtitle: L10n.t("截成功时播一声系统音效 · 关掉适合连着截很多张的时候"),
                       control: soundSwitch),
@@ -255,7 +284,17 @@ final class PreferencesWindowController: NSWindowController {
             launchRow,
             ChromeSeparator(),
             proPanel,
-        ])
+        ]
+        // ⚠️ 链接解析不出来时**连它上面那条分隔线一起不加** ——
+        // 只藏内容、留下线，页底会多出一条孤零零的发丝线（"这里本该有个东西"的沉默提示）。
+        if ExternalLinks.privacyPolicy != nil {
+            items.append(ChromeSeparator())
+            items.append(ChromeRow(title: L10n.t("隐私政策"),
+                                   subtitle: L10n.t("Marquee 不收集任何数据 · 在默认浏览器中打开"),
+                                   control: privacyButton))
+        }
+
+        let general = page(items)
         // ⚠️ 面板要**铺满整列宽**（与上面每一行一样）。它自己撑不开 ——
         // `NSStackView` 的 `.width` 对齐对它不生效（面板内部那几条"内容贴着边"的约束
         // 给出了一个更小、更硬的宽度），实测下来它会缩到内容宽并**贴到右边**。

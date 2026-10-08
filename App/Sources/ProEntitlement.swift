@@ -75,6 +75,31 @@ final class ProEntitlement {
     /// 而**取不到就是 `nil`**：界面会退化成不报价格的那一句，**绝不编一个数**。
     private(set) var priceText: String?
 
+    /// **只在截图路径上调用**：把价格钉成调用方给的值。
+    ///
+    /// ## 为什么需要这个口子
+    ///
+    /// 审核截图要展示"**点下去之前就能看见价格**"（验收 Z23 / Z24 的另一半），
+    /// 而价格只有一条来路 —— 商店的 `displayPrice`。可截图那台机器上这条路经常是断的：
+    ///
+    /// - **命令行启动的进程拿不到本地 `.storekit` 配置。** Xcode 是通过它自己的
+    ///   启动环境注入的，`open --args` 与直接 exec **两条路都实测过**：都拿不到。
+    ///   连 `DYLD_FRAMEWORK_PATH` 指向 Xcode 的 Developer 框架 + 各种候选环境变量
+    ///   （`SKTestConfigurationFilePath` / `StoreKitConfigurationFile`）一起试过 ——
+    ///   Dev 构建也带 hardened runtime（`flags=0x10000`）⇒ `DYLD_*` 会被直接剥掉；
+    /// - 商品还没在 App Store Connect 建好时，真商店也答不出价格。
+    ///
+    /// ⇒ 截图上就永远只有退化句。所以留一个**显式**的注入口：值**由调用方给**
+    ///（= ASC 上那个店面价，例 `¥36.00`），这里不编、视图里也不拼。
+    ///
+    /// ⚠️ 调用方必须**先给真实取价一个机会**，答不出来才用这个口子
+    ///（见 `MarqueeAppDelegate.prepareScreenshotPrice`）—— 商店能答的时候，
+    /// 图上应当是**商店的答案**。生产路径只走 `start()` 那次真实取价。
+    func overridePriceForScreenshots(_ text: String?) {
+        priceText = text
+        publish()
+    }
+
     /// 启动。**幂等** —— 被调两次不会重复监听。
     func start() {
         guard !isStarted else { return }

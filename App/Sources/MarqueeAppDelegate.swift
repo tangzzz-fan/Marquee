@@ -124,7 +124,7 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // IAP 审核截图：`Marquee -marqueeSmokeReview`
+        // IAP 审核截图：`Marquee -marqueeSmokeReview [-marqueeSmokePrice "¥36.00"]`
         //
         // 存在的理由：ASC 对审核截图有**硬性尺寸**，而且各平台不同
         //（iOS 至少 640 × 920，**macOS 要 1280 × 800**），而设计对照那几张是
@@ -132,9 +132,36 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
         // 而那个报错只说"尺寸不对"，不告诉你该多大。
         // 这条把真界面按 2–3 倍离屏渲染、超采样缩进 1280 × 800，并标出购买入口；
         // **不需要屏幕录制授权**，所以任何机器上都能重跑。
+        //
+        // ⚠️ **这条分支必须是异步的**。`ProEntitlement.start()` 那次取价是个 `Task`，
+        // 而这里原来是同步渲染 —— 主线程那一轮不跑完就轮不到那个 Task ⇒
+        // **即使商店能返回价格，图上也不会有**。表现是验收 Z23 那句
+        //"点下去之前就能看见价格"在审核截图上从来没出现过（`nil` 时界面退回退化句）。
         if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeReview") {
-            let urls = coordinator.renderReviewShots(into: AppIdentity().logDirectory())
-            print("IAP 审核截图：")
+            Task { [coordinator] in
+                await Self.prepareScreenshotPrice()
+                let urls = coordinator.renderReviewShots(into: AppIdentity().logDirectory())
+                print("IAP 审核截图：")
+                urls.forEach { print("  " + $0) }
+                try? await Task.sleep(for: .seconds(0.5))
+                NSApplication.shared.terminate(nil)
+            }
+            return
+        }
+
+        // App Store 的 app 截图：`Marquee -marqueeSmokeAppShots`
+        //
+        // 与 `-marqueeSmokeReview` 是两件事：那条出的是**内购**审核截图（1280 × 800，
+        // 指出"购买入口在哪"）；这条出的是**产品本身**的商店截图（2880 × 1800，
+        // 展示它长什么样、能干什么）。
+        //
+        // 为什么值得有它：ASC 对 macOS 有硬性尺寸（16:10 四档），而且**至少一张**；
+        // 而"拍屏"那条路要屏幕录制授权、还会把自己的桌面拍进去。
+        // 这一支把真窗口按 2–3 倍离屏渲染再排进画布 —— 不需要授权，任何机器上都能重跑。
+        // ⚠️ 覆盖层（选区 + 工具条）出不了：它的背景是**实时桌面**，见 APP-STORE-CONNECT §7。
+        if ProcessInfo.processInfo.arguments.contains("-marqueeSmokeAppShots") {
+            let urls = coordinator.renderAppShots(into: AppIdentity().logDirectory())
+            print("App 商店截图（2880 × 1800）：")
             urls.forEach { print("  " + $0) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 NSApplication.shared.terminate(nil)
@@ -259,6 +286,38 @@ final class MarqueeAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
+    }
+
+    /// 给截图那条路备好价格：**先让真实取价答一次**，答不出来才用 `-marqueeSmokePrice` 的值。
+    ///
+    /// ⚠️ 顺序不能反。真实取价答出来的是**商店的答案**，那才是图上该有的东西；
+    /// 注入口只在商店答不出来时兜底（本地 `.storekit` 送不进命令行进程、
+    /// 商品还没在 App Store Connect 建好等）。两者都没有 ⇒ 保持 `nil`，
+    /// 图上退回"少说一句"的退化句 —— 那也如实反映运行时的样子。
+    ///
+    /// 等一下是必须的：界面上"价格"是一个**点下去之前就看得见**的承诺（验收 Z23），
+    /// 而它是异步到的。同步渲染等于把这一句永远从图上抹掉。
+    private static func prepareScreenshotPrice() async {
+        let deadline = Date().addingTimeInterval(2.5)
+        while ProEntitlement.shared.priceText == nil, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard ProEntitlement.shared.priceText == nil,
+              let injected = argumentValue(of: "-marqueeSmokePrice") else { return }
+        ProEntitlement.shared.overridePriceForScreenshots(injected)
+    }
+
+    /// `-flag value` 里那个 value。开关没给、或后头没有值（下一个也是开关）都返回 `nil`。
+    ///
+    /// 判 `hasPrefix("-")` 而不是只判有没有下一个：`… -marqueeSmokeReview -marqueeSmokePrice`
+    /// 这种漏写值的写法，只判下标的话会把隔壁的开关名当成价格画到图上。
+    private static func argumentValue(of flag: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: flag), arguments.count > index + 1 else {
+            return nil
+        }
+        let value = arguments[index + 1]
+        return value.hasPrefix("-") ? nil : value
     }
 
     /// 把探针结果落到固定路径。

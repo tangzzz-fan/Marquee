@@ -23,5 +23,8 @@ Tools/IconGen/.build-icon
 # macOS
 .DS_Store
 
-# 打包脚本的中间产物（scripts/package.sh）
+# 打包脚本的中间产物
+# .build-package/ = scripts/package.sh（Developer ID → DMG）
 .build-package/
+# .build-mas/     = scripts/package-mas.sh（App Store → .pkg）
+.build-mas/

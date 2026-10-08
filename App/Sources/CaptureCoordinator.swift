@@ -427,6 +427,18 @@ final class CaptureCoordinator {
                            into: directory)
     }
 
+    /// App Store 的 **app 截图**（**只在 `-marqueeSmokeAppShots` 那条路用**）。
+    ///
+    /// 与上面那条的区别：那条是**内购的审核截图**（1280 × 800，指出购买入口），
+    /// 这条是**产品本身的商店截图**（2880 × 1800，展示它长什么样、能干什么）。
+    func renderAppShots(into directory: URL) -> [String] {
+        AppShots.render(shortcut: shortcut,
+                        preferences: preferences,
+                        output: outputStore,
+                        editor: editor,
+                        into: directory)
+    }
+
     /// 编辑器的版面快照（**只在 `-marqueeSmokeEditor` 那条路用**）。
     ///
     /// 与 `-marqueeDiagnostics` 同一类：这类"看起来对不对"的东西没法进单测，
