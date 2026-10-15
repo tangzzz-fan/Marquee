@@ -20,6 +20,16 @@ $IOS build --project Foo.xcodeproj --scheme Foo     # 直接构建（destination
 **先 `-list` 再动手** —— scheme 名猜错会得到 `The project named "X" does not contain a scheme named "Y"`，
 那是最容易浪费一轮的一种失败。
 
+**SwiftPM 包不给 `--project` 也能用**：在包根目录跑 `$IOS test --scheme <包名>` 就行
+（此前脚本会直接报错退出，逼得只能手调 xcodebuild —— 而那条路径恰好绕过了看门狗与收尾）。
+
+⚠️ **脚本给 xcodebuild 上了界**（`IOS_TIMEOUT` 默认 1800 秒 · `IOS_GRACE` 默认 20 秒）。
+原因（2026-10-15 实测）：**xcodebuild 在「测试失败」之后不退出** —— 日志里 Swift Testing 的
+汇总已经打完，`** TEST FAILED **` 与 xcresult 路径**一行都没有**，进程一直挂着；
+同一个套件**全绿**时几十秒就正常退出。而它的表现是**日志写文件、终端一个字都不打**
+⇒ 看起来就是死机（当天被中断两次）。现在**结果一出来就只再等 `IOS_GRACE` 秒**，超时终止、
+回收残留，并且**判定一律以日志为准**（被终止时进程退出码不再是结论）。
+
 ## 1. 第一原则：这个环境是**嵌套沙箱**
 
 **这段知识的正文只有一份，在独立技能 `apple-build-sandbox` 里**（用户级 `~/.workbuddy/skills/`
@@ -67,6 +77,11 @@ $IOS test --project Foo.xcodeproj --scheme Foo --result-bundle /tmp/Foo.xcresult
 
 - **`--only-testing <Target>/<Class>[/<method>]`** 是最高价值的一个参数：全量 UI 测试十几分钟，
   单条用例几十秒。改一处就跑相关的那几条。
+- ⚠️ **它对 Swift Testing 的 `@Test` 无效** —— 只认 **XCTest** 的 `<Class>/<method>`。
+  传一个 Swift Testing 用例名进去，结果是 `Test run with 0 tests … passed` +
+  `** TEST SUCCEEDED **`：**没报错、也没跑东西**（2026-10-15 实测）。
+  ⇒ 脚本会在"0 条用例"时显式警告；**看到那行警告就等于没验证**。
+  要按名字跑 Swift Testing 用例，用 `swift test --filter`（本技能不覆盖，走 `macos-build-test` 的 `spm`）。
 - 要保留报告（失败截图、附件、耗时）就给 `--result-bundle`，再
   `xcrun xcresulttool get --path X.xcresult --format json`。
 - `xcodebuild test` 需要 scheme 里配了 test target。**没有 test target 的 scheme**

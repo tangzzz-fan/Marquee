@@ -11,15 +11,21 @@
 #   ios-run.sh test  --project Foo.xcodeproj --scheme Foo --device 00008140-000A2888...
 #   ios-run.sh test  --project Foo.xcodeproj --scheme Foo --only-testing FooTests/BarTests
 #
-# 自动做三件事：
+# 自动做四件事：
 #   1. **沙箱逃逸**：本 shell 若无法 apply deny-default 沙箱，自动加
 #      `OTHER_SWIFT_FLAGS=-disable-sandbox`（Swift 宏 / swift-plugin-server 需要）。
 #      判据：sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok
 #   2. **挑 destination**：不给 --sim/--device 时自动选一台可用 iPhone 模拟器（用 UDID）。
 #      **机型与 UDID 每次现查** —— 模拟器会被删掉重建，写死必然过期。
-#   3. **日志落文件**，终端只回打关键行（失败先给第一条 error）。
+#   3. **给 xcodebuild 上界**：结果一出来就不再等"进程退场"，卡住就终止 + 回收残留（见 §上界）。
+#   4. **日志落文件**，终端只回打关键行（失败先给第一条 error）。
+#
+# 环境变量：`IOS_TIMEOUT`（整体上限，默认 1800 秒）· `IOS_GRACE`（结果已出后再等几秒，默认 20 秒）
 #
 # 退出码 = xcodebuild 的退出码（0 = 成功）。其余参数透传。
+#
+# ⚠️ `--only-testing <Target>/<Class>` **对 Swift Testing 用例无效**：会跑 **0 条**，
+#    而且照样打 `** TEST SUCCEEDED **`。脚本发现"0 条"时会显式警告（见 `report`）。
 
 set -uo pipefail
 
@@ -115,18 +121,73 @@ list_sims() {
     | grep -E "^[[:space:]]+(iPhone|iPad)"
 }
 
-report() {
-  local code="$1"
-  echo
-  if [ "$code" -eq 0 ]; then
-    local ok
-    ok=$(grep -oE '\*\* (BUILD|TEST) SUCCEEDED \*\*' "$LOG" | tail -1)
-    echo "✓ ${ok:-成功}"
-    if [ "$ACTION" = "test" ]; then
-      grep -oE "Test Suite '[^']*' (passed|failed)( at .*)?|Executed [0-9]+ test" "$LOG" | tail -3
+# ── 给 xcodebuild 上界 ─────────────────────────────────────────────────────
+# 为什么必须有（2026-10-15 实测，PlayerMPV 21 条例的套件）：
+#   **测试跑完，xcodebuild 不退出。** 日志里 `Test run with 21 tests … failed` 已经打完，
+#   而 `** TEST FAILED **` 与 xcresult 路径**一行都没有**；同一个套件**全绿**时 34 秒正常退出。
+#   ⇒ 失败路径上它卡在 IDETestOperationsObserver 阶段（等测试进程退场）。
+#   更糟的是**表现**：日志写进文件、终端一个字都不打 ⇒ 看起来就是死机（当天被中断两次）。
+#
+# 判据：**结论已经出来了，就不该继续等"进程退场"** —— 那件事对结论没有任何影响。
+XCODE_TIMEOUT="${IOS_TIMEOUT:-1800}"
+XCODE_GRACE="${IOS_GRACE:-20}"
+
+verdict_seen() {
+  grep -qE '\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*|^✔ Test run with|^✘ Test run with|Executed [0-9]+ tests?' "$LOG" 2>/dev/null
+}
+
+log_has_failure() {
+  grep -qE '\*\* (BUILD|TEST) FAILED \*\*|^✘ |Executed [0-9]+ tests?, with [1-9][0-9]* failure|Test run with .*failed' "$LOG" 2>/dev/null
+}
+
+# 跑一条命令：结果一出来就只再等 `IOS_GRACE` 秒，超时就终止（结论已在日志里，不受影响）。
+run_bounded() {
+  "$@" > "$LOG" 2>&1 &
+  local pid=$! waited=0 grace=0
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    waited=$((waited + 1))
+    if verdict_seen; then
+      grace=$((grace + 1))
+      if [ "$grace" -ge "$XCODE_GRACE" ]; then
+        echo "  ⚠️ 结果已出，但它 ${XCODE_GRACE} 秒内没退出 ⇒ 判定卡住，终止它"
+        echo "     （结论仍然有效：最终判定已在日志里；卡住的只是「进程退场」这一步）"
+        kill -TERM "$pid" 2>/dev/null
+        sleep 2
+        kill -9 "$pid" 2>/dev/null
+        wait "$pid" 2>/dev/null
+        return 0
+      fi
+    elif [ "$waited" -ge "$XCODE_TIMEOUT" ]; then
+      echo "  ⚠️ 超过 IOS_TIMEOUT=${XCODE_TIMEOUT} 秒仍没有任何结果 ⇒ 终止"
+      kill -9 "$pid" 2>/dev/null
+      wait "$pid" 2>/dev/null
+      return 124
     fi
-  else
-    echo "✗ 失败（exit ${code}）—— 只列前几条："
+  done
+  wait "$pid"
+  return $?
+}
+
+# 收尾：被终止之后，模拟器侧的测试进程常常还挂着（当天手工清过 5 个孤儿）。
+# ⚠️ **只收"本次 derivedData 里的测试包"** —— 按 `$DERIVED/Build/Products/…/*.xctest` 精确匹配。
+#    不能按 `$DERIVED` 裸匹配：**本脚本自己的命令行里就写着这个路径**，那样会把自己（和调用它的
+#    那层 shell）一起杀掉。
+reap_leftovers() {
+  local pids p
+  pids=$(pgrep -f "$DERIVED/Build/Products/.*\.xctest" 2>/dev/null || true)
+  [ -z "$pids" ] && return 0
+  echo "  清理残留测试进程：$(printf '%s ' $pids)"
+  for p in $pids; do kill -9 "$p" 2>/dev/null; done
+}
+
+report() {
+  local code="$1" ok hits
+  echo
+  # ⚠️ 判定**以日志为准**，不以退出码为准：失败路径上 xcodebuild 可能被我们终止
+  #    （见 `run_bounded`），那时退出码是我们给的，而真正的结论只在日志里。
+  if log_has_failure; then
+    echo "✗ 失败（判定来自日志；xcodebuild 退出码 ${code}）—— 只列前几条："
     hits=$(grep -nE "error:|fatal error:|Unable to find a destination|sandbox_apply|Code ?Sign(ing)? error|✘|Expectation failed|Test run with .*failed|BUILD FAILED" "$LOG" | head -20)
     if [ -z "$hits" ]; then
       # 匹配不到已知签名时**必须**给点东西 —— 否则「✗ 失败」后面是一片空白
@@ -135,6 +196,30 @@ report() {
     else
       printf '%s\n' "$hits"
     fi
+  else
+    ok=$(grep -oE '\*\* (BUILD|TEST) SUCCEEDED \*\*' "$LOG" | tail -1)
+    [ -z "$ok" ] && ok=$(grep -oE 'Test run with [0-9]+ tests? in [0-9]+ suites? passed' "$LOG" | tail -1)
+    if [ -z "$ok" ]; then
+      echo "？ **没有明确结论**（退出码 ${code}）—— 日志里既没有成功也没有失败签名。末尾 10 行："
+      tail -10 "$LOG" | sed 's/^/  /'
+    else
+      echo "✓ ${ok}"
+      if [ "$ACTION" = "test" ]; then
+        grep -oE "Test Suite '[^']*' (passed|failed)( at .*)?|Executed [0-9]+ test" "$LOG" | tail -3
+      fi
+    fi
+  fi
+  # ⚠️ **「一条都没跑」与「全都跑过了」长得一模一样。**
+  #    实测：`--only-testing PlayerMPVTests/MPVKernelTests/testXxx`（Swift Testing 用例）
+  #    ⇒ `Test run with 0 tests … passed` + `** TEST SUCCEEDED **`。
+  #    没有这一行警告，你会以为"这条用例绿了"，其实它压根没跑（同 `P-050` 的形态：
+  #    把"选不中"变成"什么都没发生"）。
+  #    ⚠️ 只认 **Swift Testing** 的汇总行：`Executed N tests` 是 **XCTest** 的计数，
+  #       纯 Swift Testing 套件下它**永远是 0**（把它算进来会在每次全绿时报假警）。
+  if grep -qE 'Test run with 0 tests' "$LOG"; then
+    echo "  ⚠️ 本次 **0 条用例**：\`--only-testing\` 只认 XCTest 的 <Target>/<Class>/<method>，"
+    echo "     Swift Testing 的 @Test 选不中 —— 它没报错，也没跑东西。"
+    echo "     ⇒ 去掉 --only-testing 跑全量，或改用 \`swift test --filter\`。"
   fi
   [ -n "$RESULT_BUNDLE" ] && echo "  测试报告：$RESULT_BUNDLE"
   echo "  完整日志：$LOG"
@@ -183,9 +268,19 @@ if [ "$CMD" = "destinations" ]; then
 fi
 
 # ═══ build / test ════════════════════════════════════════════════════════
-if [ ${#CONTAINER[@]} -eq 0 ] || [ -z "$SCHEME" ]; then
-  echo "需要 --project/--workspace 与 --scheme（用 'ios-run.sh probe' 或 xcodebuild -list 先确认）" >&2
+if [ -z "$SCHEME" ]; then
+  echo "需要 --scheme（用 'ios-run.sh probe' 或从工程里 'xcodebuild -list' 先确认）" >&2
   exit 2
+fi
+
+# ⚠️ **不给 --project/--workspace 是合法的**：SwiftPM 包就是这种形态 ——
+#    xcodebuild 在包根目录下可以直接 `-scheme <包名>`（`MPV/` 这类独立包就是）。
+#    此前这里**直接报错退出**，结果是只能手调 xcodebuild —— 而手调的那几条命令
+#    恰好绕过了本脚本的看门狗与收尾（当天两次"卡住"都发生在手调路径上）。
+if [ ${#CONTAINER[@]} -eq 0 ]; then
+  # ⚠️ `${PWD}` 的花括号**不能省**：紧跟其后是全角括号，`$PWD）` 会被当成变量名的一部分
+  #    （实测报 `PWD…: unbound variable`）。同 `shell-portability` 的 §「$var 后紧跟全角字符」。
+  echo "  （未给 --project/--workspace ⇒ 按 SwiftPM 包处理：在当前目录 ${PWD} 求值）"
 fi
 
 if [ -n "$DEVICE" ]; then
@@ -206,7 +301,10 @@ fi
 
 DERIVED="${DERIVED:-$PWD/DerivedData}"
 
-XARGS=("${CONTAINER[@]}" -scheme "$SCHEME" -destination "$DEST" -derivedDataPath "$DERIVED")
+# ⚠️ `"${CONTAINER[@]}"` 在**空数组**时会触发 `set -u` 的 unbound variable
+#    （bash 3.2 的老毛病；同一行的 `PASSTHROUGH` 早就用 `+` 守卫绕过了，
+#     `CONTAINER` 以前**必须非空**所以没暴露 —— 现在 SwiftPM 包允许它为空）。
+XARGS=("${CONTAINER[@]+"${CONTAINER[@]}"}" -scheme "$SCHEME" -destination "$DEST" -derivedDataPath "$DERIVED")
 [ -n "$CONFIG" ] && XARGS+=(-configuration "$CONFIG")
 [ "$ESCAPE" = "1" ] && XARGS+=(OTHER_SWIFT_FLAGS=-disable-sandbox)   # build setting 必须在 action 前
 [ -n "$RESULT_BUNDLE" ] && XARGS+=(-resultBundlePath "$RESULT_BUNDLE")
@@ -217,7 +315,11 @@ echo "→ xcodebuild -scheme $SCHEME -destination '$DEST' $ACTION   [$KIND]"
 [ "$ESCAPE" = "1" ] && echo "  （已加沙箱逃逸：OTHER_SWIFT_FLAGS=-disable-sandbox）"
 echo "  derivedData：$DERIVED"
 
-xcodebuild "${XARGS[@]}" > "$LOG" 2>&1
+run_bounded xcodebuild "${XARGS[@]}"
 code=$?
 report "$code"
+reap_leftovers
+# ⚠️ **退出码必须以日志判定为准**：被我们终止时进程的退出码是信号值（或我们给的 0），
+#    它**不等于结论**。少了这一步，"测试失败"会以 0 退出 —— 调用方（和 CI）把红当绿。
+log_has_failure && exit 1
 exit $code
