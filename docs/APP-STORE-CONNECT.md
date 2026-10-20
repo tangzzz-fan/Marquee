@@ -382,7 +382,7 @@ Apple 这条 0 价 IAP 的路径**已知**有这个性质（社区与开发者�
 **2026-10-08 实测**：只装了 `Apple Development` 证书时，`CONFIGURATION=MAS ./scripts/build.sh`
 出来的包**带着 `com.apple.security.get-task-allow = true`** —— 那是开发签名的标记，
 App Store 上传会被直接拒。同一次实测里另外三项都是对的（bundle id `com.tango.marquee`、
-沙盒三项 entitlement、hardened runtime `flags=0x10000`）。
+沙盒 entitlement（当时三项，2026-10-20 起只剩两项 —— Pictures 那个被 2.4.5(i) 要求删了）、hardened runtime `flags=0x10000`）。
 
 ⇒ 判据（一条命令）：
 
@@ -404,7 +404,7 @@ codesign -d --entitlements - --xml DerivedData/Build/Products/MAS/Marquee.app \
 
 | 阶段 | 结果 |
 | --- | --- |
-| 归档（`-configuration MAS`） | ✅ **`ARCHIVE SUCCEEDED`**。产物核过：身份 `com.tango.marquee`、三项沙盒 entitlement、hardened runtime `flags=0x10000`、无 `get-task-allow` |
+| 归档（`-configuration MAS`） | ✅ **`ARCHIVE SUCCEEDED`**。产物核过：身份 `com.tango.marquee`、沙盒 entitlement（当时三项；2026-10-20 起两项）、hardened runtime `flags=0x10000`、无 `get-task-allow` |
 | 导出 | ❌ 卡在「命令行拿不到账号」—— **环境性质，不是配置错误**。下面那条结论被实测推翻过一次，值得读完 |
 
 三条报错分别是什么：

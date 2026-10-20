@@ -537,7 +537,8 @@ final class PreferencesWindowController: NSWindowController {
         refreshDelayExplanation()
 
         let settings = output.settings()
-        directoryLabel.stringValue = settings.directory.path
+        // 没选过就照实说 —— 不许显示一个"看起来已经设好"的路径（预置位置正是被 2.4.5(i) 打回的东西）。
+        directoryLabel.stringValue = settings.directorySummary
         formatSegmented.selectedIndex = ImageFileFormat.allCases.firstIndex(of: settings.format) ?? 0
         qualitySlider.value = settings.quality
         refreshQuality()
@@ -657,14 +658,12 @@ final class PreferencesWindowController: NSWindowController {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.directoryURL = output.settings().directory
+        panel.canCreateDirectories = true
+        panel.directoryURL = output.settings().directory ?? OutputSettings.savePanelStartDirectory()
         panel.prompt = L10n.t("选这个文件夹")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let settings = output.settings()
-        output.save(OutputSettings(directory: url,
-                                   format: settings.format,
-                                   quality: settings.quality,
-                                   nameTemplate: settings.nameTemplate))
+        // 路径 + **security-scoped 书签**一起记：沙盒下跨启动还能写进这个目录，靠的就是书签。
+        output.saveDirectory(url, bookmark: OutputSettings.securityScopedBookmark(for: url))
         directoryLabel.stringValue = url.path
     }
 

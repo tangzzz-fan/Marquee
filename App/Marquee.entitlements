@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- 只有三项，一项都不多勾。 -->
+	<!-- 只有两项，一项都不多勾。 -->
 	<!--
 	  ⚠️ 多勾会被审核问（"你为什么要访问用户的音乐库？"）。
 	  见 docs/MAS-AND-MONETIZATION.md 与 ticket 32。
@@ -10,22 +10,29 @@
 	  为什么没有「桌面」这一项：Apple 的文件访问 entitlement 是**枚举式**的，
 	  只有 user-selected / Downloads / Pictures / Music / Movies（外加一个已弃用的
 	  All files）。**「桌面」不在里面** —— 不是我们忘了勾。
-	  所以默认落盘从 ~/Desktop 换成了 ~/Pictures/Marquee（见 OutputSettings）。
+
+	  为什么**也没有** Pictures（2026-10-20 删）：2026-10-14 提审时 Apple 按
+	  Guideline 2.4.5(i) 打回两条 —— ① `assets.pictures.read-write` 与功能不匹配；
+	  ② app 预置了 `~/Pictures` 作为默认保存位置。原文要求"让用户通过标准的
+	  Open/Save 面板选择默认位置"。
+	  于是位置改由用户**在面板里选一次**，再靠 security-scoped 书签记住
+	  （`UserDefaultsOutputStore.saveDirectory(_:bookmark:)`），这个 entitlement 就不需要了。
+	  见 docs/PITFALLS.md 202。
 	-->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 
-	<!-- 用户在保存面板里自己选的目录（「另存为」那条路）。 -->
+	<!--
+	  用户亲手选的目录（面板即授权；书签让它在下次启动依然有效）。
+	  「另存为」与「选择保存位置」两条路都靠它。
+	-->
 	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
-
-	<!-- 默认落盘 ~/Pictures/Marquee 要用它。 -->
-	<key>com.apple.security.assets.pictures.read-write</key>
 	<true/>
 
 	<!--
 	  刻意**没有**的东西，免得以后有人"顺手放开"：
 
+	  · assets.pictures / files.downloads —— 已经没有预置落盘位置了（2026-10-20）。
 	  · network.client —— 本项目不上传任何东西（隐私标签答"不采集任何数据"）。
 	    截图只在本机处理。StoreKit 的网络由系统进程代劳，不需要它。
 	  · device.camera / microphone —— 用不到。

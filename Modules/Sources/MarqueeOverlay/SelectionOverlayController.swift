@@ -55,8 +55,9 @@ public final class SelectionOverlayController {
     private let windowLister: WindowListing
     private let displays: DisplayLocating
     private let onFinish: (Outcome) -> Void
-    /// `⌘S` 时由宿主拼好落盘请求。`nil` 时 `⌘S` 只复制，不写磁盘。
-    private let makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)?
+    /// `⌘S` 时由宿主拼好落盘请求。`nil` 时 `⌘S` 只复制，不写磁盘；
+    /// **返回 `nil` = 这次没有落盘**（宿主可能还没拿到保存位置 —— 见 `saveRequest(for:enabled:)`）。
+    private let makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest?)?
     /// 长截图会话工厂。`nil` 时 `Mode.scrollCapture` 不可用。
     private let makeScrollSession: (@MainActor () -> ScrollCaptureSession)?
     /// 合成滚轮事件的"手"（ticket 12 自动滚动）。`nil` 时自动滚动不可用，手动滚动不受影响。
@@ -309,7 +310,7 @@ public final class SelectionOverlayController {
                 windowLister: WindowListing,
                 displays: DisplayLocating,
                 onFinish: @escaping (Outcome) -> Void,
-                makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest)? = nil,
+                makeSaveRequest: (@MainActor (WindowInfo?) -> CaptureSaveRequest?)? = nil,
                 makeScrollSession: (@MainActor () -> ScrollCaptureSession)? = nil,
                 makeScrollWheelEmitter: (@MainActor () -> ScrollWheelEmitting)? = nil,
                 postEventPermission: PostEventPermissionProbing? = nil,
@@ -1235,8 +1236,8 @@ public final class SelectionOverlayController {
     }
 
     private func saveRequest(for window: WindowInfo?, enabled: Bool) -> CaptureSaveRequest? {
-        guard enabled, let makeSaveRequest else { return nil }
-        return makeSaveRequest(window)
+        guard enabled else { return nil }
+        return makeSaveRequest?(window) ?? nil
     }
 
     private func cancel() {

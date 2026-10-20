@@ -37,13 +37,20 @@ enum AppShots {
     /// ASC 对 macOS 的截图规格（16:10）里**最高**的那一档。
     static let canvasSize = CGSize(width: 2880, height: 1800)
 
+    /// 渲商店图时用的**独立**偏好域（每次开渲先清空）。
+    ///
+    /// 用它而不是进程真实的偏好：那一格里会印出开发者自己的保存路径，
+    /// 于是"同一份代码在不同机器上出的商店图不一样"。名字带 `shots` 是给自己看的 ——
+    /// 万一哪天有人看到这个域，能一眼明白它不是用户数据。
+    static let shotDefaultsSuite = "com.tango.marquee.appshots"
+
     /// 画布内边距。
     private static let margin: CGFloat = 120
     /// 右侧说明栏的宽度。
     private static let notesWidth: CGFloat = 820
     private static let notesGap: CGFloat = 72
 
-    /// 小窗口（偏好 440 × 430 / 引导 440 × 336）的**源**渲染倍率：
+    /// 小窗口（偏好 440 × 430 / 引导 440 × 368）的**源**渲染倍率：
     /// 它们在画布上会被放到 3 倍那么大，所以源就按 3 倍渲 —— 两头都是 1:1 的像素，不插值。
     private static let sourceScale: CGFloat = 3
 
@@ -72,12 +79,19 @@ enum AppShots {
 
     static func render(shortcut: ShortcutService,
                        preferences: UserDefaultsPreferencesStore,
-                       output: UserDefaultsOutputStore,
                        editor: AnnotationEditorPresenter,
                        into directory: URL) -> [String] {
         // 与 `ReviewShots` 同一个理由：主题跟着 `NSApp.effectiveAppearance` 走，
         // 不钉的话会出"窗口内是浅色、画布是深色"这种半深半浅的图。
         NSApp.appearance = NSAppearance(named: .darkAqua)
+
+        // ⚠️ 输出设置这一份**必须是空的、每次重跑的**，不能拿进程真实的偏好来渲。
+        // 「保存位置」那一格会原样印出开发者自己的家目录 —— 而这类差别不报错、
+        // 不崩，只让每台机器上出的商店图不一样（这台是 `/Users/tango/…`，
+        // 别人那台是别的）。商店图是**要上传的交付物**，它必须可重跑。
+        let shotDefaults = UserDefaults(suiteName: Self.shotDefaultsSuite) ?? .standard
+        shotDefaults.removePersistentDomain(forName: Self.shotDefaultsSuite)
+        let output = UserDefaultsOutputStore(defaults: shotDefaults)
 
         // ⚠️ 按**语言**分目录：ASC 是按本地化各要一套截图。
         // 这一支渲的是当前进程的界面语言（`-AppleLanguages "(en)"` 可以换一套，
@@ -142,6 +156,7 @@ enum AppShots {
 
         // ── ⑤ 首次启动的引导 ───────────────────────────────────────────────
         let onboarding = OnboardingWindowController(shortcut: shortcut,
+                                                    output: output,
                                                     currentPermission: { .granted },
                                                     onShortcutChanged: { _ in })
         onboarding.present()
@@ -244,17 +259,19 @@ enum AppShots {
 
         case .onboarding:
             return english
-                ? Caption(heading: "Three steps, all skippable",
-                          subheading: "On first launch: what it is / pick a key / screen-recording permission — every step can be skipped",
+                ? Caption(heading: "Four things, all skippable",
+                          subheading: "On first launch: what it is / pick a key / save folder / screen-recording permission — all skippable",
                           notes: ["· The tour blocks nothing: the menu bar icon is already there",
                                   "· The permission row re-reads on every activation:",
                                   "  tick it in System Settings and the row updates itself",
+                                  "· The save folder comes only from your pick in the system panel",
                                   "· Self-check runs with a -marquee prefix never show it"])
-                : Caption(heading: "三步，都能跳过",
-                          subheading: "首次启动：它是什么 / 挑一个键 / 屏幕录制权限 —— 每一步都能跳过",
+                : Caption(heading: "四件事，都能跳过",
+                          subheading: "首次启动：它是什么 / 挑一个键 / 图存哪儿 / 屏幕录制权限 —— 都能跳过",
                           notes: ["· 引导不挡功能：菜单栏图标那时已经在",
                                   "· 授权那一行是「每次切回来重读」的：",
                                   "  在系统设置里勾上，它自己就变色",
+                                  "· 保存位置只由你在系统面板里选 —— app 不预置",
                                   "· 带 -marquee 前缀的自检运行一律不弹它"])
         }
     }

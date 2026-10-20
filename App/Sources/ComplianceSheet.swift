@@ -146,6 +146,7 @@ enum ComplianceSheet {
 
         // ── 引导页
         let onboarding = OnboardingWindowController(shortcut: shortcut,
+                                                    output: output,
                                                     currentPermission: currentPermission,
                                                     onShortcutChanged: { _ in })
         onboarding.window?.orderFrontRegardless()

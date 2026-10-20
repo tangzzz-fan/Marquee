@@ -80,6 +80,28 @@ struct ScreenshotArchiverTests {
         try? FileManager.default.removeItem(at: blocker)
     }
 
+    @Test("没有保存位置就**不写** —— 不许拿一个默认目录顶上")
+    func missingDirectoryDoesNotWriteAnywhere() throws {
+        // 这条钉的是 2026-10-14 那次 2.4.5(i) 的根因：预置位置。
+        // 调用方若漏了"先问位置"这一步，正确表现是**失败并说清原因**，
+        // 而不是安静地写到某个用户没选过的文件夹里。
+        let image = TestImage.solid(width: 4, height: 4, red: 0, green: 0, blue: 0)
+        let settings = OutputSettings(directory: nil)
+
+        let result = ScreenshotArchiver.write(image,
+                                              request: CaptureSaveRequest(settings: settings,
+                                                                          capturedAt: Date(),
+                                                                          sequence: 1,
+                                                                          applicationName: "",
+                                                                          windowTitle: ""))
+        guard case .failure(let failure) = result else {
+            Issue.record("没有目录时必须失败，实际 \(result)")
+            return
+        }
+        #expect(failure.message.contains("保存位置"))
+        #expect(failure.message.contains("剪贴板"))
+    }
+
     private func written(_ result: Result<ArchiveWriteResult, ArchiveFailure>) throws -> ArchiveWriteResult {
         switch result {
         case .success(let value):

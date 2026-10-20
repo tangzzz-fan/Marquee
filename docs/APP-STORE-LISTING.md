@@ -257,20 +257,24 @@ Marquee 是菜单栏常驻应用（LSUIElement = true），启动后没有 Dock 
 这一点是设计如此，不是启动失败。请点击屏幕右上角菜单栏里的 Marquee 图标打开菜单。
 
 【最短验证路径】
+0. 首次启动会有一个一页的欢迎窗口：里面可以直接改快捷键，也有一行「保存位置」
+   （点「选择…」用标准面板挑一个文件夹；**跳过不选也可以**，开始使用不会被挡住）
 1. 点菜单栏图标 →「截取屏幕」（或按默认快捷键 ⌃Q）
 2. 拖动框选任意区域
-3. 按回车 → 截图已进入剪贴板；按 ⌘S 可另存为 PNG
+3. 按回车 → 截图已进入剪贴板；按 ⌘S 可保存为 PNG
+   （第一次保存时会弹系统面板请你选一个文件夹 —— 这是刻意的：app 不预置保存位置；
+   选一次之后就会记住，之后再按 ⌘S 不再询问）
 
 首次截图时系统会询问「屏幕录制」权限，这是 macOS 对所有截图工具的要求。
 如果之前误点过拒绝，可在「系统设置 → 隐私与安全性 → 屏幕录制」里重新勾选。
 
 【关于沙盒与权限】
-本构建启用 App Sandbox，只声明了三项 entitlement：
+本构建启用 App Sandbox，只声明了两项 entitlement：
   · com.apple.security.app-sandbox
-  · com.apple.security.files.user-selected.read-write（「另存为」时用户亲自选的目录）
-  · com.apple.security.assets.pictures.read-write（默认落盘 ~/Pictures/Marquee）
-没有网络 entitlement —— app 不上传任何数据。没有辅助功能（Accessibility）、
-摄像头、麦克风等任何其它权限。
+  · com.apple.security.files.user-selected.read-write
+    （用户在标准面板里选中的保存目录；security-scoped 书签让它在之后的启动里继续有效）
+没有预置任何保存位置，也没有 Pictures / Downloads / 网络 entitlement ——
+app 不上传任何数据。没有辅助功能（Accessibility）、摄像头、麦克风等任何其它权限。
 
 沙盒版本中「自动滚动」不提供（沙盒应用无法向其它进程注入输入事件），
 长截图仍可通过手动滚动完成；界面在这种情况下不会引导用户去开启「辅助功能」。

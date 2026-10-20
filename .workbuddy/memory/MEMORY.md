@@ -3,7 +3,7 @@
 > `/Users/tango/Developments/Marquee`（2026-09-30 由 `Snipo` 改名）；远端 `git@github.com:tangzzz-fan/Marquee.git`；开发机 **macOS 27**。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（189 条实测陷阱，多为「不崩溃、不报错、只悄悄错」）。
+> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（203 条实测陷阱，多为「不崩溃、不报错、只悄悄错」）。
 > 本文件只记**决策**与**索引**；逐条交互实现见同目录 **`INTERACTION.md`**。
 
 ## 身份 · 分发 · 收费
@@ -16,7 +16,7 @@
 | 分支 | `feat/iap`、`feat/onboarding` 均已并入 `main`（2026-10-03）。**合并一律 `--no-ff`** |
 | **收费（已定：买断 ¥36）** | 非消耗型 IAP `com.tango.marquee.pro`。**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）；其余全免费。⚠️ **不许把没做的功能写成"锁着的"**。试用＝**0 价非消耗型 IAP**（3.1.1 官方路径），7 天、一次 |
 | **权益（ticket 30/31）** | 判定在 Core `LicenseResolver`（纯函数）；**头号判据：`unknown` 必须放行**（否则付费用户启动先看到锁；历史也不许按免费裁剪）。已完成 `Storefront` · `EntitlementCache`（缓存**输入**而非结果）· `StorefrontSeams` · `EntitlementCoordinator` · `MarqueeStore`。五条硬规则：**未校验的交易不算数** · **撤销可以被撤销** · **「商店里没有」只有真的问过才算证据**（查询失败时 `records` 也为空 ⇒ 断网锁死付费用户）· **启动不等网络** · **核实失败不改动判定** |
-| **分发（已定：路线 B，上 MAS）** | **代价已接受：自动滚动砍掉、只留手动长截图**；Developer ID **并存**作后路。依据（已核实原文）：Apple 明文「用 `CGEventPost` 向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API」⇒ **自动滚动与 MAS 互斥**（Snip 的 App Store 版同样"滚动截屏不可用"）。**桌面没有 entitlement** ⇒ 默认落盘改 `~/Pictures/Marquee`。⚠️ **迁移在沙盒内做不到**（读不到容器外的 Application Support）⇒ 沙盒版首发本来就没有老数据。见 PITFALLS 143/144 |
+| **分发（已定：路线 B，上 MAS）** | **代价已接受：自动滚动砍掉、只留手动长截图**；Developer ID **并存**作后路。依据（已核实原文）：Apple 明文「用 `CGEventPost` 向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API」⇒ **自动滚动与 MAS 互斥**（Snip 的 App Store 版同样"滚动截屏不可用"）。⚠️ **保存位置不许预置**（2026-10-14 提审被 2.4.5(i) 打回两条：`assets.pictures.read-write` 与 `~/Pictures`）⇒ 只剩 `app-sandbox` + `files.user-selected`；位置由**用户选一次 + security-scoped 书签**（`OutputSettings.directory` 是 `URL?`，`savePanelStartDirectory()` 只是面板起点）。⚠️ **迁移在沙盒内做不到**（读不到容器外的 Application Support）⇒ 沙盒版首发本来就没有老数据。见 PITFALLS 143/144/**202** |
 
 ## 工程与架构
 
@@ -106,13 +106,14 @@ CONFIGURATION=Release ./scripts/build.sh   # 发版 / 内购真实沙盒验证
 - **`CGWindowListCreateImage` 在 macOS 15+ 已不可用**（必须 ScreenCaptureKit ⇒ 一定要授权） ⇒ "抓自己的窗口"这条捷径**根本不存在**，玻璃只能由人点一次授权再实机拍（188）。
 - **`open -a App --args <flag>` 在被沙箱包裹的 shell 里会静默丢参**（三种写法全试过）⇒ 现象与"这个开关没实现"一模一样；**加命令行开关就顺手加一行启动凭证**（`reports/launch-arguments.txt`），并把 `open -a` 留给用户自己的终端（同时解决"参数送得到"与"TCC 认它是自己"）（189）。
 - **`_ =` 掉一个用户主动发起的动作的结果 = 「点了没反应」**；用瞬时状态（`unknown`）决定常驻按钮能否点，会让入口变成出不去的死胡同（181）。
+- **预置落盘位置 + 为它声明的 entitlement 会被 2.4.5(i) 打回**（"我们确实写成功过"不是辩护）。位置只能来自用户在标准面板里的动作，跨启动靠 security-scoped 书签；"没选过"必须是 `URL?` 而不是兜一个默认路径。⚠️ 另：覆盖层是 `.screenSaver` 层，模态 `NSOpenPanel` 在 `.modalPanel` 层 ⇒ **覆盖层还压着屏幕时弹面板 = 看不见**，要等它拆掉再问（202）。
 
 ## 文档与资产
 
 | 路径 | 内容 |
 | --- | --- |
 | **`.workbuddy/memory/INTERACTION.md`** | **逐条交互实现细节**（写 UI 前必读） |
-| **`docs/PITFALLS.md`** | **189 条实现陷阱**（写代码前必扫） |
+| **`docs/PITFALLS.md`** | **203 条实现陷阱**（写代码前必扫） |
 | **`docs/APP-STORE-CONNECT.md`** | **ASC 操作清单**（两个商品怎么建 · 提审前必须补的代码缺口） |
 | **`docs/APP-STORE-LISTING.md`** | **ASC 逐格可粘贴的文案**（名称/描述/关键词 中英 · URL · 隐私标签 · App 审核备注 · "沙盒信息"怎么答） |
 | **`docs/PRIVACY-POLICY.md`** | **隐私政策正文**（中英）+ **飞书发布三步**（⚠️ 默认"仅组织内可读" ⇒ 审核员打不开 ⇒ 5.1.1 被拒；必须改「互联网上获得链接的人可阅读」并**无痕验证**） |

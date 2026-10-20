@@ -74,6 +74,22 @@ final class CaptureCoordinator {
     /// 钉图（ticket 14）。持有所有钉住的窗口 —— 多张钉图互不干扰。
     private let pins = PinPresenter()
     private var overlay: SelectionOverlayController?
+
+    /// 覆盖层里按了「保存」但**还没有选过保存位置**的那一次。
+    ///
+    /// 为什么不在那一刻直接弹面板：覆盖层是 `.screenSaver` 层的面板，而模态面板在
+    /// `.modalPanel` 层 —— 它会被整个压在覆盖层**下面**，用户看到的是"点了没反应"
+    /// （这类失败没有报错、没有日志，只有截图里少一个文件）。所以只记下意图，
+    /// 等覆盖层拆掉再在**普通窗口层**补问（`handleOverlayFinish` → `finishDeferredSave`）。
+    ///
+    /// 一次性意图：**只在 `handleOverlayFinish` 这一处**作废，
+    /// 不允许它活到下一次采集（那会变成"上次没保存，这次按 ⏎ 却弹出一个选文件夹"）。
+    private var pendingOverlaySave: PendingOverlaySave?
+
+    private struct PendingOverlaySave {
+        /// 命名模板里的 `{app}` / `{window}` 要从它取。
+        let window: WindowInfo?
+    }
     private var preferencesWindow: PreferencesWindowController?
     /// 菜单入口被挡住时弹的那张卡片（ticket 31）。**必须持着** ——
     /// 它是个 `NSPanel`，没有强引用的话会被 ARC 当场回收，用户什么也看不到。
@@ -213,13 +229,7 @@ final class CaptureCoordinator {
                 self?.handleOverlayFinish(outcome)
             },
             makeSaveRequest: { [weak self] window in
-                self?.makeSaveRequest(for: window) ?? CaptureSaveRequest(
-                    settings: OutputSettings(directory: OutputSettings.defaultOutputDirectory()),
-                    capturedAt: Date(),
-                    sequence: 1,
-                    applicationName: window?.ownerName ?? "",
-                    windowTitle: window?.title ?? ""
-                )
+                self?.makeOverlaySaveRequest(for: window)
             },
             // 直接捕获依赖而不是 `[weak self]`：会话工厂在覆盖层呈现时才被调用，
             // 而覆盖层本身由 self 持有 —— 写 `weak` 只会多出一个永远走不到的 nil 分支。
@@ -434,7 +444,6 @@ final class CaptureCoordinator {
     func renderAppShots(into directory: URL) -> [String] {
         AppShots.render(shortcut: shortcut,
                         preferences: preferences,
-                        output: outputStore,
                         editor: editor,
                         into: directory)
     }
@@ -469,8 +478,14 @@ final class CaptureCoordinator {
     /// 与覆盖层那条保存路径**共用同一个归档器**（`ScreenshotArchiver`）与同一个序号源 ——
     /// 各走一套的话，序号会撞名，而"同名文件太多"的兜底会把名字往后推、
     /// 表现成"保存出来的名字中间跳号"。
+    ///
+    /// 还没选过保存位置时**在这里当面问**（编辑器是普通窗口层，面板压得住它）。
     private func saveFromEditor(_ image: CGImage) {
-        let request = makeSaveRequest(for: nil)
+        guard let directory = outputStore.chosenDirectory() ?? promptForSaveDirectory() else {
+            logger.info("保存：还没有保存位置，用户也没有选")
+            return
+        }
+        let request = makeSaveRequest(directory: directory, window: nil)
         switch ScreenshotArchiver.write(image, request: request) {
         case .success(let result):
             outputStore.advanceSequence(to: result.sequenceUsed)
@@ -492,6 +507,7 @@ final class CaptureCoordinator {
 
         let controller = OnboardingWindowController(
             shortcut: shortcut,
+            output: outputStore,
             currentPermission: { [weak self] in
                 self?.permission.currentPermission() ?? .notDetermined
             },
@@ -559,7 +575,7 @@ final class CaptureCoordinator {
           沙盒            : \(AppIdentity().isSandboxed ? "是（App Store 版）" : "否")
           进程家目录      : \(NSHomeDirectory())
           真实家目录      : \(AppIdentity.realHomeDirectory().path)
-          默认落盘        : \(OutputSettings.defaultOutputDirectory().path)
+          保存位置        : \(outputStore.chosenDirectory()?.path ?? "未选择（第一次保存时由用户选）")
           历史仓库        : \(CaptureHistoryStore.defaultDirectory().path)
           构建时间        : \(Self.buildTimestamp())
           屏幕录制权限    : \(Self.describe(permission.currentPermission()))
@@ -625,11 +641,14 @@ final class CaptureCoordinator {
 
     private func handleOverlayFinish(_ outcome: SelectionOverlayController.Outcome) {
         overlay = nil
+        // 一次性意图在这里作废 —— 成功、取消、失败都算一次采集结束。
+        let pendingSave = pendingOverlaySave
+        pendingOverlaySave = nil
         switch outcome {
         case .cancelled:
             logger.info("选区已取消")
         case .completed(let capture, let after, let anchor):
-            handle(capture, after: after, anchor: anchor)
+            handle(capture, after: after, anchor: anchor, pendingSave: pendingSave)
         }
     }
 
@@ -639,7 +658,10 @@ final class CaptureCoordinator {
     ///   拖完选区按 `⏎` 直接得到图，不弹任何窗口。
     ///   长截图要编辑器；工具栏上的「钉图」要钉在屏幕上。
     /// - Parameter anchor: 原始选区（Cocoa 全局点）。钉图据它**钉在原位**。
-    private func handle(_ outcome: CaptureOutcome, after: SelectionOverlayController.AfterCapture, anchor: CGRect?) {
+    private func handle(_ outcome: CaptureOutcome,
+                        after: SelectionOverlayController.AfterCapture,
+                        anchor: CGRect?,
+                        pendingSave: PendingOverlaySave? = nil) {
         switch outcome {
         case .copiedToClipboard(let metrics):
             // 正常复制不弹窗。落盘失败才说一声，因为图已经在剪贴板里，不能装成整次失败。
@@ -652,6 +674,11 @@ final class CaptureCoordinator {
             if let message = metrics.saveFailureMessage {
                 logger.error("保存失败：\(message, privacy: .public)")
                 PermissionPrompt.presentFailure(CaptureFailure(message: message))
+            }
+            // 覆盖层里按了「保存」但当时还没有保存位置：这会儿覆盖层已经拆掉，
+            // 面板能正常出现在最前面了 —— 先补完这次保存，再走后面的收尾。
+            if let pendingSave {
+                finishDeferredSave(metrics, pending: pendingSave)
             }
     // L10N-EXEMPT-START: 截图完成后的日志摘要
             let summary = """
@@ -946,13 +973,69 @@ final class CaptureCoordinator {
         }
     }
 
-    private func makeSaveRequest(for window: WindowInfo?) -> CaptureSaveRequest {
-        CaptureSaveRequest(
-            settings: outputStore.settings(),
-            capturedAt: Date(),
-            sequence: outputStore.consumeSequence(),
-            applicationName: window?.ownerName ?? "",
-            windowTitle: window?.title ?? ""
-        )
+    /// 覆盖层按「保存」/`⌘S` 时拼落盘请求。
+    ///
+    /// **这里不许弹面板**（层级原因见 `pendingOverlaySave`）：还没选过位置时只记意图、
+    /// 返回 `nil`（= 这次不落盘），等覆盖层收起后再补问。
+    private func makeOverlaySaveRequest(for window: WindowInfo?) -> CaptureSaveRequest? {
+        guard let directory = outputStore.chosenDirectory() else {
+            pendingOverlaySave = PendingOverlaySave(window: window)
+            logger.info("保存：还没有选过保存位置，等覆盖层收起后再问")
+            return nil
+        }
+        return makeSaveRequest(directory: directory, window: window)
+    }
+
+    /// 覆盖层收起之后补上的那一次保存。
+    private func finishDeferredSave(_ metrics: CaptureMetrics, pending: PendingOverlaySave) {
+        // 采集没留下可写的图（正常路径不会发生：`finish` 一定带着拍平后的图）。
+        // 真发生了就只记日志 —— 剪贴板里那张已经在用户手上，这里没有更需要他做的事。
+        guard let image = metrics.image else {
+            logger.error("保存：这次采集没有留下可写的图，补存跳过")
+            return
+        }
+        guard let directory = promptForSaveDirectory() else {
+            logger.info("保存：用户在选位置时取消，图仍在剪贴板")
+            return
+        }
+        let request = makeSaveRequest(directory: directory, window: pending.window)
+        switch ScreenshotArchiver.write(image, request: request) {
+        case .success(let result):
+            outputStore.advanceSequence(to: result.sequenceUsed)
+            logger.info("已保存：\(result.url.path, privacy: .public)")
+        case .failure(let failure):
+            logger.error("保存失败：\(failure.message, privacy: .public)")
+            PermissionPrompt.presentFailure(CaptureFailure(message: failure.message))
+        }
+    }
+
+    /// 让用户亲手选一个保存目录。
+    ///
+    /// 标准面板本身就是沙盒下的**授权凭据**，而 App Review 要的正是这条路：
+    /// 位置由用户选，app 不预置（Guideline 2.4.5(i)，2026-10-14 那次被打回的就是它）。
+    /// 选完把**路径 + security-scoped 书签**一起记下来，之后每次 `⌘S` 都不再问。
+    private func promptForSaveDirectory() -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = OutputSettings.savePanelStartDirectory()
+        panel.prompt = L10n.t("选这个文件夹")
+        NSApp.activate()
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        outputStore.saveDirectory(url, bookmark: OutputSettings.securityScopedBookmark(for: url))
+        logger.info("保存位置已选定：\(url.path, privacy: .public)")
+        return url
+    }
+
+    private func makeSaveRequest(directory: URL, window: WindowInfo?) -> CaptureSaveRequest {
+        var settings = outputStore.settings()
+        settings.directory = directory
+        return CaptureSaveRequest(settings: settings,
+                                  capturedAt: Date(),
+                                  sequence: outputStore.consumeSequence(),
+                                  applicationName: window?.ownerName ?? "",
+                                  windowTitle: window?.title ?? "")
     }
 }

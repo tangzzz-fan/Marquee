@@ -192,7 +192,7 @@ bundle id」。第三方总结：**IAP 商品永久绑定创建时的 bundle id�
 | 行为 | 非沙盒 | 沙盒 | 判据 |
 | --- | --- | --- | --- |
 | 自动滚动 | 可用（按需申请辅助功能） | **做不到**，且**不许去申请** | `AutoScrollGate.evaluate(isSandboxed:permissionGranted:)` |
-| 默认落盘 | `~/Pictures/Marquee` | **同一个路径**（`getpwuid` 的真实家目录拼出来） | `OutputSettings.defaultOutputDirectory()` |
+| 保存位置 | 用户选的那个目录（书签） | **同一个**（用户选的那个目录 + security-scoped 书签） | `UserDefaultsOutputStore.chosenDirectory()` |
 | 历史仓库 | `~/Library/Application Support/<id>/history/` | 容器内的同名位置 | `AppIdentity.supportDirectory()` |
 | 探针报告 | `<数据根>/reports/` | 同上（容器内） | `AppIdentity.logDirectory()` |
 

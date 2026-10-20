@@ -101,17 +101,32 @@ struct AppPreferencesTests {
                                   nameTemplate: "截图-{n}"))
 
         let read = store.settings()
-        #expect(read.directory.path == directory.path)
+        #expect(read.directory?.path == directory.path)
         #expect(read.format == .jpeg)
         #expect(abs(read.quality - 0.7) < 0.001)
         #expect(read.nameTemplate == "截图-{n}")
+    }
+
+    @Test("只改格式 / 质量时，已选好的保存位置不能被顺带清掉")
+    func savingNonDirectoryFieldsKeepsTheChosenDirectory() {
+        // 偏好页改一项就整份 `save()` 一次。如果 `save()` 把目录当成"有则写、无则清"，
+        // 那么某次 `settings()` 恰好没拿到目录（书签刚好解析失败）就会**静默丢掉**
+        // 用户选过的位置 —— 表现是"上次明明选过，这次又问我一遍"。
+        let store = UserDefaultsOutputStore(defaults: freshDefaults())
+        let directory = URL(fileURLWithPath: "/tmp/marquee-keep", isDirectory: true)
+        store.saveDirectory(directory, bookmark: nil)
+
+        store.save(OutputSettings(directory: nil, format: .jpeg, quality: 0.6))
+
+        #expect(store.chosenDirectory()?.path == directory.path)
+        #expect(store.settings().format == .jpeg)
     }
 
     @Test("质量越界会被夹进 0…1 —— 存了个 3.0 的话它会一路传到编码器里")
     func qualityIsClamped() {
         let store = UserDefaultsOutputStore(defaults: freshDefaults())
 
-        store.save(OutputSettings(directory: OutputSettings.defaultOutputDirectory(), quality: 3))
+        store.save(OutputSettings(directory: nil, quality: 3))
 
         #expect(store.settings().quality == 1)
     }

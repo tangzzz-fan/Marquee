@@ -2042,3 +2042,61 @@
      > 顺带记下当时的取舍：页脚方案不是"不好看"，是**代价算错了** ——
      > 我按"页脚已经在那儿、加个按钮不占高度"估，而真正被改的是**窗口的宽度约束系统**。
      > 加约束之前先问一句：**这条约束会不会把这个视图拉进窗口的定宽计算？**
+
+202. **预置一个落盘位置（并为此声明配套 entitlement）会被 App Review 按 2.4.5(i) 打回 ——
+     "我们确实用它写成功过"不是辩护理由。**
+     2026-10-14 提审（1.0 build 2）被拒两条，同一条 Guideline、同一个根因：
+     - `com.apple.security.assets.pictures.read-write` —— "does not have matching
+       functionality within the app"；
+     - "The app uses or offers to use pre-set locations, including the following: `~/Pictures`"。
+
+     原文给的下一步是：**让用户用标准的 Open/Save 面板自己选默认位置**，不要预置。
+
+     我们这一侧本来是"自洽"的：沙盒里写不进桌面 ⇒ 改 `~/Pictures/Marquee` ⇒ 加 Pictures
+     entitlement ⇒ 测试里真的写成功了。但审核看的不是"能不能写"，而是**这个位置是谁定的**。
+     ⇒ 三条：
+
+     1. **默认位置不是功能，是授权。** 它只能来自用户在一次标准面板里的动作
+        （`NSOpenPanel` / `NSSavePanel` 走 powerbox，用户点"打开"那一下就是授权）。
+     2. **跨启动续这个授权靠 security-scoped 书签**：`bookmarkData(options: .withSecurityScope)`
+        → 下次 `URL(resolvingBookmarkData:options:.withSecurityScope…)` →
+        写之前 `startAccessingSecurityScopedResource()`、写完 `stop`。
+        `files.user-selected.read-write` 已经覆盖书签的创建与解析，**不需要**额外的 bookmark entitlement。
+     3. **"没选过"必须是一个类型上的状态**（`URL?`），不许兜一个默认路径 ——
+        兜底会把"还没授权"变成一个看起来合法的位置，然后在沙盒里安静失败（同 101 那一类错）。
+        判据顺序也不能反：**有书签就只认书签**，解析不出来 = 重新问用户；
+        反过来（书签坏了 → 退回路径）在沙盒里会失败成 `Operation not permitted`。
+
+     ⚠️ 附带一条**层级**陷阱，它与这个 bug 是一起出现的：
+
+     覆盖层是 `.screenSaver` 层的面板，而 `NSOpenPanel` 的模态窗口在 `.modalPanel` 层 ——
+     **在覆盖层还压着屏幕时弹面板 = 面板被压在下面，用户什么都看不到**，外观与
+     "点了没反应"一模一样（没有报错、没有日志，只有截图里少一个文件）。
+     所以覆盖层里按「保存」时只**记下意图**，等覆盖层拆掉再问
+     （`CaptureCoordinator.finishDeferredSave`）；编辑器是普通窗口层，可以当面问。
+     这条意图是**一次性的**，只在 `handleOverlayFinish` 一处作废 ——
+     否则上一次没保存的意图会活到下一次截图里。
+
+203. **写死宽度的标签，只在你正在看的那门语言下是正确的。**
+     引导页那两行设置（`截屏快捷键` / `保存位置`）原先各自 `widthAnchor == 84` ——
+     中文「截屏快捷键」正好 60 出头，84 富余；英文「Capture shortcut」**放不下**，
+     渲染出来是 **`Capture shortc`**（无省略号，看着像文案少写了一个字，像极了拼写错误）。
+     同一个宽度还负责"两行左边缘对齐"，所以**不能各取各的**：
+     取 `max(84, keyLabel.intrinsicContentSize.width, directoryCaption.intrinsicContentSize.width)`
+     —— 下限保留 84，否则中文下录制框会左移、把已定版面挪位。
+     ⚠️ 这类错**中文开发机上永远看不见**，只有把商店截图按 `-AppleLanguages "(en)"` 出第二套时才暴露。
+
+     同一轮里还有第二处、**同一类**的错：`未选择 · 第一次保存时选` 的英文
+     （"Not set yet — you'll pick a folder on first save"）在引导页那格只有约 180 点宽，
+     被中段截成 `Not set yet — you'll…k a folder on first save`。
+     修法是**改文案而不是加大控件**（这一格宽度是被两行对齐钉死的），
+     于是英文改成 `Not set — picked on first save`。
+     教训：**"够不够长"只能用真字体量，不能按字数估**（与提示行、卡片按钮组是同一类）。
+     引导页的宽度约束还多一层：它比偏好页窄（440 对 440 但少一列内边距），
+     同一句话在两页里能不能放得下**答案不同**。
+
+     顺手记下第三件：出商店截图时**不能拿进程真实的偏好去渲**。
+     「保存位置」那一格会原样印出开发者自己的家目录 —— 不报错、不崩，
+     只让"同一份代码在不同机器上出的商店图不一样"，而这张图是**要上传的交付物**。
+     `AppShots` 现在用一个独立偏好域（`com.tango.marquee.appshots`，开渲先清空），
+     于是每次渲出来都是"全新安装"那一档。

@@ -89,7 +89,7 @@ Marquee（以下简称"本应用"）是一款运行在 macOS 上的截图与标�
 
 ## 三、数据被保存在哪里
 
-1. **截图文件**：保存在你指定的保存目录（默认是 `~/Pictures/Marquee`）。文件完全属于你，你可以随时在访达中查看、移动、复制或删除。
+1. **截图文件**：保存在**你选择的**保存目录（第一次保存时会弹出系统面板请你选一个文件夹，之后会记住）。本应用不会替你预设位置。文件完全属于你，你可以随时在访达中查看、移动、复制或删除。
 2. **最近截图记录**：为了让"最近截过的那几张"可再次使用，本应用会在本机保留一份截图记录。
    - **由你主动删除的截图**：会被移入**废纸篓**，你可以像对待任何文件一样恢复它；
    - **超出保留数量后被自动淘汰的**：才会被永久删除。免费版保留最近 5 张，购买 Pro 后不设上限。
@@ -165,7 +165,8 @@ app cannot capture, and nothing else is affected.
 
 ## 3. Where data is kept
 
-1. **Captures** are saved to the folder you choose (by default `~/Pictures/Marquee`). They are
+1. **Captures** are saved to the folder **you** pick — the first time you save, macOS asks you to
+   choose one, and that choice is remembered. The app never pre-sets a location. They are
    yours; view, move, copy or delete them in Finder at any time.
 2. **Recent captures** are kept locally so the last few shots remain reusable.
    Captures **you** delete go to the **Trash** and can be restored like any file; only ones

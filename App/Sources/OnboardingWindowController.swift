@@ -16,7 +16,20 @@ import MarqueeCore
 /// 换来的只是每页更空。
 ///
 /// 现在一页说完，**没有「上一步 / 继续」**：看完直接按「开始使用」。
-/// 三件事一件不少 —— 它在菜单栏、键在这儿就能改、还差什么权限。
+/// 四件事一件不少 —— 它在菜单栏、键在这儿就能改、**图存哪儿也在这儿定**、还差什么权限。
+///
+/// ## 为什么「保存位置」要问在这里
+///
+/// 这个 app 的日常截图**只进剪贴板**，落盘是 `⌘S` 才发生的事 —— 也就是说，
+/// 第一次 `⌘S` 时用户才知道"还要选个文件夹"。那是个**最差的时机**：
+/// 他正急着把图存下来，却被一个面板拦住。
+///
+/// 更要紧的是审核那一条：Apple 按 2.4.5(i) 打回时给的原话是
+/// 「让用户通过标准的 Open/Save 面板选择默认位置」。引导页正是**第一件**事，
+/// 用户在这里选一次，后面每一张 `⌘S` 都不必再问（security-scoped 书签记住它）。
+///
+/// ⚠️ 但它**不是必答题**：没选也能「开始使用」，那一格显示「未选择 · 第一次保存时选」，
+/// 第一次 `⌘S` 时再问。引导页拦着人不让走，比没问过更糟。
 ///
 /// ## 文案原则：能删就删
 ///
@@ -43,6 +56,8 @@ final class OnboardingWindowController: NSWindowController {
     private let shortcut: ShortcutService
     private let onShortcutChanged: (KeyCombo) -> Void
     private let currentPermission: () -> ScreenRecordingPermission
+    /// 保存位置那一格要读写它：**与偏好页同一个存储**，两处改的是同一件事。
+    private let output: UserDefaultsOutputStore
 
     // MARK: - 控件
 
@@ -52,19 +67,27 @@ final class OnboardingWindowController: NSWindowController {
     private let keyLabel = NSTextField(labelWithString: "")
     private let recorder: ShortcutRecorderView
     private let shortcutStatus = NSTextField(labelWithString: "")
+    /// 路径文本本身。走 `byTruncatingMiddle` —— 路径最有信息量的两头是
+    /// 开头的盘符/家目录与结尾的文件夹名，从尾巴截会把后者切掉。
+    private let directoryLabel = NSTextField(labelWithString: "")
+    private let chooseDirectoryButton = NSButton()
     private let permissionStatus = NSTextField(labelWithString: "")
     private let openSettingsButton = NSButton()
     private let startButton = NSButton()
 
     init(shortcut: ShortcutService,
+         output: UserDefaultsOutputStore,
          currentPermission: @escaping () -> ScreenRecordingPermission,
          onShortcutChanged: @escaping (KeyCombo) -> Void) {
         self.shortcut = shortcut
+        self.output = output
         self.currentPermission = currentPermission
         self.onShortcutChanged = onShortcutChanged
         recorder = ShortcutRecorderView(combo: shortcut.current)
 
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 336),
+        // 高度从 336 加到 368：多了一行「保存位置」，而那一行**不能挤**掉底部的
+        // 权限行与「开始使用」—— 让弹性占位缩到 0 的代价是英文界面下开始换行/压字。
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 368),
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
@@ -88,6 +111,7 @@ final class OnboardingWindowController: NSWindowController {
 
         build()
         refreshPermissionStatus()
+        refreshDirectory()
     }
 
     @available(*, unavailable)
@@ -127,7 +151,43 @@ final class OnboardingWindowController: NSWindowController {
         keyLabel.textColor = .secondaryLabelColor
         keyLabel.alignment = .right
         keyLabel.translatesAutoresizingMaskIntoConstraints = false
-        keyLabel.widthAnchor.constraint(equalToConstant: 84).isActive = true
+
+        // 与键那一行**同一套排版**（右对齐标签 + 右侧控件）。
+        // 两行的标签等宽，左边缘才对得齐 —— 这不是装饰，是"这两件事属于同一类设置"
+        // 唯一的视觉线索；宽度各写一个数就会错开，而错开之后看着像两个不相干的区块。
+        let directoryCaption = NSTextField(labelWithString: L10n.t("保存位置"))
+        directoryCaption.font = .systemFont(ofSize: 12)
+        directoryCaption.textColor = .secondaryLabelColor
+        directoryCaption.alignment = .right
+        directoryCaption.translatesAutoresizingMaskIntoConstraints = false
+
+        // ⚠️ 宽度**按文字量**，不写死 84：中文「截屏快捷键」84 点够，
+        // 英文「Capture shortcut」不够 —— 写死就变成英文界面下被截成
+        // 「Capture shortc」，而这一页的图是要上传商店的（2026-10-20 在英文版
+        // 商店截图上撞见）。两行取同一个宽度才对齐，所以取两者的最大值；
+        // 下限留给 84，免得中文下录制框左移、把已定的版面挪位。
+        let captionWidth = max(84,
+                               keyLabel.intrinsicContentSize.width + 2,
+                               directoryCaption.intrinsicContentSize.width + 2)
+        NSLayoutConstraint.activate([
+            keyLabel.widthAnchor.constraint(equalToConstant: captionWidth),
+            directoryCaption.widthAnchor.constraint(equalToConstant: captionWidth),
+        ])
+
+        directoryLabel.font = .systemFont(ofSize: 12)
+        directoryLabel.textColor = .secondaryLabelColor
+        directoryLabel.lineBreakMode = .byTruncatingMiddle
+        // 可压缩：窗宽只有 440，路径几乎总比留给它的空间长。
+        // 不许截断的话它会**把「选择…」顶出窗口**，而那颗按钮是这一行唯一的出口。
+        directoryLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        directoryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        chooseDirectoryButton.title = L10n.t("选择…")
+        chooseDirectoryButton.bezelStyle = .rounded
+        chooseDirectoryButton.controlSize = .small
+        chooseDirectoryButton.target = self
+        chooseDirectoryButton.action = #selector(chooseDirectory)
+        chooseDirectoryButton.setContentHuggingPriority(.required, for: .horizontal)
 
         // 改键的反馈（成功 / 冲突）。空着时它只是一条看不见的窄行，
         // 不占地方也不动布局 —— 所以不必做成"有事才插进来"。
@@ -160,6 +220,11 @@ final class OnboardingWindowController: NSWindowController {
         keyRow.alignment = .centerY
         keyRow.spacing = 12
 
+        let directoryRow = NSStackView(views: [directoryCaption, directoryLabel, chooseDirectoryButton])
+        directoryRow.orientation = .horizontal
+        directoryRow.alignment = .centerY
+        directoryRow.spacing = 12
+
         let permissionRow = NSStackView(views: [permissionStatus, NSView(), openSettingsButton])
         permissionRow.orientation = .horizontal
         permissionRow.alignment = .centerY
@@ -171,13 +236,17 @@ final class OnboardingWindowController: NSWindowController {
 
         // 中间那个空 `NSView` 是弹性占位：它把权限行与按钮压到底部，
         // 上半部分保持紧凑。与原先 footer 里那个横向占位同一个做法。
-        let root = NSStackView(views: [header, keyRow, shortcutStatus,
+        let root = NSStackView(views: [header, keyRow, shortcutStatus, directoryRow,
                                        NSView(), permissionRow, actionRow])
         root.orientation = .vertical
         root.alignment = .leading
         root.edgeInsets = NSEdgeInsets(top: 26, left: 28, bottom: 22, right: 28)
         root.setCustomSpacing(20, after: header)
         root.setCustomSpacing(6, after: keyRow)
+        // 只留 8：中间那行状态**空着时也占一整行高度**（它是个固定高度的标签），
+        // 再叠上 16 就会让「保存位置」离开快捷键行一截 —— 而这两行是**同一组设置**，
+        // 分开看就成了两个不相干的区块。
+        root.setCustomSpacing(8, after: shortcutStatus)
         root.translatesAutoresizingMaskIntoConstraints = false
 
         let content = NSView()
@@ -185,7 +254,7 @@ final class OnboardingWindowController: NSWindowController {
 
         // 每一行都钉到"根宽度减去左右内边距"：不然行会缩到内容的自然宽度，
         // 弹性占位就没有可撑开的空间了。
-        let rows = [header, keyRow, shortcutStatus, permissionRow, actionRow]
+        let rows = [header, keyRow, shortcutStatus, directoryRow, permissionRow, actionRow]
         NSLayoutConstraint.activate(
             [
                 root.topAnchor.constraint(equalTo: content.topAnchor),
@@ -223,6 +292,39 @@ final class OnboardingWindowController: NSWindowController {
             shortcutStatus.textColor = .secondaryLabelColor
             onShortcutChanged(combo)
         }
+    }
+
+    // MARK: - 保存位置
+
+    /// 面板选完（或用户在别处改过）之后，把这一格重读一遍。
+    ///
+    /// 文案来自 `OutputSettings.directorySummary`（Core）—— 与偏好页**同一个来源**。
+    /// 这一格不自己拼"未选择"那句话：两处各写一遍，改文案时只会改一处，
+    /// 于是同一个状态在两个窗口里说法不同。
+    private func refreshDirectory() {
+        let chosen = output.settings().directory
+        directoryLabel.stringValue = output.settings().directorySummary
+        // 路径被中段截断时，完整路径还得看得见 —— 悬停提示是唯一不占宽度的去处。
+        directoryLabel.toolTip = chosen?.path
+    }
+
+    /// 选一个保存位置。**必须是标准面板**：Apple 认可的位置来源只有这一个
+    /// （2.4.5(i) 的原话是 "using standard Open/Save dialogs"）。
+    ///
+    /// 与偏好页那一处是同一个动作、同一个存储入口 —— 它写路径 + security-scoped 书签，
+    /// 少了书签，沙盒构建下次启动就写不进去了（见 `UserDefaultsOutputStore.saveDirectory`）。
+    @objc private func chooseDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = output.settings().directory ?? OutputSettings.savePanelStartDirectory()
+        panel.prompt = L10n.t("选这个文件夹")
+        // 取消 = 什么都不改。**不许**拿"没选"去覆盖已经选过的那个目录。
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        output.saveDirectory(url, bookmark: OutputSettings.securityScopedBookmark(for: url))
+        refreshDirectory()
     }
 
     // MARK: - 权限

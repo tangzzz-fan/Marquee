@@ -113,6 +113,13 @@ EN = {
     "保存位置": "Save to",
     "只有按 ⌘S 或点覆盖层里的「保存」才写盘 · 日常截图直接进剪贴板":
         "Files are written only on ⌘S or Save in the overlay · everyday captures go straight to the clipboard",
+    # 2.4.5(i)（2026-10-14 提审打回）：保存位置不再预置，第一次保存时由用户在面板里选。
+    # ⚠️ 英文刻意短：引导页这一格只有约 180 点宽（标签 + 「选择…」占掉另外一半），
+    # 原先那句 "you'll pick a folder on first save" 在商店截图上被中段截成
+    # "Not set yet — you'll…k a folder on first save"（2026-10-20 渲图时撞见）。
+    "未选择 · 第一次保存时选": "Not set — picked on first save",
+    "还没有选择保存位置，这次没有写盘。剪贴板里的图仍然可用":
+        "No save location chosen yet, so nothing was written. The image is still on your clipboard",
     "选择…": "Choose…",
     "图片格式": "Image format",
     "PNG 无损 · JPEG / HEIC 有损": "PNG is lossless · JPEG and HEIC are lossy",

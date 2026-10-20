@@ -1585,6 +1585,17 @@
         }
       }
     },
+    "未选择 · 第一次保存时选" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not set — picked on first save"
+          }
+        }
+      }
+    },
     "权限已经勾选，但 macOS 要求应用重启后才生效。\n请退出 Marquee（菜单栏图标 → 退出 Marquee）再重新打开。" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2472,6 +2483,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No captures yet"
+          }
+        }
+      }
+    },
+    "还没有选择保存位置，这次没有写盘。剪贴板里的图仍然可用" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No save location chosen yet, so nothing was written. The image is still on your clipboard"
           }
         }
       }

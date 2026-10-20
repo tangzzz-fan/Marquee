@@ -261,7 +261,7 @@ App Review 原文（3.1.1）明确允许：
 | 功能 | 沙盒下 | 对策 |
 | --- | --- | --- |
 | **自动滚动**（滚动截屏的后半，ticket 12） | ❌ **做不了**：它靠代用户发滚轮事件，而那正是被禁的那一条 | ① MAS 版**只保留手动滚动**长截图（能力还在，只是要用户自己滚 —— 与"手动版 MVP"完全同构）；② 或者不发 MAS 版，保住这个差异点 |
-| 默认保存到**桌面** | ❌ **写不进去**：文件访问只有 user-selected / Downloads / **Pictures** / Music / Movies 这几类，**桌面对应的 entitlement 根本不存在** | 默认目录改成 `~/Pictures/Marquee`（加 `assets.pictures.read-write`）；或首次让用户选一次目录，存 **security-scoped bookmark** |
+| 默认保存到**桌面** | ❌ **写不进去**：文件访问只有 user-selected / Downloads / **Pictures** / Music / Movies 这几类，**桌面对应的 entitlement 根本不存在** | **已定（2026-10-20 返工）**：位置由**用户在标准面板里选一次** + security-scoped 书签记住。⚠️ 原先"默认 `~/Pictures/Marquee` + `assets.pictures.read-write`"这条已被审核打回（2.4.5(i)，见 §2.6） |
 | 最近截图仓库 | ⚠️ 路径会从 `~/Library/Application Support/…` 变成容器内 | ❌ **「搬一次」这件事在沙盒内做不到** —— 沙盒进程读不到容器**外**的 Application Support。只能由**非沙盒**构建代劳，或干脆不做：路线 B 下 MAS 版是首发，用户本来就没有"沙盒外的老数据"。（2026-10-03 核实） |
 | 偏好设置（`com.tango.marquee` 的 plist） | ⚠️ 同上，读不到老的 | 同上。另：**偏好根本不在 Application Support**（在 `~/Library/Preferences/`），原文这句是错的。v1 首发无需迁移 |
 | 全局快捷键（Carbon 热键） | ✅ 不受影响 | 不用改 |
@@ -272,15 +272,16 @@ App Review 原文（3.1.1）明确允许：
 ### 2.3 工程改动清单（可勾）
 
 - [x] **App 图标**：做 1024×1024 → `Assets.xcassets/AppIcon` → `ASSETCATALOG_COMPILER_APPICON_NAME`（ticket 29）
-- [x] **`App/Marquee.entitlements`**：`app-sandbox` + `files.user-selected.read-write`
-      + `assets.pictures.read-write`；**不勾**用不到的项（ticket 32）
+- [x] **`App/Marquee.entitlements`**：**只有两项** —— `app-sandbox` + `files.user-selected.read-write`
+      （2026-10-20 删掉了 `assets.pictures.read-write`，见 §2.6）
 - [x] `project.yml`：`CODE_SIGN_ENTITLEMENTS`（**只加在新的第四个配置 `MAS` 上**，
       `Release` 那条 Developer ID 路保持不带沙盒 —— 后路的价值就是保住自动滚动）；
       `ENABLE_HARDENED_RUNTIME: YES` **四份配置都开**（放 `settings.base`，与
       "`Dev` 照抄 `Release`"同一条理由：本地与发版行为一致，问题平时就暴露）
 - [x] **`Info.plist` 补 `NSScreenCaptureUsageDescription`**（ticket 29）
-- [x] 默认输出目录改 `~/Pictures/Marquee`（ticket 32）。**`bookmark` 那条路没走** ——
-      默认目录本身就在 `Pictures` 里，不需要用户再选一次
+- [x] 保存位置改由**用户选一次 + 书签记住**（`OutputSettings.savePanelStartDirectory()` 只是面板起点，
+      `UserDefaultsOutputStore.chosenDirectory()` / `saveDirectory(_:bookmark:)`；`OutputSettings.directory`
+      是 `URL?`，"没选过"是一个看得见的状态）。**预置位置与 Pictures entitlement 都已删除**（2026-10-20）
 - [ ] ~~数据迁移（Application Support → 容器）~~ ⇒ **撤销**：沙盒内做不到，见 §2.2
 - [ ] **打包脚本加一条 MAS 路线**（ticket 33）：`xcodebuild archive` → `-exportArchive`（`app-store`）→ 上传
 - [x] StoreKit：本地 `Products.storekit` 配置文件（ticket 31）
@@ -305,6 +306,39 @@ App Review 原文（3.1.1）明确允许：
 2. 用户如果**从 DMG 直接运行**（app translocation），TCC 记的是临时路径的身份，
    授权会记不住 —— `RELEASE.md` 里"拖进 Applications 再打开"那句**必须保留**。
 
+### 2.6 2026-10-14 提审被拒（2.4.5(i)，两条）与处置 ✅ 已按回复返工
+
+原文（Submission `e899accb-3903-4d45-b4da-c83a2aca3356`，1.0 build 2，MacBook Pro 14"）：
+
+| # | 原文要点 | 我们的判读 |
+| --- | --- | --- |
+| ① | `com.apple.security.assets.pictures.read-write` **"does not have matching functionality"**，要求删掉不需要的 entitlement 并重新提交 | 这个 entitlement 唯一用途是把默认落盘写进 `~/Pictures/Marquee`。功能撤回，它也就没有存在理由 |
+| ② | "uses or offers to use **pre-set locations**, including `~/Pictures`"；要求**让用户用标准 Open/Save 面板选默认位置** | 预置位置不是"体验优化"，是**替用户做了授权决定** |
+
+**根因只有一个**：我们为了"⌘S 默认有个地方能存"而预置了 `~/Pictures/Marquee`，
+并为它声明了 Pictures entitlement。两条拒信是同一件事的两个面。
+
+**处置（已落地）**：
+
+- `App/Marquee.entitlements` **删掉** `assets.pictures.read-write`，只剩 `app-sandbox` +
+  `files.user-selected.read-write`；
+- `OutputSettings.directory` 改成 **`URL?`** ——"还没选过"是类型上的一个状态，
+  不再兜默认路径（`OutputSettings.defaultOutputDirectory()` 已改名为
+  `savePanelStartDirectory()`，只剩面板起点这一个含义）；
+- 第一次 `⌘S` / 悬停工具的「保存」/ 偏好页「选择…」都会弹系统面板，
+  选完把**路径 + security-scoped 书签**一起记（`UserDefaultsOutputStore.saveDirectory(_:bookmark:)`），
+  之后不再问；写盘时 `startAccessingSecurityScopedResource()` / `stop` 包住（`ScreenshotArchiver.write`）；
+- **覆盖层里不弹面板**：覆盖层是 `.screenSaver` 层，模态面板在 `.modalPanel` 层 ——
+  会整个被压在下面。改为"记下意图，等覆盖层收起再问"（`finishDeferredSave`）；
+- 偏好页「保存位置」没选过时显示 `未选择 · 第一次保存时选`，不再显示一个假的路径；
+- 审核备注（`APP-STORE-LISTING.md` §6.3）与隐私政策（`PRIVACY-POLICY.md` §三）同步改写。
+
+**回复审核时的说法**（一句话）：已删除该 entitlement，app 不再预置任何保存位置；
+保存位置由用户在标准面板中选择，并用 security-scoped 书签在之后的启动中保持有效。
+
+> ⚠️ 返工后**没有真机验过面板在覆盖层收起那一刻的位置**（开发机没有屏幕录制授权，
+> 而这条路径本身就是"点 ⌘S → 弹面板"）。验收见 `STATUS-AND-ACCEPTANCE.md` AA4。
+
 ---
 
 ## 3. 两条路线（**已选：路线 B**）
@@ -312,7 +346,7 @@ App Review 原文（3.1.1）明确允许：
 | | 路线 A：Developer ID（现状） | 路线 B：Mac App Store |
 | --- | --- | --- |
 | **自动滚动** | ✅ 保住 | ❌ 必须砍掉（只留手动） |
-| **默认存桌面** | ✅ | ❌ 改 Pictures 或让用户选 |
+| **默认存桌面** | ✅ | ❌ 位置由**用户选一次**（面板 + 书签）；不做任何预置 |
 | 支付 | 自建许可（要服务器 / 要防破解） | IAP（Apple 处理税与退款） |
 | 分发 / 更新 | 自己发 DMG；更新靠手动指引 | 商店自动更新 |
 | 触达 | 要自己推广 | 有商店搜索与曝光 |
