@@ -455,6 +455,36 @@ security find-identity -v | grep -i installer | grep -vi "Developer ID"
 ⚠️ 归档**必须用 `MAS` 配置**。用 `Release` 归档出来的是 Developer ID 那条路、
 **不带沙盒**，上传会被拒 —— 而它在本地一点错都不报。脚本把配置钉死了，预检再核一遍。
 
+### 6.6 上传被拒「App sandbox not enabled」= 归档时选错了 scheme（2026-10-20 实测）
+
+原文：
+
+```text
+App sandbox not enabled. The following executables must include the
+"com.apple.security.app-sandbox" entitlement with a Boolean value of true in the
+entitlements property list:
+[( "com.tango.marquee.pkg/Payload/Marquee.app/Contents/MacOS/Marquee" )]
+```
+
+原因不是签名、不是导出：在 Xcode 里 Product → Archive 时选的是 **`Marquee`** scheme，
+而它当时的 Archive 配置指向 **`Release`** —— 那是 Developer ID 那条路，**刻意不带沙盒**。
+归档 `ARCHIVE SUCCEEDED`、Organizer 里也能一路 Distribute，**本地唯一看不出来的地方就是它**；
+连包身份都是 `com.tango.marquee`（Release 也拿正式 id），所以"核 id、核 hardened runtime"全都正常。
+
+一条命令认出这种包（对 `.xcarchive`、对导出的 `.app` 都适用）：
+
+```bash
+# 打出来是 <plist><dict/></plist> = 一个 entitlement 都没有 = 这个包不能上架
+codesign -d --entitlements - --xml "<某>.xcarchive/Products/Applications/Marquee.app" | plutil -p -
+```
+
+已做的两处硬化：
+
+1. `project.yml` 里**两个 scheme 的 Archive 都指向 `MAS`** —— GUI 归档不再有"选错"这一档。
+   Developer ID 的 DMG 走 `scripts/package.sh`（显式 `-configuration Release`），不受影响。
+2. `scripts/package-mas.sh` 预检新增第 ④ 条：用 `pkgutil --expand-full` 解开
+   **即将上传的那个 `.pkg`**，核它载荷里的可执行文件 —— Apple 验的是它，不是我们盯着的那个 `.app`。
+
 ---
 
 ## 7. App 商店截图（与 §1.6 那两张**不是**一回事）

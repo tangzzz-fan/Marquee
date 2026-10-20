@@ -3,7 +3,7 @@
 > `/Users/tango/Developments/Marquee`（2026-09-30 由 `Snipo` 改名）；远端 `git@github.com:tangzzz-fan/Marquee.git`；开发机 **macOS 27**。
 > 定位：复刻腾讯 Snip 的 macOS 原生截屏工具。纯本地、无账号、键盘驱动。
 >
-> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（203 条实测陷阱，多为「不崩溃、不报错、只悄悄错」）。
+> ⚠️ **写代码之前先扫 `docs/PITFALLS.md`**（204 条实测陷阱，多为「不崩溃、不报错、只悄悄错」）。
 > 本文件只记**决策**与**索引**；逐条交互实现见同目录 **`INTERACTION.md`**。
 
 ## 身份 · 分发 · 收费
@@ -22,7 +22,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 工程 | XcodeGen（`project.yml`）+ SPM **7 个模块** + 宿主 `App`；`Tools/` 下是独立命令行验证工具 |
+| 工程 | XcodeGen（`project.yml`）+ SPM **7 个模块** + 宿主 `App`；`Tools/` 下是独立命令行验证工具。⚠️ **两个 scheme（`Marquee` / `Marquee MAS`）的 Archive 都指向 `MAS`**（2026-10-20 改）：原先 `Marquee` 指向 `Release`，随手归档出来的包**无沙盒**，本地一切正常、上传才被拒。Developer ID 的 DMG 只走 `package.sh`（显式 `-configuration Release`） |
 | 模块依赖 | **只有 `MarqueeCore` 无依赖，其余只依赖 Core，模块之间互不依赖。** Core 持「接缝 + 编排」，实现模块只给 OS 实现 —— 编排才能脱机单测 |
 | 签名 | **由 `project.yml` 负责**（Apple Development + `DEVELOPMENT_TEAM: UKXWZ3FS84`）；`build.sh` 的 `codesign --identifier` **从产物 plist 读**（写死过一次 ⇒ 屏幕录制授权留不住） |
 | 任务管理 | matt pocock `to-tickets`；本地 markdown tracker 在 `.scratch/issues/`（**刻意入库**） |
@@ -113,7 +113,7 @@ CONFIGURATION=Release ./scripts/build.sh   # 发版 / 内购真实沙盒验证
 | 路径 | 内容 |
 | --- | --- |
 | **`.workbuddy/memory/INTERACTION.md`** | **逐条交互实现细节**（写 UI 前必读） |
-| **`docs/PITFALLS.md`** | **203 条实现陷阱**（写代码前必扫） |
+| **`docs/PITFALLS.md`** | **204 条实现陷阱**（写代码前必扫） |
 | **`docs/APP-STORE-CONNECT.md`** | **ASC 操作清单**（两个商品怎么建 · 提审前必须补的代码缺口） |
 | **`docs/APP-STORE-LISTING.md`** | **ASC 逐格可粘贴的文案**（名称/描述/关键词 中英 · URL · 隐私标签 · App 审核备注 · "沙盒信息"怎么答） |
 | **`docs/PRIVACY-POLICY.md`** | **隐私政策正文**（中英）+ **飞书发布三步**（⚠️ 默认"仅组织内可读" ⇒ 审核员打不开 ⇒ 5.1.1 被拒；必须改「互联网上获得链接的人可阅读」并**无痕验证**） |

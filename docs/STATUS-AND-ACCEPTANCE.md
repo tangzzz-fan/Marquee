@@ -911,6 +911,7 @@ cat ~/Library/Containers/com.tango.marquee/Data/Library/Application\ Support/com
 | AA6 | 手动滚一段再 `⏎` | 长截图**照旧可用**（砍掉的只有自动滚动的"手"） |
 | AA7 | 跑 `-marqueeDemoEditor` | 编辑器在沙盒下起得来、八类标注都画得出 |
 | AA8 | 逐项过一遍 §3 的 A–Z | 在**沙盒构建**下重跑 —— **本票的正式验收就是这一条** |
+| AA9 | 准备上传前，核**将要上传的那个包** | `codesign -d --entitlements - --xml <归档或导出里的>/Marquee.app \| plutil -p -` 必须打出 `com.apple.security.app-sandbox => 1`。⚠️ 2026-10-20 上传被拒就是因为它打出来是**空字典**：那次归档选的是 `Marquee` scheme，而它当时的 Archive 配置是 `Release`（无沙盒）。现在两个 scheme 的 Archive 都指向 `MAS`。见 PITFALLS 204 |
 
 > ⚠️ 沙盒构建**会重新问一遍屏幕录制授权**（身份与沙盒状态都变了）—— 预期行为，不是缺陷。
 

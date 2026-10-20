@@ -250,9 +250,9 @@ APP="$EXPORT_DIR/$APP_NAME.app"
 PKG="$EXPORT_DIR/$APP_NAME.pkg"
 [ -d "$APP" ] || { echo "✗ 导出目录里没有 $APP_NAME.app" >&2; exit 1; }
 
-echo "── 4/5 上传前预检（这三条错一条就会被退）─────────────────────"
+echo "── 4/5 上传前预检（这四条错一条就会被退）─────────────────────"
 #
-# 为什么值得单列一步：这三条**在开发机上都不会报错**，
+# 为什么值得单列一步：这几条**在开发机上都不会报错**，
 # 只在上传那一刻被拒，而拒信只说"包有问题"。
 fail=0
 
@@ -287,6 +287,39 @@ if plutil -extract com.apple.security.get-task-allow raw "$ENT_FILE" >/dev/null 
   fail=1
 else
   echo "  ✓ 无 get-task-allow（不是开发签名）"
+fi
+
+# ④ 真正上传的是 `.pkg`，Apple 验的也是**它里面的那一份**。
+#
+#    上面 ② ③ 看的都是导出目录里的 `.app`。理论上同一个东西，但这一路上
+#    至少要过两次手：`-exportArchive` 重新签名、installer 那一步重新打包。
+#    任何一手把 entitlement 丢了，本地看 `.app` 都发现不了 ——
+#    2026-10-20 那次就是这么过的（GUI 归档选了 `Release` scheme，
+#    报错只在 ASC 上传界面出现：`App sandbox not enabled … Marquee.app/Contents/MacOS/Marquee`）。
+#    ⇒ 判据要落在**即将被传上去的那个文件**上。
+if [ -f "$PKG" ]; then
+  EXPANDED="$BUILD_DIR/pkg-expanded"
+  rm -rf "$EXPANDED"
+  if pkgutil --expand-full "$PKG" "$EXPANDED" 2>/dev/null; then
+    PKG_APP="$(find "$EXPANDED" -maxdepth 8 -type d -name "$APP_NAME.app" 2>/dev/null | head -1)"
+    if [ -z "$PKG_APP" ]; then
+      echo "✗ .pkg 里找不到 $APP_NAME.app —— 包结构不对，别上传。" >&2
+      fail=1
+    else
+      PKG_ENT="$BUILD_DIR/pkg-entitlements.plist"
+      codesign -d --entitlements - --xml "$PKG_APP" 2>/dev/null \
+        | plutil -convert xml1 -o "$PKG_ENT" - 2>/dev/null || true
+      if plutil -extract com.apple.security.app-sandbox raw "$PKG_ENT" >/dev/null 2>&1; then
+        echo "  ✓ .pkg 载荷里的 app-sandbox = $(plutil -extract com.apple.security.app-sandbox raw "$PKG_ENT")"
+      else
+        echo "✗ .pkg 载荷里的那份 app **没有** app-sandbox —— 上传必被拒。" >&2
+        echo "  用 MAS 重新归档（GUI：scheme 选 Marquee MAS；命令行：本脚本）。" >&2
+        fail=1
+      fi
+    fi
+  else
+    echo "  ⚠️ .pkg 解不开（pkgutil --expand-full 失败），没核载荷；上面的 .app 检查仍然有效。"
+  fi
 fi
 
 # 附带信息（不参与判断，但排障时有用）

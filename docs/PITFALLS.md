@@ -2100,3 +2100,30 @@
      只让"同一份代码在不同机器上出的商店图不一样"，而这张图是**要上传的交付物**。
      `AppShots` 现在用一个独立偏好域（`com.tango.marquee.appshots`，开渲先清空），
      于是每次渲出来都是"全新安装"那一档。
+
+204. **"归档成功"与"这个包能上架"是两件事，而中间那条缝里没有任何报错。**
+     2026-10-20：Xcode 里 Product → Archive 选了 `Marquee` scheme（它的 Archive
+     配置当时指向 `Release`，也就是 Developer ID 那条路），一路
+     `ARCHIVE SUCCEEDED` → Organizer → Distribute → 上传，才在 ASC 那侧被拒：
+     `App sandbox not enabled … com.tango.marquee.pkg/Payload/Marquee.app/Contents/MacOS/Marquee`。
+     归档产物的 entitlement 打出来是 `<plist><dict/></plist>` —— **一个都没有**。
+
+     为什么本地所有"看起来对"的判据都放过了它：
+       · 身份是 `com.tango.marquee`（**Release 也拿正式 id**，`.dev` 才是那套判据的分界）；
+       · hardened runtime `flags=0x10000` 在（四份配置都开）；
+       · 签名身份是正常的 Apple Development；
+       · 归档目录里没有任何一个文件写着"这次归档不带沙盒"。
+
+     ⇒ 教训一：**同一个 scheme 名下的 Run / Archive 是两个配置**。
+     "Run 跑起来是好的"完全不能推出"Archive 出来的能上架"。
+     ⇒ 教训二：**判据必须落在即将被上传的那个文件上**。ASC 验的是 `.pkg` 载荷里的
+     可执行文件；我们当时看的是导出目录里的 `.app`（还没到 `.pkg` 那一层），
+     而且 GUI 那条路根本没有任何预检。现在 `package-mas.sh` 第 ④ 条用
+     `pkgutil --expand-full` 把 `.pkg` 拆开核。
+     ⇒ 教训三：**一个"记得改"的约定不算防线**（与 179 的快捷键录制同一条）。
+     原先靠"归档前记得选 Marquee MAS"——忘了的表现恰好是"一切正常、上传被拒"。
+     现在两个 scheme 的 Archive 都指向 `MAS`，选哪个都不会错；
+     真正"无沙盒"的那条路只留 CLI 一个入口（`package.sh` 显式传配置）。
+
+     顺带记下：这条错误的**唯一线索是包名**，它不会说"你选错了 scheme"，
+     所以第一次遇到时最自然的反应是去查 entitlement 文件本身 —— 而那个文件是对的。
