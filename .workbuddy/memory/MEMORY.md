@@ -14,7 +14,7 @@
 | **两个 bundle id** | 正式 `com.tango.marquee` / 开发 `.dev`；**是不是开发版由后缀推导**（唯一来源 `MarqueeCore/AppIdentity`）⇒ 偏好、数据、TCC 各一份。**只有 `Release` 与 `MAS` 拿正式 id**（`package.sh` 再核验）。改名有时间窗（ASC 上传过构建就不能改；我们没上传过）。见 `docs/DEV-VS-PROD.md` |
 | 四个构建配置 | `Dev`＝**Run（默认）**，与 Release **同优化**（性能数字才可比）/ `Debug`＝只要能用的断点（**别拿它测性能**）/ `Release`＝**Developer ID**、**不带沙盒**（保住自动滚动那条后路）/ **`MAS`＝唯一带沙盒的**（`App/Marquee.entitlements` + hardened runtime）。⚠️「在不在沙盒里」按**运行期判据**分派（`AppIdentity.isSandboxed`），**不许**用编译期开关 —— 没编进去的分支只有发版那天才跑得到 |
 | 分支 | `feat/iap`、`feat/onboarding` 均已并入 `main`（2026-10-03）。**合并一律 `--no-ff`** |
-| **收费（已定：买断 ¥36）** | 非消耗型 IAP `com.tango.marquee.pro`。**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）；其余全免费。⚠️ **不许把没做的功能写成"锁着的"**。试用＝**0 价非消耗型 IAP**（3.1.1 官方路径），7 天、一次 |
+| **收费（已定：买断 ¥36）** | 非消耗型 IAP `com.tango.marquee.pro`。**Pro 只含四项现存能力**：滚动截屏 / 识别文字 / 钉图 / 最近截图不设上限（免费 5）；其余全免费。⚠️ **不许把没做的功能写成"锁着的"**。试用＝**0 价非消耗型 IAP**（3.1.1 官方路径），7 天、一次。**每项体验（2026-11-02）**：前三项各自 3 天窗口，从该项第一次使用那一刻算，纯本地账本（不走 StoreKit）；「不限历史」不参与（没有入口，用户感知不到窗口开始）。**记账只给 `.neverPurchased`** —— 否则退款用户永久免费 |
 | **权益（ticket 30/31）** | 判定在 Core `LicenseResolver`（纯函数）；**头号判据：`unknown` 必须放行**（否则付费用户启动先看到锁；历史也不许按免费裁剪）。已完成 `Storefront` · `EntitlementCache`（缓存**输入**而非结果）· `StorefrontSeams` · `EntitlementCoordinator` · `MarqueeStore`。五条硬规则：**未校验的交易不算数** · **撤销可以被撤销** · **「商店里没有」只有真的问过才算证据**（查询失败时 `records` 也为空 ⇒ 断网锁死付费用户）· **启动不等网络** · **核实失败不改动判定** |
 | **分发（已定：路线 B，上 MAS）** | **代价已接受：自动滚动砍掉、只留手动长截图**；Developer ID **并存**作后路。依据（已核实原文）：Apple 明文「用 `CGEventPost` 向其它 app 投递输入事件**不允许来自沙盒应用**」，DTS 亦答「沙盒 app 不能用辅助功能 API」⇒ **自动滚动与 MAS 互斥**（Snip 的 App Store 版同样"滚动截屏不可用"）。⚠️ **保存位置不许预置**（2026-10-14 提审被 2.4.5(i) 打回两条：`assets.pictures.read-write` 与 `~/Pictures`）⇒ 只剩 `app-sandbox` + `files.user-selected`；位置由**用户选一次 + security-scoped 书签**（`OutputSettings.directory` 是 `URL?`，`savePanelStartDirectory()` 只是面板起点）。⚠️ **迁移在沙盒内做不到**（读不到容器外的 Application Support）⇒ 沙盒版首发本来就没有老数据。见 PITFALLS 143/144/**202** |
 
@@ -58,6 +58,13 @@ CONFIGURATION=Release ./scripts/build.sh   # 发版 / 内购真实沙盒验证
 ```
 
 **必需的一次性设置**（`docs/DEV-NOTES.md` 4）：`defaults write com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox -bool YES`
+
+⚠️ **本机（`/Users/jove`）没有 `UKXWZ3FS84` 的开发证书** ⇒ `./scripts/build.sh` 必然失败在
+`No signing certificate "Mac Development"`。只做编译检查时直接走
+`xcodebuild ... CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`（`build.sh` 不透传参数）。
+
+⚠️ **`SandboxTests` 的「记住的是用户选的那一个目录」在本机恒红**（已在 `main` 上复现）：
+非沙盒测试进程建不出 security-scoped bookmark，`saveDirectory` 没生效。与业务改动无关，未修。
 
 **构建/测试不用每次重敲**：本机已固化两个技能 `macos-build-test`（macOS 本机 + SwiftPM）与
 `ios-build-test`（iOS 模拟器/真机），各带 `scripts/*-run.sh`：**自动判断要不要沙箱逃逸**、
@@ -127,6 +134,7 @@ CONFIGURATION=Release ./scripts/build.sh   # 发版 / 内购真实沙盒验证
 | `docs/SCREEN-RECORDING-PERMISSION.md` · `docs/RENDER-BENCH.md` | 权限复盘 / 渲染技术实测 |
 | **`docs/design/`** | 设计稿快照 + 对照记录。**稿子只是契约，产物是能编译能跑能截图的代码**。⑩ 玻璃材质那轮见 `2026-10-04-玻璃材质/对照.md`（**玻璃已实装但走的是系统原生材质、覆盖面偏 4 处；钉图图标稿子的换图理由在实装里不成立**） |
 | `.scratch/issues/2026-09-30-marquee-mvp/` | **33 条 ticket + INDEX**；`01`–`30` 与 `31` 两批已落地，`31` 剩界面，`32`/`33` 沙盒化待开工 |
+| `.scratch/issues/2026-11-02-feature-trial/` | **4 条**：体验账本与判据 / 钉图端到端 / 另两个入口 / 商店页文案（`docs/APP-STORE-LISTING.md` §0 有「哪几处今天可改」的清单） |
 | `Tools/IconGen` · `Tools/L10nCatalog` · `Tools/SymbolProbe` | App 图标生成器 / 唯一能**生成** catalog 的工具（扫描测试只能校验）/ SF Symbol 探针 |
 
 ## 工作流约定
