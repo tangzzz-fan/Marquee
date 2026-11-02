@@ -20,13 +20,13 @@
       "internalID" : "1A000001",
       "localizations" : [
         {
-          "description" : "滚动截屏、识别文字、钉图，以及不限数量的最近截图。一次买断，永久可用。",
-          "displayName" : "Marquee Pro",
+          "description" : "滚动截屏、识别文字、钉图，以及不限数量的最近截图。一次买断，永久可用。基础功能免费，无需购买即可使用。",
+          "displayName" : "解锁滚动截屏 · 识别文字 · 钉图",
           "locale" : "zh_Hans"
         },
         {
-          "description" : "Scrolling capture, text recognition, pinning, and unlimited recent captures. One-time purchase.",
-          "displayName" : "Marquee Pro",
+          "description" : "Scroll capture, text recognition, pinning and unlimited recents. One-time purchase. Core features stay free.",
+          "displayName" : "Unlock scroll, OCR, pin",
           "locale" : "en_US"
         }
       ],

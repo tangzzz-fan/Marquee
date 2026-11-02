@@ -29,12 +29,34 @@
 
 ---
 
+## 0. 这次改的六处，各自什么时候生效（2026-11-02）
+
+商品页上的「App 内购买」区块**关不掉** —— 只要存在 IAP，价格就会出现在「获取」按钮附近
+（见 `docs/APP-STORE-CONNECT.md` §0.1 下方那条注）。能控制的只有
+「展示哪个商品」和「它旁边写什么」，所以下面按**生效速度**排。
+
+| # | 位置 | 改成 | 生效 |
+| --- | --- | --- | --- |
+| 1 | 宣传文本（§2.1） | 以「免费下载即用」开头 | **立刻** —— 宣传文本随时可改，不用重新提审 |
+| 2 | 副标题（§1） | `免费截图标注 · 键盘驱动` | 随下一个版本 |
+| 3 | 描述首段（§2.2） | 首句出现「免费」 | 随版本 |
+| 4 | 描述「免费」段 | 提到**第二段**（紧跟首段） | 随版本 |
+| 5 | IAP 显示名 | `解锁滚动截屏 · 识别文字 · 钉图` | 内购项目单独提交审核 |
+| 6 | 第一张截图标题 | 加一行「免费下载 · 开箱即用」 | 随版本 |
+
+> 第 1 项是唯一**今天就能做**的动作，也是唯一一处能立刻改变「下载页第一眼」的地方。
+> 前六项里只有第 5 项需要单独提审；其余都跟着下一个版本走。
+>
+> ⚠️ **不许在描述里写具体价格**（App Store 各地区不同）。上面所有候选文案都只说
+> "一次买断 / 没有订阅"，不带数字 —— 与 `Products.storekit` 里用 `displayPrice`
+> 而不是写死 `¥36` 是同一条理由。
+
 ## 1. App 名称与副标题
 
 | 格 | 上限 | 中文（主） | 英文 |
 | --- | --- | --- | --- |
 | **名称** | 30 | `Marquee` | `Marquee` |
-| **副标题** | 30 | `键盘驱动的截图与标注` | `Screenshot & markup, keyboard-first` |
+| **副标题** | 30 | `免费截图标注 · 键盘驱动` | `Free screenshot & markup app` |
 
 ⚠️ **名称被占用的话 ASC 会直接拦住**（先占先得，与你是否已上架无关）。若 `Marquee` 已被占，
 备选（都 ≤30）：`Marquee 截图` / `Marquee 截屏标注`。**改名要一次定死** ——
@@ -60,13 +82,13 @@
 中文：
 
 ```text
-按一下快捷键，框选，走人。标注是能被反复修改的对象，不是涂上去的像素；截图、打码、识别文字全部在本机完成。
+免费下载即用：截图、标注、打码、剪贴板交付全部不收费，也不需要账号。长截图与识别文字等进阶能力可随时解锁，一次买断，没有订阅。
 ```
 
 英文：
 
 ```text
-One shortcut, one drag, done. Annotations stay editable objects instead of burnt-in pixels — and everything runs on your Mac.
+Free to download and use: capture, markup, redaction and clipboard delivery cost nothing, with no account. Advanced features unlock whenever you need them — one-time, no subscription.
 ```
 
 ### 2.2 描述（≤4000 字）
@@ -74,7 +96,14 @@ One shortcut, one drag, done. Annotations stay editable objects instead of burnt
 中文（直接粘贴）：
 
 ```text
-Marquee 是一个键盘驱动的截图与标注工具。按一下快捷键，框选，走人。
+Marquee 是一个免费的、键盘驱动的截图与标注工具。按一下快捷键，框选，走人。
+
+【免费】
+区域 / 窗口 / 全屏截图、完整的就地标注、剪贴板交付，以及除了一处以外的全部设置项
+（含开机自启与快捷键自定义）—— 这些都不收费，也不需要账号。
+四项进阶能力可以按需解锁：滚动截屏、识别文字、钉图，以及不设上限的最近截图。
+一次买断，没有订阅、没有续费、不涉及任何自动扣款。
+每项进阶能力各有 3 天免费体验；也可以整体试用 7 天，到期不会扣费。
 
 【快】
 · 全局快捷键唤起，默认 ⌃Q，可改成你自己顺手的键
@@ -103,13 +132,6 @@ Marquee 是一个键盘驱动的截图与标注工具。按一下快捷键，框
 截图、打码、文字识别全部在你的 Mac 上完成。Marquee 不要求注册或登录，不上传任何内容，
 也没有网络权限。没有埋点、没有统计、没有广告。
 
-【价格】
-Marquee 可以直接免费使用：区域 / 窗口 / 全屏截图、完整的就地标注、剪贴板交付，
-以及除了一处以外的全部设置项（含开机自启与快捷键自定义）。
-一次买断解锁四项能力：滚动截屏、识别文字、钉图，以及不设上限的最近截图
-（免费版保留最近 5 张）。没有订阅，没有续费，不涉及任何自动扣款。
-拿不准的话可以先免费试用 7 天，试用结束不会扣费，只是回到免费版。
-
 【系统要求】
 macOS 15.0 或更高。
 
@@ -120,7 +142,14 @@ macOS 15.0 或更高。
 英文（直接粘贴）：
 
 ```text
-Marquee is a keyboard-first screenshot and markup tool. One shortcut, one drag, done.
+Marquee is a free, keyboard-first screenshot and markup tool. One shortcut, one drag, done.
+
+FREE
+Region, window and full-screen capture, the full set of inline annotations, clipboard delivery,
+and every setting except one — none of it costs anything, and no account is required.
+Four advanced features unlock whenever you need them: scroll capture, text recognition, pinning,
+and unlimited recent captures. One-time purchase — no subscription, no renewal, nothing auto-charged.
+Each advanced feature comes with its own 3-day trial; you can also try everything for 7 days.
 
 FAST
 · A global shortcut brings up the capture overlay (⌃Q by default, and you can rebind it)
@@ -153,14 +182,6 @@ without switching windows.
 PROCESSED LOCALLY, NO ACCOUNT
 Capture, redaction, and text recognition all happen on your Mac. Marquee never asks you to sign up,
 never uploads anything, and has no network access at all. No analytics, no tracking, no ads.
-
-PRICING
-Marquee is free to use as-is: area, window and full-screen capture, the complete set of inline
-annotation tools, clipboard delivery, and every setting except one (including launch at login and
-custom shortcuts). A single one-time purchase unlocks four things: scrolling capture, text
-recognition, pinning, and an unlimited recent-captures list (the free tier keeps the last 5).
-No subscription, no renewal, nothing recurring. Not sure yet? Try every Pro feature free for
-7 days — when the trial ends nothing is charged and the app simply returns to the free tier.
 
 REQUIREMENTS
 macOS 15.0 or later.
