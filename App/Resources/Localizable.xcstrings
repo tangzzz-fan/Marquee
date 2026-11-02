@@ -2,7 +2,6 @@
   "sourceLanguage" : "zh-Hans",
   "strings" : {
     "  ·  ⏎ 确认" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -13,7 +12,6 @@
       }
     },
     " · 已复制到剪贴板" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -24,7 +22,6 @@
       }
     },
     " · 配准 %.0f ms" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -34,30 +31,17 @@
         }
       }
     },
-    "，已停止拼接；按 ⏎ 结束可保留已拼好的部分" : {
-      "extractionState" : "stale",
+    "%@ px" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ", stitching stopped; press ⏎ to finish and keep what's already stitched"
-          }
-        }
-      }
-    },
-    "，已拼好的部分保留可用，按 ⏎ 结束" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ", what's stitched so far stays usable; press ⏎ to finish"
+            "value" : "%@ px"
           }
         }
       }
     },
     "%@ · %lld 个标注" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -68,7 +52,6 @@
       }
     },
     "%@ · %lld 段拼接" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -78,19 +61,7 @@
         }
       }
     },
-    "%@ px" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ px"
-          }
-        }
-      }
-    },
     "%@ 已被其他应用占用（例如微信的截图快捷键）。\n请到菜单栏「快捷键…」换一个组合。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -101,7 +72,6 @@
       }
     },
     "%@ 的压缩质量 · 越低文件越小、细节越少" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -111,19 +81,7 @@
         }
       }
     },
-    "%@，按 ⏎ 结束可保留已拼好的部分" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ Press ⏎ to finish and keep what has been stitched so far."
-          }
-        }
-      }
-    },
     "%@（当前工具）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -133,8 +91,17 @@
         }
       }
     },
+    "%@，按 ⏎ 结束可保留已拼好的部分" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Press ⏎ to finish and keep what has been stitched so far."
+          }
+        }
+      }
+    },
     "%lld px 高" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -145,7 +112,6 @@
       }
     },
     "%lld 帧" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -156,7 +122,6 @@
       }
     },
     "%lld 秒" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -167,7 +132,6 @@
       }
     },
     "%lld 行 · %lld 字" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -177,41 +141,7 @@
         }
       }
     },
-    "⌥ 窗口截图 · 不含阴影" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⌥ Window capture · no shadow"
-          }
-        }
-      }
-    },
-    "⌥ 窗口截图 · 带阴影" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⌥ Window capture · with shadow"
-          }
-        }
-      }
-    },
-    "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⚠️ Redaction preview unavailable (no screen pixels) — marks still apply on save"
-          }
-        }
-      }
-    },
     "7 天免费试用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -222,7 +152,6 @@
       }
     },
     "Marquee Pro · 免费版（最近截图保留 %lld 张）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -233,7 +162,6 @@
       }
     },
     "Marquee Pro · 已购买，谢谢" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -244,7 +172,6 @@
       }
     },
     "Marquee Pro · 正在确认…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -255,7 +182,6 @@
       }
     },
     "Marquee Pro · 试用中，还剩 %lld 天" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -266,7 +192,6 @@
       }
     },
     "Marquee Pro · 这个账号下找不到这笔购买" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -277,7 +202,6 @@
       }
     },
     "Marquee Pro · 这笔购买已被撤销" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -288,7 +212,6 @@
       }
     },
     "Marquee 不在前台也能触发 · 任何时候按它，屏幕就定住" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -299,7 +222,6 @@
       }
     },
     "Marquee 不收集任何数据 · 在默认浏览器中打开" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -310,7 +232,6 @@
       }
     },
     "Marquee 就在菜单栏" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -321,7 +242,6 @@
       }
     },
     "Marquee 常驻菜单栏，开机就有" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -332,7 +252,6 @@
       }
     },
     "Marquee 设置" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -343,7 +262,6 @@
       }
     },
     "Marquee 需要「屏幕录制」权限" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -354,7 +272,6 @@
       }
     },
     "PNG 无损 · JPEG / HEIC 有损" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -365,7 +282,6 @@
       }
     },
     "PNG 是无损格式，没有质量可调 —— 换成 JPEG 或 HEIC 才有" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -376,7 +292,6 @@
       }
     },
     "Vision 没有返回平移观测值" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -386,8 +301,37 @@
         }
       }
     },
+    "⌥ 窗口截图 · 不含阴影" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌥ Window capture · no shadow"
+          }
+        }
+      }
+    },
+    "⌥ 窗口截图 · 带阴影" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌥ Window capture · with shadow"
+          }
+        }
+      }
+    },
+    "⚠️ 打码预览不可用（没拿到屏幕像素）—— 标记仍然会写进成品图" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Redaction preview unavailable (no screen pixels) — marks still apply on save"
+          }
+        }
+      }
+    },
     "不延时" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -398,7 +342,6 @@
       }
     },
     "不透明度：现在是 %lld%。点一下换下一档" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -409,7 +352,6 @@
       }
     },
     "也可以自己滚 —— 手动模式一样能拼长图" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -420,7 +362,6 @@
       }
     },
     "了解 Pro" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -431,7 +372,6 @@
       }
     },
     "从几开始" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -442,7 +382,6 @@
       }
     },
     "从历史里删掉 · 文件移入废纸篓" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -453,7 +392,6 @@
       }
     },
     "位移不是有限数值" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -464,7 +402,6 @@
       }
     },
     "保存位置" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -475,7 +412,6 @@
       }
     },
     "保存到磁盘并关闭（⌘S）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -486,7 +422,6 @@
       }
     },
     "保存失败：%@ 里同名文件太多，剪贴板里的图仍然可用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -497,7 +432,6 @@
       }
     },
     "先框出一块区域，再点识别" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -508,7 +442,6 @@
       }
     },
     "光标会画在图上 · 它常正好压在你要截的内容上" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -518,8 +451,17 @@
         }
       }
     },
+    "免费版仍可截图与标注" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capture and annotate stay free"
+          }
+        }
+      }
+    },
     "免费版只保留最近 %lld 张" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -530,7 +472,6 @@
       }
     },
     "全屏切换" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -541,7 +482,6 @@
       }
     },
     "全屏截图" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -552,7 +492,6 @@
       }
     },
     "全部复制" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -563,7 +502,6 @@
       }
     },
     "关掉这张钉图" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -574,7 +512,6 @@
       }
     },
     "关闭" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -585,7 +522,6 @@
       }
     },
     "关闭卡片，选区保留" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -595,30 +531,7 @@
         }
       }
     },
-    "最近截图" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Recent Captures"
-          }
-        }
-      }
-    },
-    "最近截图是 Pro 能力" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unlimited history is a Pro feature"
-          }
-        }
-      }
-    },
     "减少" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -629,7 +542,6 @@
       }
     },
     "删除" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -640,7 +552,6 @@
       }
     },
     "升级到 Pro" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -651,7 +562,6 @@
       }
     },
     "升级到 Pro · %@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -662,7 +572,6 @@
       }
     },
     "原图 %@ px" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -673,7 +582,6 @@
       }
     },
     "取消（丢弃刚画的标注，不改剪贴板）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -684,7 +592,6 @@
       }
     },
     "只有 ⇧ 不够，会和普通输入冲突，请带上 ⌘ ⌃ 或 ⌥" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -695,7 +602,6 @@
       }
     },
     "只有按 ⌘S 或点覆盖层里的「保存」才写盘 · 日常截图直接进剪贴板" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -706,7 +612,6 @@
       }
     },
     "只读" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -717,7 +622,6 @@
       }
     },
     "可保留全部" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -728,7 +632,6 @@
       }
     },
     "可用变量 · 点一下插到模板光标处" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -739,7 +642,6 @@
       }
     },
     "图片格式" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -750,7 +652,6 @@
       }
     },
     "在 Finder 中显示" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -761,7 +662,6 @@
       }
     },
     "在编辑器里打开（原有的标注仍可编辑）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -772,7 +672,6 @@
       }
     },
     "在选区内拖动即可标注  ·  再点一次工具图标取消  ·  Esc 取消工具" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -783,7 +682,6 @@
       }
     },
     "增加" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -794,7 +692,6 @@
       }
     },
     "复制到剪贴板" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -805,7 +702,6 @@
       }
     },
     "太短，丢弃" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -816,7 +712,6 @@
       }
     },
     "好" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -827,7 +722,6 @@
       }
     },
     "字号" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -838,7 +732,6 @@
       }
     },
     "完成（复制到剪贴板并关闭）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -849,7 +742,6 @@
       }
     },
     "尚未实现：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -860,7 +752,6 @@
       }
     },
     "屏幕录制：已授权" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -871,7 +762,6 @@
       }
     },
     "屏幕录制：还没授权" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -882,7 +772,6 @@
       }
     },
     "已停止自动滚动" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -893,7 +782,6 @@
       }
     },
     "已取消，没有改动" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -904,7 +792,6 @@
       }
     },
     "已复制 %@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -915,7 +802,6 @@
       }
     },
     "已恢复购买 ✓" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -926,7 +812,6 @@
       }
     },
     "已生效：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -937,7 +822,6 @@
       }
     },
     "已获得屏幕录制权限。请退出并重新打开 Marquee，权限才会生效" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -948,7 +832,6 @@
       }
     },
     "已落一个" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -959,7 +842,6 @@
       }
     },
     "已购买" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -970,7 +852,6 @@
       }
     },
     "已购买 ✓" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -981,7 +862,6 @@
       }
     },
     "已选中 %lld 个标注  ·  拖动移动  ·  Delete 删除  ·  Esc 取消选择" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -992,7 +872,6 @@
       }
     },
     "序号" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1003,7 +882,6 @@
       }
     },
     "应用切换" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1014,7 +892,6 @@
       }
     },
     "延时截图" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1025,7 +902,6 @@
       }
     },
     "开发版" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1036,7 +912,6 @@
       }
     },
     "开始使用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1047,7 +922,6 @@
       }
     },
     "开机时自动启动" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1058,7 +932,6 @@
       }
     },
     "当前：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1069,7 +942,6 @@
       }
     },
     "快捷键" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1080,7 +952,6 @@
       }
     },
     "快捷键没有生效" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1091,7 +962,6 @@
       }
     },
     "恢复失败 · 检查网络后重试" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1102,7 +972,6 @@
       }
     },
     "恢复失败 · 请稍后再试" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1113,7 +982,6 @@
       }
     },
     "恢复购买" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1124,7 +992,6 @@
       }
     },
     "恢复默认" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1135,7 +1002,6 @@
       }
     },
     "截图 · 标注 · 滚动截屏 · 识别文字 · 钉图" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1146,7 +1012,6 @@
       }
     },
     "截图后播放提示音" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1157,7 +1022,6 @@
       }
     },
     "截图失败：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1168,7 +1032,6 @@
       }
     },
     "截图没有完成" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1179,7 +1042,6 @@
       }
     },
     "截图编码为 %@ 失败，剪贴板里的图仍然可用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1190,7 +1052,6 @@
       }
     },
     "截图编码为 PNG 失败" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1201,7 +1062,6 @@
       }
     },
     "截图里包含鼠标指针" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1212,7 +1072,6 @@
       }
     },
     "截屏" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1223,7 +1082,6 @@
       }
     },
     "截屏快捷键" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1234,7 +1092,6 @@
       }
     },
     "截成功时播一声系统音效 · 关掉适合连着截很多张的时候" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1245,7 +1102,6 @@
       }
     },
     "所有更改会立刻生效并自动保存" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1256,7 +1112,6 @@
       }
     },
     "打开登录项设置" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1267,7 +1122,6 @@
       }
     },
     "打开系统设置" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1278,7 +1132,6 @@
       }
     },
     "打码强度" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1289,7 +1142,6 @@
       }
     },
     "抓帧失败：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1300,7 +1152,6 @@
       }
     },
     "拖动这里可以移动这张钉图" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1311,7 +1162,6 @@
       }
     },
     "拖动面板" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1322,7 +1172,6 @@
       }
     },
     "拼接选区图像失败" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1333,7 +1182,6 @@
       }
     },
     "拼接长图失败" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1343,8 +1191,17 @@
         }
       }
     },
+    "按 %@ 后 10 秒才出现覆盖层" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Press %@ and the overlay appears after 10 seconds"
+          }
+        }
+      }
+    },
     "按 %@ 后 3 秒才出现覆盖层 —— 那几秒是留给你摆屏幕的" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1355,7 +1212,6 @@
       }
     },
     "按 %@ 后 5 秒才出现覆盖层" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1365,19 +1221,7 @@
         }
       }
     },
-    "按 %@ 后 10 秒才出现覆盖层" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Press %@ and the overlay appears after 10 seconds"
-          }
-        }
-      }
-    },
     "按 %@ 截第一张" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1388,7 +1232,6 @@
       }
     },
     "按 %@ 立刻出现覆盖层" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1399,7 +1242,6 @@
       }
     },
     "按一下快捷键，屏幕冻住，框出要截的地方。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1410,7 +1252,6 @@
       }
     },
     "按下快捷键后立刻出现覆盖层" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1421,7 +1262,6 @@
       }
     },
     "按下新的组合…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1432,7 +1272,6 @@
       }
     },
     "按住 ⌥ 取色" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1443,7 +1282,6 @@
       }
     },
     "描边颜色" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1454,7 +1292,6 @@
       }
     },
     "撤销" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1465,7 +1302,6 @@
       }
     },
     "放一个，数字 +1（1–99）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1476,7 +1312,6 @@
       }
     },
     "放大" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1487,7 +1322,6 @@
       }
     },
     "文件名模板" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1498,7 +1332,6 @@
       }
     },
     "文字" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1509,7 +1342,6 @@
       }
     },
     "文字标注 ABC" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1520,7 +1352,6 @@
       }
     },
     "无" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1531,7 +1362,6 @@
       }
     },
     "无法写入 %@：%@。剪贴板里的图仍然可用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1542,7 +1372,6 @@
       }
     },
     "无法创建保存目录 %@：%@。剪贴板里的图仍然可用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1553,7 +1382,6 @@
       }
     },
     "暂时买不了 · 商店里没有这个商品（开发版：请用 Xcode 运行，且 scheme 要挂 Products.storekit）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1564,7 +1392,6 @@
       }
     },
     "暂时买不了 · 商店里还没有这个商品" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1574,8 +1401,27 @@
         }
       }
     },
+    "最近截图" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent Captures"
+          }
+        }
+      }
+    },
+    "最近截图是 Pro 能力" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unlimited history is a Pro feature"
+          }
+        }
+      }
+    },
     "未知原因" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1586,7 +1432,6 @@
       }
     },
     "未选择 · 第一次保存时选" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1597,7 +1442,6 @@
       }
     },
     "权限已经勾选，但 macOS 要求应用重启后才生效。\n请退出 Marquee（菜单栏图标 → 退出 Marquee）再重新打开。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1608,7 +1452,6 @@
       }
     },
     "查看" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1619,7 +1462,6 @@
       }
     },
     "标注" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1630,7 +1472,6 @@
       }
     },
     "标注没能合成到截图上，这次截图已放弃（避免交出未处理的图）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1641,7 +1482,6 @@
       }
     },
     "椭圆" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1652,7 +1492,6 @@
       }
     },
     "模糊" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1663,7 +1502,6 @@
       }
     },
     "横向漂移 %lld px，画面不在做竖直滚动" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1674,7 +1512,6 @@
       }
     },
     "欢迎使用 Marquee" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1685,7 +1522,6 @@
       }
     },
     "正在恢复…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1696,7 +1532,6 @@
       }
     },
     "正在打开 App Store…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1707,7 +1542,6 @@
       }
     },
     "正在滚动…（第 %lld 屏）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1718,7 +1552,6 @@
       }
     },
     "正在识别…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1729,7 +1562,6 @@
       }
     },
     "正在识别文字…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1740,7 +1572,6 @@
       }
     },
     "每一份存盘文件的名字" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1751,7 +1582,6 @@
       }
     },
     "没找到 ID 为 %u 的显示器" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1762,7 +1592,6 @@
       }
     },
     "没找到可用的显示器" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1773,7 +1602,6 @@
       }
     },
     "没找到窗口 %u，它可能已经关掉了" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1784,7 +1612,6 @@
       }
     },
     "没找到鼠标所在的显示器，请把鼠标移到要截的屏幕上再试" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1795,7 +1622,6 @@
       }
     },
     "没检测到滚动…继续往下滚" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1806,7 +1632,6 @@
       }
     },
     "注册快捷键失败（错误码 %d）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1817,7 +1642,6 @@
       }
     },
     "滚动截屏" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1828,7 +1652,6 @@
       }
     },
     "滚动截屏是 Pro 能力" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1838,8 +1661,17 @@
         }
       }
     },
+    "滚动截屏的 3 天体验已结束" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scrolling capture's 3-day trial ended"
+          }
+        }
+      }
+    },
     "滚动步数已达上限，按 ⏎ 结束" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1850,7 +1682,6 @@
       }
     },
     "点一下回到「适应窗口」" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1861,7 +1692,6 @@
       }
     },
     "点一个标注选中它  ·  拖角改大小  ·  选个工具可直接标注" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1872,7 +1702,6 @@
       }
     },
     "点击复制" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1883,7 +1712,6 @@
       }
     },
     "点击复制到剪贴板" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1894,7 +1722,6 @@
       }
     },
     "点缩略图 = 复制" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1905,7 +1732,6 @@
       }
     },
     "用系统的窗口阴影 · 在覆盖层里按住 ⌥ 可临时反转这一项" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1916,7 +1742,6 @@
       }
     },
     "画笔" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1927,7 +1752,6 @@
       }
     },
     "画面尺寸发生了变化（%lld×%lld → %lld×%lld）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1938,7 +1762,6 @@
       }
     },
     "看起来已经滚到底了 · 还可以继续滚，或按 ⏎ 结束" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1949,7 +1772,6 @@
       }
     },
     "看起来已经滚到底了，按 ⏎ 结束" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1960,7 +1782,6 @@
       }
     },
     "矩形" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1971,7 +1792,6 @@
       }
     },
     "稍后" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1982,7 +1802,6 @@
       }
     },
     "窗口切换" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1993,7 +1812,6 @@
       }
     },
     "窗口截图带阴影" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2004,7 +1822,6 @@
       }
     },
     "等待批准 · 批准后会自动解锁" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2015,7 +1832,6 @@
       }
     },
     "箭头" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2026,7 +1842,6 @@
       }
     },
     "系统截图（全屏）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2037,7 +1852,6 @@
       }
     },
     "系统截图（工具条）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2048,7 +1862,6 @@
       }
     },
     "系统截图（触控栏）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2059,7 +1872,6 @@
       }
     },
     "系统截图（选区）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2070,7 +1882,6 @@
       }
     },
     "系统没有接受这个设置（%@）。开发构建通常是签名问题，正式安装包不受影响。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2081,7 +1892,6 @@
       }
     },
     "纯图或图形界面都可能这样；识别只看整张图。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2092,7 +1902,6 @@
       }
     },
     "线宽" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2103,7 +1912,6 @@
       }
     },
     "继续往下滚，或按空格自动滚 · ⏎ 结束 · ⌘S 结束并保存 · Esc 取消" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2114,7 +1922,6 @@
       }
     },
     "编辑" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2125,7 +1932,6 @@
       }
     },
     "缩小" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2136,7 +1942,6 @@
       }
     },
     "自动滚动中 · %lld px 高" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2147,7 +1952,6 @@
       }
     },
     "自动滚动中 · 空格停止 · Esc 停止（已拼的保留） · ⏎ 结束" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2157,19 +1961,7 @@
         }
       }
     },
-    "自动滚动需要「辅助功能」授权；也可以自己滚（手动模式）" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto-scroll needs Accessibility permission; you can also scroll yourself (manual mode)"
-          }
-        }
-      }
-    },
     "自动滚动需要「辅助功能」授权（系统设置 → 隐私与安全性 → 辅助功能）。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2179,8 +1971,17 @@
         }
       }
     },
+    "自动滚动需要「辅助功能」授权；也可以自己滚（手动模式）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-scroll needs Accessibility permission; you can also scroll yourself (manual mode)"
+          }
+        }
+      }
+    },
     "自己滚一样能拼长图 —— 手动模式没受影响" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2191,7 +1992,6 @@
       }
     },
     "至少要有一个修饰键（⌘ ⌃ ⌥）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2202,7 +2002,6 @@
       }
     },
     "表情与符号" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2213,7 +2012,6 @@
       }
     },
     "裁切" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2224,7 +2022,6 @@
       }
     },
     "裁切中：回车应用 · Esc 取消" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2235,7 +2032,6 @@
       }
     },
     "裁剪中 · ⏎ 应用 · Esc 取消" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2246,7 +2042,6 @@
       }
     },
     "裁剪中 · 拖出保留框 · Esc 取消" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2257,7 +2052,6 @@
       }
     },
     "设置…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2268,7 +2062,6 @@
       }
     },
     "识别中…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2279,7 +2072,6 @@
       }
     },
     "识别到 %lld 行 · %lld 字 · " : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2290,7 +2082,16 @@
       }
     },
     "识别失败" : {
-      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recognition failed"
+          }
+        }
+      }
+    },
+    "识别失败了" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2301,7 +2102,6 @@
       }
     },
     "识别失败：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2311,19 +2111,7 @@
         }
       }
     },
-    "识别失败了" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Recognition failed"
-          }
-        }
-      }
-    },
     "识别完成" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2334,7 +2122,6 @@
       }
     },
     "识别文字" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2345,7 +2132,6 @@
       }
     },
     "识别文字是 Pro 能力" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2355,8 +2141,17 @@
         }
       }
     },
+    "识别文字的 3 天体验已结束" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text recognition's 3-day trial ended"
+          }
+        }
+      }
+    },
     "试用 7 天 · 之后 %@ · 免费版仍可用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2367,7 +2162,6 @@
       }
     },
     "试用 7 天，结束后自动回到免费版" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2378,7 +2172,6 @@
       }
     },
     "试用已结束，免费版仍可截图与标注" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2389,7 +2182,6 @@
       }
     },
     "请到「系统设置 → 隐私与安全性 → 屏幕录制」里勾选 Marquee，然后退出并重新打开应用。\n\n如果列表里找不到 Marquee：点「在 Finder 中显示」，把打开的 Marquee 拖进列表（或点列表下方的「+」选中它）。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2400,7 +2192,6 @@
       }
     },
     "质量" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2411,7 +2202,6 @@
       }
     },
     "购买失败 · 请稍后再试" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2422,7 +2212,6 @@
       }
     },
     "购买已撤销，可点恢复购买重新获取" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2433,7 +2222,6 @@
       }
     },
     "输入文字" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2444,7 +2232,6 @@
       }
     },
     "输入文字 · ⏎ 确认 · Esc 放弃" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2455,7 +2242,6 @@
       }
     },
     "输出" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2466,7 +2252,6 @@
       }
     },
     "还没拿到这块区域的像素 —— 稍等一下再点一次" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2477,7 +2262,6 @@
       }
     },
     "还没有截图" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2488,7 +2272,6 @@
       }
     },
     "还没有选择保存位置，这次没有写盘。剪贴板里的图仍然可用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2499,7 +2282,6 @@
       }
     },
     "这一帧可信度不足（%@）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2510,7 +2292,6 @@
       }
     },
     "这一帧没对齐：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2521,7 +2302,6 @@
       }
     },
     "这一帧滚动幅度过大（%lld 行），与前帧几乎不重叠，没法对齐" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2531,8 +2311,17 @@
         }
       }
     },
+    "这一项的 3 天体验已结束" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This feature's 3-day trial ended"
+          }
+        }
+      }
+    },
     "这个版本不提供自动滚动：沙盒不允许代替你操作别的应用。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2543,7 +2332,6 @@
       }
     },
     "这个组合已被系统占用：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2554,7 +2342,6 @@
       }
     },
     "这个账号下找不到这笔购买" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2565,7 +2352,6 @@
       }
     },
     "这个账号下没有可恢复的购买" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2576,7 +2362,6 @@
       }
     },
     "这台机器上没有可用的文字识别（Vision 不可用）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2587,7 +2372,6 @@
       }
     },
     "这张图没能重新合成出来" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2598,7 +2382,6 @@
       }
     },
     "这张图的文件已经不在了（可能被清理过）" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2609,7 +2392,6 @@
       }
     },
     "这张图里没有文字" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2620,7 +2402,6 @@
       }
     },
     "这张图里没有识别到文字" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2631,7 +2412,6 @@
       }
     },
     "连续采不到画面，自动滚动已停下" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2642,7 +2422,6 @@
       }
     },
     "退出 Marquee" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2653,7 +2432,6 @@
       }
     },
     "适应窗口 %lld" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2664,7 +2442,6 @@
       }
     },
     "选区太小，或者不落在任何显示器上" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2675,7 +2452,6 @@
       }
     },
     "选择" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2686,7 +2462,6 @@
       }
     },
     "选择…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2697,7 +2472,6 @@
       }
     },
     "选这个文件夹" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2708,7 +2482,6 @@
       }
     },
     "通用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2719,7 +2492,6 @@
       }
     },
     "配准失败：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2730,7 +2502,6 @@
       }
     },
     "重做" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2741,7 +2512,6 @@
       }
     },
     "重试" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2752,7 +2522,6 @@
       }
     },
     "重试不会影响已经画好的标注。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2763,7 +2532,6 @@
       }
     },
     "钉图是 Pro 能力" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2773,8 +2541,17 @@
         }
       }
     },
+    "钉图的 3 天体验已结束" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pinning's 3-day trial ended"
+          }
+        }
+      }
+    },
     "锁定屏幕" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2785,7 +2562,6 @@
       }
     },
     "长图已达 %lld px 上限，按 ⏎ 结束" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2796,7 +2572,6 @@
       }
     },
     "长图已达高度上限，按 ⏎ 结束" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2807,7 +2582,6 @@
       }
     },
     "长截图 · %@ px" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2817,19 +2591,7 @@
         }
       }
     },
-    "长截图：拖出要滚动的区域，或单击要滚动的窗口" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scrolling capture: drag out the region to scroll, or click the window to scroll"
-          }
-        }
-      }
-    },
     "长截图区域太小，或者不落在任何显示器上" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2840,7 +2602,6 @@
       }
     },
     "长截图已取消" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2851,7 +2612,6 @@
       }
     },
     "长截图没有采到任何画面" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2862,7 +2622,6 @@
       }
     },
     "长截图起步失败：%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2873,7 +2632,6 @@
       }
     },
     "长截图还没开始，没法自动滚动" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2883,8 +2641,27 @@
         }
       }
     },
+    "长截图：拖出要滚动的区域，或单击要滚动的窗口" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scrolling capture: drag out the region to scroll, or click the window to scroll"
+          }
+        }
+      }
+    },
+    "随时可截 · 全局生效" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Always available · works system-wide"
+          }
+        }
+      }
+    },
     "隐私政策" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2895,7 +2672,6 @@
       }
     },
     "隐藏当前应用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2905,19 +2681,7 @@
         }
       }
     },
-    "随时可截 · 全局生效" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Always available · works system-wide"
-          }
-        }
-      }
-    },
     "需要 Pro" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2928,7 +2692,6 @@
       }
     },
     "预设" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2939,7 +2702,6 @@
       }
     },
     "首次识别可能要十几秒，之后会快。" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2950,7 +2712,6 @@
       }
     },
     "马赛克" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2961,7 +2722,6 @@
       }
     },
     "鼠标穿透：关着。点开后点击会落到下面的应用" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2972,12 +2732,31 @@
       }
     },
     "鼠标穿透：开着（点击会落到下面的应用）。点一下关掉" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Click-through: on (clicks fall through to the app below). Click to turn it off."
+          }
+        }
+      }
+    },
+    "，已停止拼接；按 ⏎ 结束可保留已拼好的部分" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ", stitching stopped; press ⏎ to finish and keep what's already stitched"
+          }
+        }
+      }
+    },
+    "，已拼好的部分保留可用，按 ⏎ 结束" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ", what's stitched so far stays usable; press ⏎ to finish"
           }
         }
       }

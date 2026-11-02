@@ -13,6 +13,11 @@ EN = {
     # ⚠️ 它必须与上面那句**一样宽或更窄**放得进卡片正文那一行 —— 已经有断言在量。
     "试用 7 天 · 之后 %@ · 免费版仍可用": "7-day trial · then %@ · free tier stays",
     "试用已结束，免费版仍可截图与标注": "Trial ended. Capture and annotate stay free",
+    "滚动截屏的 3 天体验已结束": "Scrolling capture's 3-day trial ended",
+    "识别文字的 3 天体验已结束": "Text recognition's 3-day trial ended",
+    "钉图的 3 天体验已结束": "Pinning's 3-day trial ended",
+    "这一项的 3 天体验已结束": "This feature's 3-day trial ended",
+    "免费版仍可截图与标注": "Capture and annotate stay free",
     "购买已撤销，可点恢复购买重新获取": "Purchase revoked. Restore it to get it back",
     "这个账号下找不到这笔购买": "No purchase found for this account",
     # ⑤ 微行（只在覆盖层那张卡上出现）

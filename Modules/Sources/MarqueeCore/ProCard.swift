@@ -103,13 +103,20 @@ public enum ProCard {
         // 免费用户点它照样会弹出一张"这是 Pro 能力"的卡片 ——
         // 而 `snapshot.access(to:)` 那边明明已经放行了。
         guard feature.requiresPro else { return nil }
-        guard let reason = snapshot.blockedReason else { return nil }
+        // ⚠️ 判据从「全局原因」换成了「**这一项**的原因」（2026-11-02）。
+        // 全局只回答"这个人整体是什么状态"，而体验是**分项**的：
+        // 同一份快照下，钉图可能已经到期、识别文字还没开始。
+        guard let reason = snapshot.access(to: feature).blockedReason else { return nil }
 
         switch reason {
-        case .neverPurchased:
+        case .neverPurchased, .featureTrialEnded:
             // 还能试用 ⇒ 主按钮给**试用**：这是唯一一条"不花钱就能用上"的路，
             // 也是转化率最高的一步。已经用过 ⇒ 直接给购买 ——
             // 摆一个点不动的"7 天免费试用"，比不给还糟。
+            //
+            // 体验到期与"从未购买"在按钮上**是同一条规则**：
+            // 这两档的全局状态都是"没买过"，能走的路一样。
+            // 不同的是正文说什么 —— 那由 `bodyVariant` 按 `reason` 分开。
             return snapshot.canStartTrial
                 ? ProCardContent(feature: feature, reason: reason,
                                  primary: .startTrial, secondary: .purchase)
@@ -159,6 +166,11 @@ public enum ProCard {
         case trial
         /// 「试用已结束，免费版仍可截图与标注」
         case trialEnded
+        /// 「「%@」的 3 天体验已结束，免费版仍可截图与标注」
+        ///
+        /// 与 `trialEnded` 分开的理由：用户可能还有别的项没试过，
+        /// 说成"试用已结束"会让他以为整个免费额度都没了。
+        case featureTrialEnded
         /// 「购买已撤销，可点恢复购买重新获取」
         case revokedByStore
         /// 「这个账号下找不到这笔购买」
@@ -182,6 +194,10 @@ public enum ProCard {
             return priceAvailable ? .trialWithPrice : .trial
         case .trialEnded:
             return .trialEnded
+        case .featureTrialEnded:
+            // 这一档**永远不给"可以试用 7 天"那句话**：说它的条件已经在
+            // `content` 里用 `canStartTrial` 决定过了，正文只负责说清"这一项到期了"。
+            return .featureTrialEnded
         case .revoked(let cause):
             switch cause {
             case .storeRevoked: return .revokedByStore

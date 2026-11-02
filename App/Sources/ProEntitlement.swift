@@ -23,19 +23,44 @@ final class ProEntitlement {
 
     private let store: StoreKitStorefront
     private let coordinator: EntitlementCoordinator
+    private let trialStore: FeatureTrialStoring
     private let logger = Logger(subsystem: AppIdentity().logSubsystem, category: "entitlement")
     private var isStarted = false
 
+    /// 商店那一半的判定（不含体验）。
+    private var base: EntitlementSnapshot
+    /// 每项 Pro 能力的 3 天账本。
+    private var featureTrials: FeatureTrialLedger
+
     init() {
         let store = StoreKitStorefront()
+        let coordinator = EntitlementCoordinator(cache: UserDefaultsEntitlementCache(),
+                                                 reader: store,
+                                                 purchaser: store)
         self.store = store
-        self.coordinator = EntitlementCoordinator(cache: UserDefaultsEntitlementCache(),
-                                                  reader: store,
-                                                  purchaser: store)
+        self.coordinator = coordinator
+        self.trialStore = UserDefaultsFeatureTrialStore()
+        self.base = coordinator.snapshot
+        self.featureTrials = trialStore.load()
     }
 
     /// 当前判定。界面只读这一个东西。
-    var snapshot: EntitlementSnapshot { coordinator.snapshot }
+    ///
+    /// ## 为什么要在这里**重新组一次**，而不是直接转发 `coordinator.snapshot`
+    ///
+    /// 协调器只管商店那一半（买没买、试用剩几天）。体验账本是**另一份事实**：
+    /// 它不来自网络，每次读写都在本地，而且会随着用户点一次钉图就变。
+    /// 两份事实合成一份快照，界面才只需要读一个东西。
+    ///
+    /// `evaluatedAt` 取**读到的那一刻**：账本按时间推进，若沿用协调器那一份
+    /// （它只在核实商店时才更新），一个开着好几天的窗口会一直用旧的时刻算剩余天数。
+    var snapshot: EntitlementSnapshot {
+        EntitlementSnapshot(entitlement: base.entitlement,
+                            blockedReason: base.blockedReason,
+                            canStartTrial: base.canStartTrial,
+                            featureTrials: featureTrials,
+                            evaluatedAt: Date())
+    }
 
     /// 把当前状态推给所有界面。**判定与价格走同一个出口**。
     private func publish() {
@@ -107,6 +132,7 @@ final class ProEntitlement {
 
         coordinator.onChange = { [weak self] snapshot in
             guard let self else { return }
+            self.base = snapshot
             self.logger.info("权益变化 → \(String(describing: snapshot.entitlement), privacy: .public)")
             self.publish()
         }
@@ -147,6 +173,32 @@ final class ProEntitlement {
     }
     func displayPrice() async -> String? { await coordinator.displayPrice() }
     var canStartTrial: Bool { coordinator.canStartTrial }
+
+    // MARK: - 功能体验（每项 3 天）
+
+    /// 某一项 Pro 能力**第一次被使用**，开始它的 3 天窗口。
+    ///
+    /// 全 app **唯一的写点**：三个入口（菜单「滚动截屏」、覆盖层「识别文字」「钉图」）
+    /// 都只调这一处。任何一处自己改账本，漏掉的那项就是**永远免费** ——
+    /// 而它不会报错，只表现为"这一项怎么没锁"。
+    ///
+    /// 幂等靠 `FeatureTrialLedger.markFirstUse` 里的守卫，不在这里再判一次：
+    /// 两处各判一次，改规则时必然只改一处。
+    func markFeatureTrialStarted(_ feature: ProFeature) {
+        guard feature.supportsFeatureTrial else { return }
+        // ⚠️ 只给**真正的免费用户**记账。Pro / 整包试用中 / 还没查 / 已撤销 —— 都不记。
+        //
+        // 「已撤销」那一条最要紧：给他记一条，退款的人就能靠这个窗口再用 3 天；
+        // 不记则 `access(to:)` 里那条"`.notStarted` 只对从未购买的人放行"会把他挡在门外，
+        // 而那正是应有的结果 —— 他该看到的是「恢复购买」，不是一次新的免费体验。
+        guard base.canStartFeatureTrial else { return }
+        guard featureTrials.firstUsedAt[feature] == nil else { return }
+
+        featureTrials.markFirstUse(feature, at: Date())
+        trialStore.save(featureTrials)
+        logger.info("体验：\(feature.rawValue, privacy: .public) 的 3 天窗口开始")
+        publish()
+    }
 
     // MARK: - 自检入口
 

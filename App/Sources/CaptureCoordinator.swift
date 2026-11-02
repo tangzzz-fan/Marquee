@@ -274,6 +274,11 @@ final class CaptureCoordinator {
         controller.onProCardAction = { [weak self] action in
             self?.handleProCardAction(action)
         }
+        // 体验（2026-11-02）：覆盖层放行某一项时**只报一声**，账本由宿主写。
+        // 覆盖层不碰账本 —— 那会让"哪一项从什么时候开始算"有两个来源。
+        controller.onFeatureTrialStarted = { feature in
+            ProEntitlement.shared.markFeatureTrialStarted(feature)
+        }
         overlay = controller
         controller.present(mode: mode)
         logger.info("覆盖层已呈现（mode=\(String(describing: mode), privacy: .public)）")
@@ -319,6 +324,9 @@ final class CaptureCoordinator {
             logger.info("滚动截屏被挡：弹出升级卡片")
             return
         }
+        // 放行 ⇒ 报一声。这一处与覆盖层里那两格走**同一个写点**
+        // （`markFeatureTrialStarted`），所以三项的计时规则不会分叉。
+        ProEntitlement.shared.markFeatureTrialStarted(.scrollCapture)
         presentOverlay(mode: .scrollCapture)
     }
 

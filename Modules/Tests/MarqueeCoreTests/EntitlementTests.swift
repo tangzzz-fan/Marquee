@@ -198,24 +198,33 @@ struct EntitlementTests {
 
     // MARK: - 边界只在一处
 
-    @Test("四项能力目前都归 Pro，且 access 与 allowsProFeatures 同源")
+    @Test("四项能力都归 Pro，但免费用户在体验期内可以先用三项")
     func accessFollowsTheSingleSource() {
         let free = LicenseResolver.resolve(EntitlementInputs(now: origin))
         let pro = LicenseResolver.resolve(purchased(origin))
         let pending = LicenseResolver.resolve(.pending(now: origin))
 
         for feature in ProFeature.allCases {
-            #expect(feature.requiresPro)
-            #expect(!free.access(to: feature).isAllowed)
+            #expect(feature.requiresPro, "体验不改变归属 —— 四项仍然都归 Pro")
             #expect(pro.access(to: feature).isAllowed)
             // 「还没查」放行这一条必须同时体现在**每一项**能力上，
             // 而不是只在总开关上 —— 界面是按 feature 问的。
             #expect(pending.access(to: feature).isAllowed, "\(feature.rawValue) 在还没查时被锁了")
-            #expect(free.access(to: feature).blockedReason == .neverPurchased)
         }
 
-        #expect(free.access(to: .scrollCapture) == free.access,
-                "两者必须同源，界面别自己去拼判据")
+        // 2026-11-02：免费用户不再是「一碰就挡」。有入口的三项在窗口还没开始时放行；
+        // 「不限历史」没有入口、不参与体验，仍然被挡（免费版永远 5 张）。
+        for feature in ProFeature.allCases where feature.supportsFeatureTrial {
+            #expect(free.access(to: feature).isAllowed, "\(feature.rawValue) 的 3 天窗口还没开始")
+        }
+        #expect(!free.access(to: .unlimitedHistory).isAllowed)
+        #expect(free.access(to: .unlimitedHistory).blockedReason == .neverPurchased)
+
+        // ⚠️ 总开关与 `access(to:)` 在体验这一层上**刻意不同源**：
+        // 前者答「这个人整体是什么状态」，后者答「这一项现在能不能用」。
+        // 仍然成立的是单向蕴含 —— 总开关放行时，每一项都必须放行。
+        #expect(!free.allowsProFeatures)
+        #expect(free.access(to: .pin).isAllowed, "整体是免费，但这一项还在体验窗口里")
     }
 
     @Test("被挡住的原因与「总开关」一致")
@@ -223,6 +232,18 @@ struct EntitlementTests {
         let revoked = LicenseResolver.resolve(EntitlementInputs(revocation: .storeRevoked, now: origin))
         #expect(revoked.access(to: .pin).blockedReason == .revoked(.storeRevoked))
         #expect(!revoked.allowsProFeatures)
+    }
+
+    @Test("只有「从未购买」的免费用户会开始 3 天窗口")
+    func onlyNeverPurchasedStartsFeatureTrial() {
+        // 判据放 Core 而不是 `ProEntitlement` 里：App 层没有测试目标，
+        // 判据留在那儿就永远没人拦得住 —— 而它错了的后果是**退款用户永久免费**。
+        #expect(LicenseResolver.resolve(EntitlementInputs(now: origin)).canStartFeatureTrial)
+        #expect(!LicenseResolver.resolve(purchased(origin)).canStartFeatureTrial)
+        #expect(!LicenseResolver.resolve(.pending(now: origin)).canStartFeatureTrial)
+        #expect(!LicenseResolver.resolve(trial(since: origin, at: days(1))).canStartFeatureTrial)
+        #expect(!LicenseResolver.resolve(EntitlementInputs(revocation: .storeRevoked, now: origin))
+            .canStartFeatureTrial, "撤销的人不该靠「窗口还没开始」拿到一次新的免费体验")
     }
 }
 

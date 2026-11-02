@@ -154,6 +154,15 @@ public final class SelectionOverlayController {
     /// 卡片上某个动作被点了。宿主负责真的去买 / 去恢复 / 去开试用。
     public var onProCardAction: (@MainActor (ProCardAction) -> Void)?
 
+    /// 某一项 Pro 能力**第一次被放行使用**（2026-11-02）。
+    ///
+    /// 覆盖层不写账本 —— 账本只有宿主那一处写点（`ProEntitlement.markFeatureTrialStarted`）。
+    /// 这里只在"放行"那一刻**报一声**：他到底用了哪一项、什么时候用的，
+    /// 是宿主的事，不是这个窗口的事。
+    ///
+    /// `nil` = 宿主没接 ⇒ 什么都不报（与 `proEntitlement` 为 nil 时的"一律放行"一致）。
+    public var onFeatureTrialStarted: (@MainActor (ProFeature) -> Void)?
+
     /// 升级卡片（`nil` = 没弹）。
     ///
     /// 与 `palette` 同理，它是**会话状态**而不是瞬时标志位：瞬时标志位一旦
@@ -2321,7 +2330,12 @@ extension SelectionOverlayController: SelectionOverlayViewDelegate {
         guard let snapshot = proEntitlement?() else { return true }    // 宿主没接：放行
         // `ProCard.content` 返回 nil **就是**"该放行" —— 不在这里另外判一次。
         // 另判一次的话，"这一项已经放开成免费了、卡片却照弹"这类不一致迟早会出现。
-        guard let card = ProCard.content(for: snapshot, feature: feature) else { return true }
+        guard let card = ProCard.content(for: snapshot, feature: feature) else {
+            // 放行 ⇒ 报一声"他用了这一项"。宿主那边幂等（记过就不再动），
+            // 所以这里每次点都报也不会让窗口续期。
+            onFeatureTrialStarted?(feature)
+            return true
+        }
 
         proCard = card
         logger.info("入口被挡：\(feature.rawValue, privacy: .public)")

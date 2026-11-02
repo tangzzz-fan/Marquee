@@ -101,6 +101,12 @@ public enum RevocationReason: String, CaseIterable, Sendable {
 public enum BlockedReason: Equatable, Sendable {
     case neverPurchased
     case trialEnded
+    /// **这一项的 3 天体验用完了**（2026-11-02）。
+    ///
+    /// 与 `.trialEnded` 分开：那个说的是整包 7 天试用结束，
+    /// 用户看到的下一句是"想继续用请购买"；这个说的是**某一项**的窗口到期，
+    /// 而他可能还有别的项没试过 —— 混成一档，他会以为整个免费额度都没了。
+    case featureTrialEnded
     case revoked(RevocationReason)
 }
 
@@ -252,12 +258,43 @@ public struct EntitlementSnapshot: Equatable, Sendable {
     /// 照着原因去推按钮，就会给用户一个点了没反应的"7 天免费试用"。
     public let canStartTrial: Bool
 
+    /// 每项 Pro 能力各自的 3 天体验账本（2026-11-02）。
+    ///
+    /// 它属于**判定的一部分**，不是界面自己算的：`access(to:)` 要拿它回答
+    /// "这一项现在能不能用"。放在快照外面的话，那一句判据就会散到每个调用点。
+    public let featureTrials: FeatureTrialLedger
+
+    /// 这份判定是**什么时候**算出来的。
+    ///
+    /// 账本按时间推进状态，所以判定必须带上自己的时刻 —— 读时钟的动作只发生在
+    /// `LicenseResolver.resolve` 与 `ProEntitlement` 重建快照那两处，别处一律用这个值。
+    public let evaluatedAt: Date
+
     public init(entitlement: Entitlement,
                 blockedReason: BlockedReason?,
-                canStartTrial: Bool) {
+                canStartTrial: Bool,
+                featureTrials: FeatureTrialLedger = FeatureTrialLedger(),
+                evaluatedAt: Date = .distantPast) {
         self.entitlement = entitlement
         self.blockedReason = blockedReason
         self.canStartTrial = canStartTrial
+        self.featureTrials = featureTrials
+        self.evaluatedAt = evaluatedAt
+    }
+
+    /// **`evaluatedAt` 不参与相等。**
+    ///
+    /// 它记的是"这份判定是什么时候算的"，不是判定内容。把它算进去，
+    /// 每次重新判定都会得出一个"不同的"快照 —— `EntitlementCoordinator`
+    /// 那条"判定没变就不通知"的守卫当场失效，界面会被无意义地重绘，
+    /// 打开着的弹层还可能被重建。
+    ///
+    /// 会变的只有 `featureTrials`（用户点了某一项），那必须算进去。
+    public static func == (lhs: EntitlementSnapshot, rhs: EntitlementSnapshot) -> Bool {
+        lhs.entitlement == rhs.entitlement
+            && lhs.blockedReason == rhs.blockedReason
+            && lhs.canStartTrial == rhs.canStartTrial
+            && lhs.featureTrials == rhs.featureTrials
     }
 
     public var access: ProAccess {
@@ -276,12 +313,51 @@ public struct EntitlementSnapshot: Equatable, Sendable {
         allowsProFeatures ? nil : free
     }
 
+    /// 现在用某一项，会不会**开始**它的 3 天窗口。
+    ///
+    /// 只有「从未购买」的免费用户记账。Pro / 整包试用中 / 还没查 / 已撤销 —— 都不记：
+    /// 前三档本来就放行，记了没意义；**已撤销那档最要紧** —— 给他记一条，
+    /// 退款的人就能靠这个窗口再用 3 天，而 `access(to:)` 里那条
+    /// 「`.notStarted` 只对从未购买放行」正是要挡掉这个。
+    public var canStartFeatureTrial: Bool { blockedReason == .neverPurchased }
+
     /// 这一项该不该显示成"锁着"。
     ///
     /// 与 `access` 同源 —— 界面别自己去拼判据（自己拼的版本会漏掉
     /// "`.unknown` 放行"这类规则，表现就是启动瞬间闪一个锁）。
+    ///
+    /// ## 体验那一层在这里（2026-11-02）
+    ///
+    /// 免费用户不是"一碰 Pro 就弹卡片"，而是**每项各有 3 天**。
+    /// 判据的顺序：
+    ///
+    /// 1. 这一项免费 → 放行（`requiresPro` 那一行改了就自动生效）；
+    /// 2. 全局已放行（`unknown` / `pro` / 整包试用中）→ 放行；
+    /// 3. 这一项的窗口**没开始** → 只有"从未购买"的人能藉此放行；
+    /// 4. 窗口**进行中** → 放行；
+    /// 5. 窗口**已过** → 挡住。
+    ///
+    /// ⚠️ 第 3 步那个限定不是多余的。撤销（退款 / 被移出家人共享）的人也有一份
+    /// 空账本 —— 如果"没开始"一律放行，**退款用户就永久免费了**，
+    /// 而它看起来只是"这一项没锁"。同理，第 5 步的原因只在全局本来就是
+    /// `.neverPurchased` 时才换成"体验结束"：对一个退款的人说他体验到期，
+    /// 等于把两件完全不同的事混成一句，也让他找不到「恢复购买」那个按钮。
     public func access(to feature: ProFeature) -> ProAccess {
-        feature.requiresPro ? access : .allowed
+        guard feature.requiresPro else { return .allowed }
+        guard let base = blockedReason else { return .allowed }
+        guard feature.supportsFeatureTrial else { return .blocked(base) }
+
+        var isNeverPurchased = false
+        if case .neverPurchased = base { isNeverPurchased = true }
+
+        switch featureTrials.state(of: feature, at: evaluatedAt) {
+        case .notStarted:
+            return isNeverPurchased ? .allowed : .blocked(base)
+        case .active:
+            return .allowed
+        case .ended:
+            return .blocked(isNeverPurchased ? .featureTrialEnded : base)
+        }
     }
 }
 
@@ -319,46 +395,45 @@ public enum LicenseResolver {
     /// 2. 有购买 → `.pro`，**永不过期**（买断）。
     /// 3. 试用进行中 → `.trial(daysLeft:)`。
     /// 4. 其它 → `.free`。
-    public static func resolve(_ inputs: EntitlementInputs) -> EntitlementSnapshot {
+    public static func resolve(_ inputs: EntitlementInputs,
+                               featureTrials: FeatureTrialLedger = FeatureTrialLedger()) -> EntitlementSnapshot {
         // 「能不能开始试用」与「现在处于哪一档」是同一次判定的两个面，
         // 在这里一次算清 —— 界面拿到的是完整结果，不用自己再补一次判断。
         let trialAvailable = canStartTrial(inputs)
 
+        // ⚠️ `evaluatedAt` 必须是**这次判定自己的时刻**，不能让它落回默认值。
+        // 账本按 `now - 首次使用` 算剩几天，默认值（`.distantPast`）会让
+        // 任何一条记录都算成「刚满 3 天」，于是过期项全部误放行。
+        func snapshot(_ entitlement: Entitlement,
+                      _ reason: BlockedReason?) -> EntitlementSnapshot {
+            EntitlementSnapshot(entitlement: entitlement,
+                                blockedReason: reason,
+                                canStartTrial: trialAvailable,
+                                featureTrials: featureTrials,
+                                evaluatedAt: inputs.now)
+        }
+
         guard inputs.isResolved else {
-            return EntitlementSnapshot(entitlement: .unknown,
-                                       blockedReason: nil,
-                                       canStartTrial: trialAvailable)
+            return snapshot(.unknown, nil)
         }
 
         if let reason = inputs.revocation {
-            return EntitlementSnapshot(entitlement: .revoked(reason),
-                                       blockedReason: .revoked(reason),
-                                       canStartTrial: trialAvailable)
+            return snapshot(.revoked(reason), .revoked(reason))
         }
 
         if inputs.hasPurchase {
-            let state = Entitlement.pro(purchasedAt: inputs.purchasedAt ?? inputs.now)
-            return EntitlementSnapshot(entitlement: state,
-                                       blockedReason: nil,
-                                       canStartTrial: trialAvailable)
+            return snapshot(.pro(purchasedAt: inputs.purchasedAt ?? inputs.now), nil)
         }
 
         if inputs.hasUsedTrial, let start = inputs.trialStartedAt {
             let remaining = TrialPolicy.duration - inputs.now.timeIntervalSince(start)
             if remaining > 0 {
-                let state = Entitlement.trial(daysLeft: daysLeft(from: remaining))
-                return EntitlementSnapshot(entitlement: state,
-                                           blockedReason: nil,
-                                           canStartTrial: trialAvailable)
+                return snapshot(.trial(daysLeft: daysLeft(from: remaining)), nil)
             }
-            return EntitlementSnapshot(entitlement: .free,
-                                       blockedReason: .trialEnded,
-                                       canStartTrial: trialAvailable)
+            return snapshot(.free, .trialEnded)
         }
 
-        return EntitlementSnapshot(entitlement: .free,
-                                   blockedReason: .neverPurchased,
-                                   canStartTrial: trialAvailable)
+        return snapshot(.free, .neverPurchased)
     }
 
     /// 剩余天数。

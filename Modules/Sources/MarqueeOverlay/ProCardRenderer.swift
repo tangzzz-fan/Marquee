@@ -105,7 +105,7 @@ public enum ProCardRenderer {
              color: theme.glyph.nsColor,
              isDark: theme == ChromePalette.dark)
         // ② 标题
-        drawLine(title(content.feature),
+        drawLine(title(content),
                  in: layout.title.offsetBy(dx: box.minX, dy: box.minY),
                  font: titleFont,
                  color: theme.label.nsColor)
@@ -282,12 +282,22 @@ public enum ProCardRenderer {
     /// 2. 生成器（`Tools/L10nCatalog`）要**按表达式名猜**说明符类型。它曾经把
     ///    `cardEntryName(…)` 猜成了 `%lld`（正确是 `%@`），于是 catalog 里生出一个
     ///    错 key —— 而那种错**不会让编译失败**，只在运行时静默不翻译。
-    private static func title(_ feature: ProFeature) -> String {
-        switch feature {
-        case .scrollCapture: L10n.t("滚动截屏是 Pro 能力")
-        case .textRecognition: L10n.t("识别文字是 Pro 能力")
-        case .pin: L10n.t("钉图是 Pro 能力")
-        case .unlimitedHistory: L10n.t("最近截图是 Pro 能力")
+    private static func title(_ content: ProCardContent) -> String {
+        // 体验到期那一档，标题必须换成"这一项的时间到了"——
+        // 还写"钉图是 Pro 能力"等于在告诉一个刚用了三天的人他从来没试过。
+        if case .featureTrialEnded = content.reason {
+            switch content.feature {
+            case .scrollCapture: return L10n.t("滚动截屏的 3 天体验已结束")
+            case .textRecognition: return L10n.t("识别文字的 3 天体验已结束")
+            case .pin: return L10n.t("钉图的 3 天体验已结束")
+            case .unlimitedHistory: return L10n.t("这一项的 3 天体验已结束")
+            }
+        }
+        switch content.feature {
+        case .scrollCapture: return L10n.t("滚动截屏是 Pro 能力")
+        case .textRecognition: return L10n.t("识别文字是 Pro 能力")
+        case .pin: return L10n.t("钉图是 Pro 能力")
+        case .unlimitedHistory: return L10n.t("最近截图是 Pro 能力")
         }
     }
 
@@ -309,6 +319,7 @@ public enum ProCardRenderer {
             L10n.t("试用 7 天 · 之后 \(priceText ?? "") · 免费版仍可用")
         case .trial: L10n.t("试用 7 天，结束后自动回到免费版")
         case .trialEnded: L10n.t("试用已结束，免费版仍可截图与标注")
+        case .featureTrialEnded: L10n.t("免费版仍可截图与标注")
         case .revokedByStore: L10n.t("购买已撤销，可点恢复购买重新获取")
         case .purchaseNotFound: L10n.t("这个账号下找不到这笔购买")
         }

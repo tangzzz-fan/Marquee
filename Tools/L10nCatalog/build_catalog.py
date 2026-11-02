@@ -186,7 +186,8 @@ def main():
     OUT.write_text(json.dumps({"sourceLanguage": "zh-Hans",
                                "strings": strings,
                                "version": "1.0"},
-                              ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                              ensure_ascii=False, indent=2, sort_keys=True,
+                              separators=(",", " : ")) + "\n",
                    encoding="utf-8")
     print(f"写出 {OUT} —— {len(strings)} 条")
 

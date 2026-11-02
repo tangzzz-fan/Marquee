@@ -19,6 +19,20 @@ struct ProCardTests {
         origin.addingTimeInterval(count * TrialPolicy.secondsPerDay)
     }
 
+    /// 一个「所有项都用完」的账本。
+    ///
+    /// 卡片测试关心的是**被挡住之后**显示什么。2026-11-02 起，「被挡住」的前提
+    /// 不再只是「没买过」，而是「没买过 **且** 这一项的 3 天窗口已经过」。
+    /// 不显式给出这个前提，这些用例断言的就是「免费用户一碰就弹卡片」——
+    /// 那个世界已经不存在了。
+    private func exhaustedLedger() -> FeatureTrialLedger {
+        var ledger = FeatureTrialLedger()
+        for feature in ProFeature.allCases {
+            ledger.markFirstUse(feature, at: origin.addingTimeInterval(-30 * TrialPolicy.secondsPerDay))
+        }
+        return ledger
+    }
+
     // MARK: - 不该有卡片的时候
 
     @Test("能用 Pro 的时候没有卡片可弹")
@@ -36,15 +50,40 @@ struct ProCardTests {
 
     // MARK: - 从未购买
 
-    @Test("从未购买、还能试用 → 主按钮是试用")
+    @Test("从未购买、这一项体验用完、还能试用 → 主按钮是试用")
     func neverPurchasedOffersTrial() {
-        let snapshot = LicenseResolver.resolve(EntitlementInputs(now: origin))
+        // 2026-11-02 起，免费用户**第一次**点某一项不会被挡（3 天体验）。
+        // 「弹卡片」这个场景的前提因此变成了「这一项的窗口已经过」。
+        let snapshot = LicenseResolver.resolve(EntitlementInputs(now: origin),
+                                               featureTrials: exhaustedLedger())
         let card = ProCard.content(for: snapshot, feature: .textRecognition)
 
         #expect(card?.feature == .textRecognition, "入口要跟着带上卡片 —— 标题靠它")
-        #expect(card?.reason == .neverPurchased)
-        #expect(card?.primary == .startTrial)
+        #expect(card?.reason == .featureTrialEnded,
+                "全局仍是「从未购买」，但挡住他的原因是这一项用完了")
+        #expect(card?.primary == .startTrial, "整包试用还能用 ⇒ 那是唯一不花钱继续走的路")
         #expect(card?.secondary == .purchase)
+    }
+
+    @Test("免费用户第一次点某一项 → **没有卡片**，直接用上")
+    func firstUseHasNoCard() {
+        // 这条钉住整件事的目的：把「想要更多 → 直接要钱」改成「想要更多 → 先试」。
+        let snapshot = LicenseResolver.resolve(EntitlementInputs(now: days(1)))
+
+        for feature in ProFeature.allCases where feature.supportsFeatureTrial {
+            #expect(ProCard.content(for: snapshot, feature: feature) == nil,
+                    "\(feature.rawValue) 在体验期内弹卡片了")
+            #expect(snapshot.access(to: feature).isAllowed)
+        }
+    }
+
+    @Test("「不限历史」不参与体验 → 免费用户仍然被挡住")
+    func unlimitedHistoryStaysBlocked() {
+        // 它没有入口，用户感知不到「体验开始」，所以它不进入体验那套规则。
+        let snapshot = LicenseResolver.resolve(EntitlementInputs(now: days(1)))
+
+        #expect(!snapshot.access(to: .unlimitedHistory).isAllowed)
+        #expect(ProCard.content(for: snapshot, feature: .unlimitedHistory) != nil)
     }
 
     @Test("从未购买、但试用已经用掉 → 主按钮必须是购买，不能摆一个点不动的试用")
@@ -56,7 +95,7 @@ struct ProCardTests {
         // 这条用例钉的就是"**不能照着 `blockedReason` 反推按钮**"：
         // 照原因推出来的是 `startTrial`，而那个按钮点下去什么都不会发生。
         let inputs = EntitlementInputs(trialStartedAt: nil, hasUsedTrial: true, now: origin)
-        let snapshot = LicenseResolver.resolve(inputs)
+        let snapshot = LicenseResolver.resolve(inputs, featureTrials: exhaustedLedger())
 
         #expect(snapshot.blockedReason == .neverPurchased)
         #expect(!snapshot.canStartTrial)
@@ -160,7 +199,7 @@ struct ProCardTests {
             EntitlementInputs(hasPurchase: true, revocation: .storeRevoked, now: days(30)),
         ]
         for inputs in blocked {
-            let snapshot = LicenseResolver.resolve(inputs)
+            let snapshot = LicenseResolver.resolve(inputs, featureTrials: exhaustedLedger())
             #expect(ProCard.content(for: snapshot, feature: .textRecognition) != nil)
         }
     }
