@@ -191,6 +191,37 @@ screenshot,capture,annotation,markup,OCR,pin,longshot,scrolling,colorpicker,macO
 2. **不要写竞品名**。
 3. **逗号后面别留空格** —— 空格也算字符，一百个字符很紧。
 
+### 2.4 此版本的新增内容（1.1，必填）
+
+> ⚠️ 这一格是 **1.1 才需要**的：1.0 那条轨道已经通过并关闭（2026-11-02 传 1.0 被拒
+> `train version '1.0' is closed` + `must contain a higher version than … [1.0]`）。
+> 写的时候只讲**用户看得见的那一件事**，别把"删了个 entitlement"写进去 ——
+> 那是审核的事，不是用户的事。
+
+中文：
+
+```text
+现在由你决定截图存在哪里。
+第一次按 ⌘S 时会请你选一个文件夹，之后一直存在那儿，不用每次重选；想换位置随时在偏好设置里改。
+其余照旧：区域 / 窗口 / 全屏截图，标注、钉图、识别文字、手动滚动长截图。
+```
+
+English：
+
+```text
+You now choose where your screenshots go.
+The first time you save, Marquee asks for a folder and remembers it — change it any time in Preferences.
+Everything else stays the same: region/window/full-screen capture, annotations, pinning, text recognition, and manual scroll capture.
+```
+
+⚠️ **同时要在审核备注（§6.3）里补一句** —— 1.0 是被 2.4.5(i) 打回的，
+这是整改后的第一次发版，主动说明才不会让审核再去找一遍：
+
+```text
+保存位置不再由 app 预置：第一次保存时通过标准 NSSavePanel 由用户选择，
+跨启动用 security-scoped 书签记住。为此已删除 com.apple.security.assets.pictures.read-write。
+```
+
 ---
 
 ## 3. URL（三格，其中两格必填）

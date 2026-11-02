@@ -248,7 +248,41 @@ fi
 
 APP="$EXPORT_DIR/$APP_NAME.app"
 PKG="$EXPORT_DIR/$APP_NAME.pkg"
-[ -d "$APP" ] || { echo "✗ 导出目录里没有 $APP_NAME.app" >&2; exit 1; }
+
+# ⚠️ macOS 走 `app-store-connect` 导出**只给一个 `.pkg`** —— app 已经被签进 pkg
+# 载荷里，导出目录里**没有**独立的 `.app`（2026-11-02 实测：`** EXPORT SUCCEEDED **`
+# 之后目录里只有 `Marquee.pkg` + `DistributionSummary.plist`，脚本却在下面那句
+# `[ -d "$APP" ]` 上判成"导出失败" —— 包其实是好的）。
+#
+# 所以"要检查的对象"这样找：pkg 载荷里的 app（**优先**）→ 导出目录的 .app。
+# 优先载荷不是风格问题：那才是真正会被传上去的那一份，
+# 而 `-exportArchive` 重新签名 + installer 重新打包这两手都可能把 entitlement 弄丢
+#（2026-10-20 那次就是这么过的，报错只出现在 ASC 上传界面）。
+PAYLOAD_APP=""
+if [ -f "$PKG" ]; then
+  EXPANDED="$BUILD_DIR/pkg-expanded"
+  rm -rf "$EXPANDED"
+  if pkgutil --expand-full "$PKG" "$EXPANDED" 2>/dev/null; then
+    PAYLOAD_APP="$(find "$EXPANDED" -maxdepth 8 -type d -name "$APP_NAME.app" 2>/dev/null | head -1)"
+    [ -n "$PAYLOAD_APP" ] || echo "  ⚠️ .pkg 里找不到 $APP_NAME.app —— 包结构不对。" >&2
+  else
+    echo "  ⚠️ .pkg 解不开（pkgutil --expand-full 失败），没核载荷。" >&2
+  fi
+fi
+
+INSPECT_APP="$PAYLOAD_APP"
+[ -n "$INSPECT_APP" ] || INSPECT_APP="$APP"
+
+if [ ! -d "$INSPECT_APP" ]; then
+  echo "✗ 导出目录里既没有 $APP_NAME.app，也没有能解开的 $APP_NAME.pkg。" >&2
+  ls -la "$EXPORT_DIR" >&2
+  exit 1
+fi
+if [ -n "$PAYLOAD_APP" ]; then
+  echo "  检查对象：.pkg 载荷里的 app（就是会被传上去的那一份）"
+else
+  echo "  检查对象：导出目录里的 .app（没有 .pkg，上传方式见第 5 步）"
+fi
 
 echo "── 4/5 上传前预检（这四条错一条就会被退）─────────────────────"
 #
@@ -257,7 +291,7 @@ echo "── 4/5 上传前预检（这四条错一条就会被退）────
 fail=0
 
 # ① 身份：必须是正式 id
-PACKED_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")
+PACKED_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INSPECT_APP/Contents/Info.plist")
 if [ "$PACKED_ID" != "$EXPECTED_BUNDLE_ID" ]; then
   echo "✗ 身份是「$PACKED_ID」，不是正式 id「$EXPECTED_BUNDLE_ID」。" >&2
   echo "  内购商品挂在 bundle id 下 —— 开发 id 的包在商店里取不到商品。检查归档用的配置。" >&2
@@ -268,11 +302,23 @@ fi
 
 # ② 沙盒必须真的在包里（App Store 的硬要求）
 ENT_FILE="$BUILD_DIR/entitlements.plist"
-codesign -d --entitlements - --xml "$APP" 2>/dev/null \
+codesign -d --entitlements - --xml "$INSPECT_APP" 2>/dev/null \
   | plutil -convert xml1 -o "$ENT_FILE" - 2>/dev/null || true
 
-if plutil -extract com.apple.security.app-sandbox raw "$ENT_FILE" >/dev/null 2>&1; then
-  echo "  ✓ 沙盒：app-sandbox = $(plutil -extract com.apple.security.app-sandbox raw "$ENT_FILE")"
+# ⚠️ 判断 entitlement 必须用 `PlistBuddy`，**不能用 `plutil -extract`**。
+#
+# plutil 的 keypath 把 `.` 当**层级分隔符**，于是
+#   plutil -extract com.apple.security.app-sandbox raw x.plist
+# 被解释成 com → apple → security → app-sandbox 四级，永远"取不到值"。
+# 而取不到值时：②报"没有沙盒"（假否定，包其实是对的）、③报"没有 get-task-allow"
+# （假肯定 —— 它本来该在这里拦住开发签名的包）。
+# 2026-11-02 实测：这两条从写下那天起就没生效过，全绿的输出是假的。
+entitlement() {
+  /usr/libexec/PlistBuddy -c "Print :$1" "$ENT_FILE" 2>/dev/null
+}
+
+if entitlement "com.apple.security.app-sandbox" >/dev/null; then
+  echo "  ✓ 沙盒：app-sandbox = $(entitlement com.apple.security.app-sandbox)"
 else
   echo "✗ 包里没有 com.apple.security.app-sandbox —— App Store 会拒。" >&2
   echo "  多半是归档用了 Release 配置（那条路刻意不带沙盒）。用 MAS 重新归档。" >&2
@@ -281,7 +327,7 @@ fi
 
 # ③ 开发签名的标记不能进包
 #    （它是 Apple Development 签名带进去的；换 Distribution 重新签名后应当消失。）
-if plutil -extract com.apple.security.get-task-allow raw "$ENT_FILE" >/dev/null 2>&1; then
+if entitlement "com.apple.security.get-task-allow" >/dev/null; then
   echo "✗ 包里带着 com.apple.security.get-task-allow —— 上传会被直接拒。" >&2
   echo "  它说明包还是开发签名；检查第 3 步的导出有没有真的重新签名。" >&2
   fail=1
@@ -289,44 +335,29 @@ else
   echo "  ✓ 无 get-task-allow（不是开发签名）"
 fi
 
-# ④ 真正上传的是 `.pkg`，Apple 验的也是**它里面的那一份**。
-#
-#    上面 ② ③ 看的都是导出目录里的 `.app`。理论上同一个东西，但这一路上
-#    至少要过两次手：`-exportArchive` 重新签名、installer 那一步重新打包。
-#    任何一手把 entitlement 丢了，本地看 `.app` 都发现不了 ——
-#    2026-10-20 那次就是这么过的（GUI 归档选了 `Release` scheme，
-#    报错只在 ASC 上传界面出现：`App sandbox not enabled … Marquee.app/Contents/MacOS/Marquee`）。
-#    ⇒ 判据要落在**即将被传上去的那个文件**上。
-if [ -f "$PKG" ]; then
-  EXPANDED="$BUILD_DIR/pkg-expanded"
-  rm -rf "$EXPANDED"
-  if pkgutil --expand-full "$PKG" "$EXPANDED" 2>/dev/null; then
-    PKG_APP="$(find "$EXPANDED" -maxdepth 8 -type d -name "$APP_NAME.app" 2>/dev/null | head -1)"
-    if [ -z "$PKG_APP" ]; then
-      echo "✗ .pkg 里找不到 $APP_NAME.app —— 包结构不对，别上传。" >&2
-      fail=1
-    else
-      PKG_ENT="$BUILD_DIR/pkg-entitlements.plist"
-      codesign -d --entitlements - --xml "$PKG_APP" 2>/dev/null \
-        | plutil -convert xml1 -o "$PKG_ENT" - 2>/dev/null || true
-      if plutil -extract com.apple.security.app-sandbox raw "$PKG_ENT" >/dev/null 2>&1; then
-        echo "  ✓ .pkg 载荷里的 app-sandbox = $(plutil -extract com.apple.security.app-sandbox raw "$PKG_ENT")"
-      else
-        echo "✗ .pkg 载荷里的那份 app **没有** app-sandbox —— 上传必被拒。" >&2
-        echo "  用 MAS 重新归档（GUI：scheme 选 Marquee MAS；命令行：本脚本）。" >&2
-        fail=1
-      fi
-    fi
-  else
-    echo "  ⚠️ .pkg 解不开（pkgutil --expand-full 失败），没核载荷；上面的 .app 检查仍然有效。"
-  fi
-fi
+# ④ 早先这里还有一段"再解一次 .pkg 核载荷"的检查 —— 现在是多余的：
+#    上面 ① ② ③ 的 `$INSPECT_APP` **本来就已经指向 pkg 载荷里的那一份**了
+#    （见第 4 步开头）。留着两处只会让"到底看的是哪个文件"更难说清。
 
 # 附带信息（不参与判断，但排障时有用）
-echo "  · 版本：$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist"))"
-echo "  · 最低系统：$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
-echo "  · 分类：$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$APP/Contents/Info.plist")"
-codesign -dvvv "$APP" 2>&1 | grep -E "^Authority=|^flags=" | sed 's/^/  · /' || true
+PAYLOAD_VER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INSPECT_APP/Contents/Info.plist")
+PAYLOAD_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INSPECT_APP/Contents/Info.plist")
+echo "  · 版本：$PAYLOAD_VER ($PAYLOAD_BUILD)"
+echo "  · 最低系统：$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$INSPECT_APP/Contents/Info.plist")"
+echo "  · 分类：$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$INSPECT_APP/Contents/Info.plist")"
+codesign -dvvv "$INSPECT_APP" 2>&1 | grep -E "^Authority=|^flags=" | sed 's/^/  · /' || true
+
+# ⚠️ 归档里是 3、包里是 4 —— 这不是包坏了，是 **Xcode 导出时自动抬了构建号**
+#（那个号在 ASC 上已经被用掉过一次：被拒的包也占号）。
+# 这件事没法从 project.yml 预知，所以必须打出来：报"我传的是 build 3"然后 ASC 显示 4，
+# 是那种会让人去查错方向的偏差。
+ARCHIVE_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleVersion' "$ARCHIVE/Info.plist" 2>/dev/null || echo "")
+if [ -n "$ARCHIVE_BUILD" ] && [ "$ARCHIVE_BUILD" != "$PAYLOAD_BUILD" ]; then
+  # ⚠️ 变量后面紧跟中文时**必须写 `${}`** —— 全角括号的首字节会被 bash 当成变量名的一部分，
+  # 于 `set -u` 下直接报 `unbound variable`（build.sh 第 144 行踩过同一个坑）。
+  echo "  ⚠️ 构建号被 Xcode 抬过：归档 ${ARCHIVE_BUILD} → 包内 ${PAYLOAD_BUILD}（以包内为准）"
+  echo "     原因通常是 ${ARCHIVE_BUILD} 这个号在 ASC 上已经被占用（被拒的包也占号）。"
+fi
 
 if [ "$fail" != "0" ]; then
   echo "" >&2

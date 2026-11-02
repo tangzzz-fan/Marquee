@@ -210,13 +210,27 @@ targets:
       base:
         PRODUCT_NAME: Marquee
         PRODUCT_BUNDLE_IDENTIFIER: com.tango.marquee
-        MARKETING_VERSION: "1.0"
+        MARKETING_VERSION: "1.1"
         # 构建号：**每次往 ASC 上传都必须更大**，同一个号不能传第二次。
-        # 2026-10-14 那次被拒的是 1.0 (2) ⇒ 这一版是 (3)。
+        #
+        # ⚠️ 还有一层：**版本轨道一旦通过就关闭**。2026-11-02 上传 1.0 (4) 被拒 ——
+        #   `The train version '1.0' is closed for new build submissions` +
+        #   `must contain a higher version than that of the previously approved version [1.0]`。
+        #   意思是 ASC 上已经有一个**审核通过**的 1.0，同一版本号不能再收新构建。
+        #   ⇒ 改了代码要发，`MARKETING_VERSION` 得跟着抬（这次是 1.0 → 1.1）；
+        #     只抬构建号没用，那只是在同一条封闭轨道上撞墙。
+        #
+        # 号从 4 接着往上（1.0 用掉的是 2/3/4）。新轨道理论上可以从 1 重新开始，
+        # 但**全局递增**更不容易看错"我到底传的是哪个" —— 这个文件存在的意义就是防这个。
+        #
         # 它在 `settings.base` 里，所以 GUI 归档（Organizer）读到的就是这里 ——
         # 命令行归档额外能覆盖它，但**别只改命令行那一侧**：
-        # 两边不一致时，出问题的是"你以为是 3、实际传的是 1"。
-        CURRENT_PROJECT_VERSION: "3"
+        # 两边不一致时，出问题的是"你以为是 5、实际传的是 1"。
+        #
+        # ⚠️ 另有一层不确定性：**Xcode 导出时会自己抬构建号**（2026-11-02 实测：归档 3 → 包内 4，
+        #   3 在 ASC 上被占过）。所以"包内实际的号"以 `package-mas.sh` 第 4 步打印的为准，
+        #   不要拿这个字段当预言。
+        CURRENT_PROJECT_VERSION: "5"
         INFOPLIST_FILE: App/Info.plist
         # ⚠️ 必须用**证书**签名，不要用 ad-hoc（"-"）。
         #
