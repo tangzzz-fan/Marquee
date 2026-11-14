@@ -87,6 +87,47 @@ App Review 指南 3.1.1 原文（已核对，`developer.apple.com/app-store/revi
 
 ⚠️ **app 本身必须免费**：买断 ¥36 是那个 IAP 的价格，不是 app 的价格。设成付费 app 会变成"先花 ¥36 买 app，再花 ¥36 解锁"，是两笔钱。
 
+> ### 🔴 2026-11-14 实测：这一格**当时没被执行**，已在架上错了
+>
+> 商店侧实测（`itunes.apple.com/lookup?bundleId=com.tango.marquee` + 商店页 HTML）：
+>
+> | 字段 | 当时的值 |
+> | --- | --- |
+> | 上架 | 已上架 **1.1.0**（首发 2026-10-27） |
+> | app 本体价格 | **¥36.00** / 美区 **$4.99** |
+> | 页面按钮 | `titles: "¥36.00"` · `subtitles: "App 内购买"` · `isFree: false` |
+> | 「App 内购买」区块 | Marquee 7 天试用 ¥0.00 · Marquee Pro ¥36.00 |
+>
+> 也就是说：**IAP 本身是好的、在架上卖**，错的是 app 本体也被标了 ¥36 ⇒
+> 用户先付 ¥36 下载，装完发现滚动截屏带锁，再被要求付 ¥36。
+>
+> 修法不是"改个价格"就完了 —— 先看下一节，**顺序错会把老用户锁在外面**。
+
+### 1.3.1 把付费 app 改成免费 + 内购：**必须按这个顺序**
+
+代码侧的老用户识别已落地（ticket 35：`AppTransaction.originalAppVersion` +
+`BusinessModelChange.appVersion`，见 `Modules/Sources/MarqueeCore/AppPurchase.swift`）。
+ASC 这一侧的顺序是死的：
+
+- [ ] 1. 版本号已抬到 **2.0.0**（`project.yml` 的 `MARKETING_VERSION`，与 `BusinessModelChange.appVersion` 一致 —— 有测试连这两处）
+- [ ] 2. ASC 里 2.0 那个版本设为**手动发布**（不要"自动发布"）
+- [ ] 3. 审核备注写明：本次由付费 app 转为免费 + 内购；转免费之前购买过 app 的用户通过 `AppTransaction` 保留全部权益（审核员会问这个）
+- [ ] 4. 提审 → **等通过**
+- [ ] 5. **先把「价格与销售范围」改成免费**
+- [ ] 6. **再点发布 2.0.0**
+
+**为什么不能反过来**：价格改动不需重新提审、即时生效。若先发布再改价，
+就有一个窗口 —— 新用户免费下载到 2.0.0，而价格还没生效时那批人**被收了 ¥36 却拿到免费版界面**。
+
+**为什么是先改价、后发布**（而不是相反）：`originalAppVersion` 记的是用户**最初下载**的版本。
+早于 2.0 的一律认作老付费用户。先改价的那个窗口里可能有人免费下到 1.1.0 ⇒
+他被判成老用户（白送 Pro，**少收一次**）；反过来则是**付了钱还被锁**（多收一次）。
+两个方向里只能选前者 —— 与本项目「宁可少收一次，不可错拦一次」同一条方向。
+
+⚠️ **改价之后要复查商店页**：按钮应变成「获取」，「App 内购买」区块仍在。
+用 `curl "https://itunes.apple.com/lookup?bundleId=com.tango.marquee&country=cn"` 看
+`price = 0` / `formattedPrice = 免费`，别只看 ASC 后台。
+
 #### ⚠️ 创建时报「名称已被使用」/「SKU 已被使用」
 
 这两个错**同时出现**时，最可能的解释**不是"有人抢了名字"**，而是**记录已经建好了**
@@ -345,7 +386,9 @@ Apple 这条 0 价 IAP 的路径**已知**有这个性质（社区与开发者�
 ```text
 [ ] 1.1 付费应用协议生效 + 银行 + 税务
 [ ] 1.2 App ID com.tango.marquee（Explicit）已开启 In-App Purchase
-[ ] 1.3 app 记录创建；app 本身免费
+[x] 1.3 app 记录创建
+[ ] 1.3b **app 本身改成免费** —— 🔴 上架时漏了这一步（实测 ¥36，1.1.0 在架上）。
+      顺序见 §1.3.1：先提审 2.0.0 → 通过 → **改价** → 再发布。反了会把老付费用户锁在外面
 [ ] 1.4 IAP com.tango.marquee.pro：非消耗型 · ¥36 · 家人共享开 · 中英双语
 [ ] 1.5 IAP com.tango.marquee.pro.trial：非消耗型 · 价格等级 0 · 显示名含「7 天」
 [x] 1.6 两个商品的审核截图 —— `docs/review/iap-review-pro.png` / `-trial.png`（**已生成，带价格**）

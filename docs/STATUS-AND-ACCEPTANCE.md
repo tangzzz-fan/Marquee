@@ -55,7 +55,15 @@
 
 **关键路径**：`01 → 02 → 03 → 07 → 11 → 12` —— 代码**全部走通**。
 **代码侧的前沿**：只剩 `32` 的人工验收 → `33`（MAS 打包提审）；
-`01`–`31` 与 `34` 的实现全部落地，`02`–`28` 里大量条目仍是**已实现、待人工验收**（§3 A–Z 组）。
+`01`–`31`、`34`、`35` 的实现全部落地，`02`–`28` 里大量条目仍是**已实现、待人工验收**（§3 A–Z 组）。
+
+> 🔴 **上架侧的一个已知错误（2026-11-14 查出来，ticket 35）**：正式架上的 1.1.0
+> **app 本体被标了 ¥36**（`price = 36` / `isFree = false`），而 Pro 内购也是 ¥36
+> ⇒ 用户被收两笔。这不是代码问题、IAP 链路完全正常。
+> 修法在 ASC：先把 2.0.0 提审 → 通过 → **改价为免费** → 再发布。
+> **顺序反了会把 10-27 之后花 ¥36 买过 app 的人锁在 Pro 外面**（他们的 `Transaction.all`
+> 里没有 IAP 交易）。代码侧的老用户识别已落地（`AppTransaction.originalAppVersion`），
+> 顺序与验收见 `docs/APP-STORE-CONNECT.md` §1.3.1。
 **实现侧**：2026-10-06 那次核查发现的三件已在 **2026-10-08** 全部补齐（见 §2 E），
 目前**没有已知的"该做但没做"**；剩下的全是人工验收与三条上架线。
 
@@ -102,6 +110,7 @@
 | 29 App 图标与上架元数据 | ✅ 已完成（十档图标 + `NSScreenCaptureUsageDescription` + 分类 + 出口合规） |
 | 30 权益状态机（Core） | ✅ 已完成（18 条测试 + 5 个变异） |
 | 31 StoreKit 2 接入 | 🟡 **代码全部完成**，待真机沙盒验证 | 第一批：商品目录 / 交易事实 / 纯映射 / 权益缓存（22 条）。第二批：Core 接缝 + **启动编排** + `MarqueeStore` 适配器 + `Products.storekit` + `-marqueeEntitlement` 自检入口（27 条）。**界面已收口**：三个入口的锁与升级卡片 · 偏好状态区 · 免费版历史配额（§Z 的 Z9–Z16）。真机沙盒验证前需先在 ASC 建 `com.tango.marquee.pro` |
+| 35 付费转免费：老用户权益保留 | ✅ 代码完成（40 条测试，7 个变异全红） | `AppPurchaseReading` 接缝 + `AppVersion` 数值比较 + `AppPurchaseMapper` + `LicenseResolver` 的 legacy 短路（**压过撤销**）+ 缓存可选字段 + 编排三态（取到/确认不是/取不到）。版本号抬到 **2.0.0**。运行期实测：Dev 构建 `AppTransaction` 抛 `noAccount` 而判定**不被带偏**、缓存里的 legacy 仍判 Pro。**剩 ASC 侧操作**（§1.3.1）与沙盒账号验证 |
 | 34 首次启动引导 | ✅ **已完成**（后加的，未进原台账）| 三步、每步可跳过：它是什么 / 挑一个键 / 屏幕录制权限。判据在 Core：**带 `-marquee` 前缀的自检运行一律不弹**。改键复用 `ShortcutRecorderView`，与偏好页同一套逻辑。验收 Z17–Z21 |
 | 32 沙盒化改造 | 🟡 **进行中**（2026-10-03 起）| 已落：第四个配置 **`MAS`（只有它带沙盒）** + `App/Marquee.entitlements`（**只剩两项**：`app-sandbox` / `files.user-selected.read-write`）+ **`ENABLE_HARDENED_RUNTIME` 四份配置都开** + 沙盒判据 `AppIdentity.isSandboxed` + 自动滚动降级（`AutoScrollGate`）。**2026-10-20 按 2.4.5(i) 返工**：删掉 `assets.pictures.read-write`、取消预置 `~/Pictures`，保存位置改为**用户选一次 + security-scoped 书签**（`UserDefaultsOutputStore.chosenDirectory()`）。**剩**：§3 末尾的 **AA1–AA8** 人工过一遍；数据/偏好迁移**已查明在沙盒内做不到**（见 ticket 32 §2） |
 | 33 MAS 打包与提审 | 🟡 **已提审、被拒一次**（1.0 build 2，2026-10-14，2.4.5(i) 两条 —— 见 `docs/MAS-AND-MONETIZATION.md` §2.6，**代码已按回复返工**）。证书这一关已过（2026-10-08 装上 `Apple Distribution`）—— 剩下的是 `archive → exportArchive(app-store) → 上传预检` 那条脚本路线（脚本现在只有 `method: developer-id`）。⚠️ 上传前必须核一遍包里**没有** `get-task-allow`（`APP-STORE-CONNECT.md` §6.4） |

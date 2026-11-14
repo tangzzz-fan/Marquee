@@ -188,6 +188,7 @@
 | `32-sandboxing.md` | 沙盒化改造（**进行中**） |
 | `33-mas-packaging.md` | MAS 打包与提审路线 |
 | （无 ticket 文件） | 34 首次启动引导 —— 2026-10-03 直接实施，**没建文件**（范围小、判据单一）；范围见本表 §2.1 |
+| `35-paid-to-free-legacy.md` | **付费 app 转免费 + 内购：老付费用户权益保留**（进行中，分支 `feat/paid-to-free-legacy`）。根因是 ASC 上 app 本体被设成 ¥36 与 IAP ¥36 两笔钱；只改价格会把老付费用户锁在 Pro 外面 ⇒ 接 `AppTransaction.originalAppVersion` |
 
 ## 5. 第二批的切法（为什么要这样拆）
 

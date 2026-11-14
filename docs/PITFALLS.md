@@ -2127,3 +2127,74 @@
 
      顺带记下：这条错误的**唯一线索是包名**，它不会说"你选错了 scheme"，
      所以第一次遇到时最自然的反应是去查 entitlement 文件本身 —— 而那个文件是对的。
+
+---
+
+## W. 商业模式变更：付费 app 转免费 + 内购（ticket 35）
+
+205. **IAP 做对了 ≠ 收对了一次钱。app 本体定价与内购定价是两个开关，而它们犯的错不会互相提示。**
+     2026-11-14 实测正式架上的 1.1.0：`price = 36`、`formattedPrice = ¥36.00`、
+     `isFree = false`，同时「App 内购买」区块里躺着 Pro ¥36 —— **同一件东西被标了两次价**。
+     `docs/APP-STORE-CONNECT.md` §1.3 那句「app 本身必须免费」写了，但没被执行，
+     而**没有任何技术手段会告诉你它错了**：内购链路一切正常、能买、能解锁，
+     只是多收了用户一笔 ¥36。
+     ⇒ 判据：**商店侧的每一个定价开关都要有一条"从外部核对"的验法**。
+     内购价格能用 `displayPrice` 在运行期读回来；**app 本体价格读不回来**
+     （`AppTransaction` 不含价格），所以只能查商店页：
+     `curl "https://itunes.apple.com/lookup?bundleId=com.tango.marquee" | jq '.results[0].price'`
+     —— 它必须是 `0`。改完价要复查这一行，别只看 ASC 后台。
+
+206. **`originalAppVersion` 在 macOS 上比的是营销版本号，而 Apple 官方 macOS 样例用的是字符串比较 —— 那一句不能照抄。**
+     Apple《Supporting business model changes…》的 macOS 片段写的是
+     `originalMajorVersion < newBusinessModelMajorVersion`，直接比 `String`。
+     而 `"10" < "2"` 在字典序上**为真** ⇒ 到了 10.x，**新用户会被判成老付费用户**（白送 Pro）。
+     样例只演示思路；实现里必须按 `.` 切段、逐段转 `Int`、缺位补 0。
+     > 另外两条平台事实（文档原文，都会让"照直觉写"错）：
+     > ① macOS 的 `originalAppVersion` 是 **`CFBundleShortVersionString`**，
+     > 其它平台才是 `CFBundleVersion` —— 拿 build 号的规则去比 macOS 的值会全错；
+     > ② **沙盒环境里它恒为 `1.0`** ⇒ 沙盒账号一律被判成老用户。
+     > 后者不是 bug：它正是这条路**唯一能在本地验**的原因。
+
+207. **"取不到 app transaction" 与 "确认他不是老用户" 必须分两档 —— 混成一档，一次断网就永久降级。**
+     `AppTransaction.shared` 会失败：非商店构建（Dev / Developer ID）必失败
+     （实测抛 `StoreKitInternalError.noAccount`），首次取还可能弹一次 Apple ID 登录。
+     若把失败当成 `nil` 并写进缓存，一个老用户在**断网那次启动之后**就被永久降级，
+     而他本机的缓存里本来是有那条事实的。
+     > 三态，缺一不可：**取到且是老用户** → 记下日期；**取到且不是** → 清掉（这是证据）；
+     > **取不到** → 什么都不做，保留上一次已知值。
+     > 这与 126（「商店里没有」只有真的问过才算证据）是同一型：
+     > **"没有证据"不等于"证据说没有"**。
+     > 顺带一条：这条路的失败**不许拖累内购那条路** —— 两者问的是不同的东西
+     > （`Transaction.all` 只有内购，app 本体的购买在 `AppTransaction` 里），
+     > 所以取值要并行、失败要各自消化。日志里能同时看到
+     > 「商店核实成功，0 条交易」与「取不到 app 本体购买」而判定仍是 Pro —— 那是对的。
+
+208. **把 legacy 塞进 `hasPurchase` 会把"认出来"变成"判成已撤销" —— 比不认还糟。**
+     第一版的写法是"老用户就是 `hasPurchase = true`"。但 `StorefrontMapper` 里有：
+     `else if pro.isEmpty, cachedHadPurchase { revocation = .purchaseNotFound }`
+     —— 老用户的 `Transaction.all` **永远是空的**，于是 `knownHadPurchase` 一旦为真，
+     下一轮核实就判成 `.revoked(.purchaseNotFound)`，界面会说「购买已撤销」并要他再买一次。
+     > 正确落法：**独立一位** `legacyPaidPurchaseAt: Date?`，在 `resolve` 里放在**撤销之前**。
+     > 这不是网开一面：app 本体的购买与内购的退款是**两笔不同的交易**，
+     > 用户退了 Pro 的内购不该丢掉当初买 app 得来的权益。
+     > 而顺序上还有一个反例必须留住：这一档的条件**只看 legacy**，
+     > 写成 `hasPurchase || legacy != nil` 会让**内购也压过撤销** ——
+     > 那是既有规则（"退款后缓存里那条交易还躺一会儿"）的回归。
+     > 第一版就是这么写的，被既有测试当场抓红。
+
+209. **缓存里加字段时，"可选"不是代码风格，是**兼容性**。**
+     `Stored` 里新增 `legacyPaidPurchaseAt` 若声明成非可选，1.1.0 写下的那份 JSON
+     会**整体解码失败** ⇒ `load()` 返回 `nil` ⇒ 所有老用户的缓存一夜之间失效。
+     而它不报错、不崩，只是"启动闪了一下锁"。
+     > 判据：**磁盘契约上的每一个新字段都必须是可选的**，并且要有一条
+     > **手写旧格式 JSON** 的测试（不是"存一遍再读回来"—— 那测的是新格式）。
+     > 与 128 配套：先 `#expect(loaded != nil)`，再断言内容。
+
+210. **分界常量与发出去的版本号是两份独立的事实 —— 必须有测试把它们连起来。**
+     `BusinessModelChange.appVersion`（Swift）与 `project.yml` 的 `MARKETING_VERSION`（YAML）
+     脱钩的两个方向都很贵，且都不报错：
+     常量比实际版本**大** ⇒ 所有老用户判不出来 ⇒ **每个付过 ¥36 的人被要求再付一次**；
+     常量比实际版本**小** ⇒ 转免费后下载的人被判成老用户 ⇒ 白送 Pro。
+     > 真机沙盒也验不了：沙盒里 `originalAppVersion` 恒为 `1.0`，无论常量写什么都是"老用户"。
+     > 做法与 134（`Products.storekit` ↔ `StoreCatalog`）同一条：
+     > 测试读 `project.yml`、比常量，并且**先断言真的读到了**（否则空跑通过）。
