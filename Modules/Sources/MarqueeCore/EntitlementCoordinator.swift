@@ -82,6 +82,7 @@ public final class EntitlementCoordinator {
     private let cache: EntitlementCaching
     private let reader: StorefrontReading
     private let purchaser: ProductPurchasing
+    private let appPurchaseReader: AppPurchaseReading
     private let now: @Sendable () -> Date
     private let logger = Logger(subsystem: AppIdentity().logSubsystem, category: "entitlement")
 
@@ -95,16 +96,35 @@ public final class EntitlementCoordinator {
     /// 用来区分"商店明确说被撤销了"与"商店压根没提这笔"。
     private var knownHadPurchase = false
 
+    /// 已知的**app 本体**付费购买日（ticket 35）。
+    ///
+    /// ## 为什么它要跨轮次保留
+    ///
+    /// `AppTransaction.shared` 会失败：非商店构建（Dev / Developer ID）必然失败，
+    /// 首次取还可能弹一次 Apple ID 登录。而"取不到"与"确认他不是老用户"
+    /// **必须分开** —— 把前者当成后者并写进缓存，一个老用户在断网那次启动之后
+    /// 就被**永久降级**了（PITFALLS 126 同型）。
+    ///
+    /// ⇒ 只在**真的取到**时更新它；取不到就沿用上一次的值。
+    private var knownLegacyPaidPurchaseAt: Date?
+
     /// 正在进行的核实。第二次调用**等它**而不是再打一次商店。
     private var inFlightVerification: Task<Void, Never>?
 
+    /// - Parameter appPurchaseReader: app 本体购买的读取器（ticket 35）。
+    ///   默认是 `UnavailableStorefront()` —— 它 throw ⇒ 被当成「不知道」⇒
+    ///   行为与接这条 seam 之前完全一致。**默认值不是"图省事"**：
+    ///   它让既有构造点（以及所有不关心 legacy 的测试）不必改，
+    ///   同时保证"没接上"不会被误读成"确认不是老用户"。
     public init(cache: EntitlementCaching,
                 reader: StorefrontReading,
                 purchaser: ProductPurchasing,
+                appPurchaseReader: AppPurchaseReading = UnavailableStorefront(),
                 now: @escaping @Sendable () -> Date = { Date() }) {
         self.cache = cache
         self.reader = reader
         self.purchaser = purchaser
+        self.appPurchaseReader = appPurchaseReader
         self.now = now
         // 初始就是"还没查"。**不回调** —— 调用方刚构造完，本来就该自己读一次 `snapshot`。
         // 用 `resolve` 生成而不是手搓一份：unknown 那份快照里的每一项
@@ -136,6 +156,9 @@ public final class EntitlementCoordinator {
         }
 
         knownHadPurchase = cached.hasPurchase
+        // 缓存里的 legacy 也是**已知事实**，要接上 —— 否则下一轮核实取不到
+        // app transaction 时，这份已知就丢了（而缓存里明明有）。
+        knownLegacyPaidPurchaseAt = cached.legacyPaidPurchaseAt
         let resolved = LicenseResolver.resolve(cached)
         logger.info("权益：按缓存判定 → \(String(describing: resolved.entitlement), privacy: .public)")
         publish(resolved)
@@ -156,14 +179,26 @@ public final class EntitlementCoordinator {
     }
 
     private func performVerification() async {
+        // 两条事实**并行**取（ticket 35）。
+        //
+        // ⚠️ 它们问的是不同的东西：`Transaction.all` 只有内购，app 本体的购买在
+        // `AppTransaction` 里。串起来写（先 await 内购再 await app transaction）
+        // 会让启动多等一次往返；而更要紧的是**失败不能互相拖累** ——
+        // app transaction 在 Dev / Developer ID 构建里必然失败，
+        // 那时内购那条路仍须正常工作。
+        async let appPurchase = fetchLegacyPaidPurchaseAt()
         do {
             let records = try await reader.fetchRecords()
+            _ = await appPurchase
             let stamp = now()
             verification = .succeeded(at: stamp)
             lastRecords = records
             logger.info("权益：商店核实成功，\(records.count, privacy: .public) 条交易")
             apply(inputs(from: records))
         } catch {
+            // 内购那轮失败 ⇒ 判定不动。但 app transaction 若取到了，那份已知要留下 ——
+            // 它是**独立**的事实，不该因为另一条路失败而被丢掉。
+            _ = await appPurchase
             // ⚠️ 失败**什么都不做**。
             //
             // 这里最容易写错的是"保守地"降级成免费 —— 那正好是最危险的方向：
@@ -171,6 +206,33 @@ public final class EntitlementCoordinator {
             // 于是付过费的人在没网时被锁在外面。而这类 bug 只在离线时出现。
             verification = .failed
             logger.warning("权益：商店核实失败，保留当前判定（\(String(describing: self.snapshot.entitlement), privacy: .public)）")
+        }
+    }
+
+    /// 取 app 本体的购买事实，更新 `knownLegacyPaidPurchaseAt`（ticket 35）。
+    ///
+    /// ## 三态，不是两态 —— 这是本函数存在的全部理由
+    ///
+    /// | 情况 | 做法 |
+    /// | --- | --- |
+    /// | 取到了、版本早于分界线 | 记下原始购买日 |
+    /// | 取到了、版本不早于分界线 | **清掉**（这是证据，说明他不是老用户） |
+    /// | **取不到**（throw） | **什么都不做** —— 保留上一次已知的值 |
+    ///
+    /// 第三行若写成 `knownLegacyPaidPurchaseAt = nil`，一个老用户在断网那次启动之后
+    /// 就被永久降级了。而这类 bug 只在离线 / 非商店构建时出现，测试环境几乎碰不到。
+    ///
+    /// 不抛错给调用方：它的失败**不该影响内购那条路**（两者是独立的事实）。
+    private func fetchLegacyPaidPurchaseAt() async {
+        do {
+            let record = try await appPurchaseReader.fetchAppPurchase()
+            let date = AppPurchaseMapper.legacyPaidPurchaseAt(from: record)
+            knownLegacyPaidPurchaseAt = date
+            logger.info("权益：app 本体购买 → 原始版本 \(record.originalAppVersion, privacy: .public)，认作老付费用户：\(date != nil, privacy: .public)")
+        } catch {
+            // ⚠️ **保留**已知值。这里的沉默是刻意的：它不是"失败被吞掉"，
+            // 而是"这条证据这次没拿到"，与"证据说他没有"是两件事。
+            logger.info("权益：取不到 app 本体购买（\(String(describing: error), privacy: .public)）—— 保留已知判定")
         }
     }
 
@@ -280,9 +342,13 @@ public final class EntitlementCoordinator {
     }
 
     private func inputs(from records: [PurchaseRecord]) -> EntitlementInputs {
-        StorefrontMapper.inputs(from: StorefrontSnapshot(records: records,
-                                                         cachedHadPurchase: knownHadPurchase,
-                                                         now: now()))
+        var value = StorefrontMapper.inputs(from: StorefrontSnapshot(records: records,
+                                                                    cachedHadPurchase: knownHadPurchase,
+                                                                    now: now()))
+        // legacy 是**另一条**事实，不经过 `StorefrontMapper` —— 那个映射只看内购交易。
+        // 在编排这一层合流，两条路各自的规则都留在原处（各自的测试也各自盯）。
+        value.legacyPaidPurchaseAt = knownLegacyPaidPurchaseAt
+        return value
     }
 
     /// 落地一份输入：**先记账、再写缓存、最后通知**。

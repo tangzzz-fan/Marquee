@@ -27,6 +27,32 @@ public protocol StorefrontReading: Sendable {
     func fetchRecords() async throws -> [PurchaseRecord]
 }
 
+// MARK: - 读取 app 本体的购买（接缝）
+
+/// 向商店要**app 本体**那一次购买（ticket 35）。
+///
+/// ## 为什么它与 `StorefrontReading` 分开
+///
+/// 两者问的是**不同的东西**：`Transaction.all` 只有内购交易，
+/// app 本体的购买在 `AppTransaction` 里。合成一个协议会让"app 从付费转免费"
+/// 这件事在接缝上看不出来，而它恰好是最容易被漏掉的一类用户。
+///
+/// 分开的另一个收益：**取值失败互不拖累**。app transaction 在非商店构建里必然失败
+/// （Dev / Developer ID），那时内购那条路仍应正常工作。
+///
+/// ## ⚠️ 拿不到就 **throw**，绝不许返回一个"空的" record
+///
+/// 与 `StorefrontReading` 同一条铁律，但方向更隐蔽：这里"空"会被读成
+/// **「他不是老付费用户」**，而查询失败时恰好也拿不到东西。
+/// 编排那一侧必须把 throw 当成**「不知道」**并保留上一次已知的值 ——
+/// 把失败当成"不是"，一次断网就能把老用户永久降级（PITFALLS 126 同型）。
+public protocol AppPurchaseReading: Sendable {
+
+    /// 取回 app 本体的购买事实。**未校验的也要如实返回**（标 `isVerified: false`），
+    /// 判断留给 Core（PITFALLS 130）。
+    func fetchAppPurchase() async throws -> AppPurchaseRecord
+}
+
 // MARK: - 购买（接缝）
 
 /// 一次购买尝试的结果。
@@ -130,13 +156,19 @@ public enum StorefrontRestoreFailure: Error, Equatable, Sendable {
 /// 存在的意义是让**编排那一半在没有商店的环境里也能跑起来**：
 /// 它的 `fetchRecords` 抛错 ⇒ 编排会走"核实失败"那条路 ⇒ 保留缓存判定。
 /// 于是即便商店整块缺失，付过费的人也不会被锁在外面。
-public struct UnavailableStorefront: StorefrontReading, ProductPurchasing {
+public struct UnavailableStorefront: StorefrontReading, ProductPurchasing, AppPurchaseReading {
 
     public init() {}
 
     public struct StoreUnavailable: Error {}
 
     public func fetchRecords() async throws -> [PurchaseRecord] {
+        throw StoreUnavailable()
+    }
+
+    /// 抛错 ⇒ 编排把它当「不知道」⇒ 保留已知的 legacy 判定。
+    /// **不返回一个空 record** —— 那会被读成「他不是老付费用户」。
+    public func fetchAppPurchase() async throws -> AppPurchaseRecord {
         throw StoreUnavailable()
     }
 

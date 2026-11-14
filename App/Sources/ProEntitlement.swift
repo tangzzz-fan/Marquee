@@ -29,9 +29,13 @@ final class ProEntitlement {
     init() {
         let store = StoreKitStorefront()
         self.store = store
+        // appPurchaseReader 与 reader 是**同一个** StoreKit 适配器，但问的是两件事：
+        // 内购交易 vs app 本体的购买。老付费用户（转免费之前买过 app 的人）
+        // 只有后者才认得出来 —— 见 ticket 35。
         self.coordinator = EntitlementCoordinator(cache: UserDefaultsEntitlementCache(),
                                                   reader: store,
-                                                  purchaser: store)
+                                                  purchaser: store,
+                                                  appPurchaseReader: store)
     }
 
     /// 当前判定。界面只读这一个东西。
@@ -188,6 +192,7 @@ final class ProEntitlement {
         // L10N-EXEMPT-END
 
         let price = await entitlement.displayPrice()
+        let appPurchase = await describeAppPurchase(entitlement.store)
 
         // L10N-EXEMPT-START: `-marqueeEntitlement` 的控制台报告，贴回来给我看
         let report = """
@@ -198,6 +203,8 @@ final class ProEntitlement {
           商店核对    : \(describe(entitlement.verification))
           能开始试用  : \(entitlement.canStartTrial ? "是" : "否")
           商品价格    : \(price ?? "取不到（商品没建 / 商店不可用）")
+          app 本体购买: \(appPurchase)
+          转免费分界  : \(BusinessModelChange.appVersion)（原始版本早于它 ⇒ 老付费用户，永久 Pro）
           缓存文件键  : pro.entitlementCache（域 = \(AppIdentity().bundleIdentifier)）
         \(actionLines.joined(separator: "\n"))
           时间        : \(Date())
@@ -207,6 +214,31 @@ final class ProEntitlement {
         print(report)
         writeProbe(report)
         NSApplication.shared.terminate(nil)
+    }
+
+    /// app 本体购买那一行的报告（ticket 35）。
+    ///
+    /// ## 为什么探针里要有它
+    ///
+    /// 「老付费用户被认出来了吗」这件事**只有真实商店环境验得到**：
+    /// 沙盒里 `originalAppVersion` 恒为 `1.0`，而 Dev 构建根本取不到收据。
+    /// 三种结果在界面上长得一样（都是 Pro 或都是免费），
+    /// 没有这一行就分不清"认出来了"与"恰好因为别的原因解锁"。
+    ///
+    /// ⚠️ 这里**只报告事实**，判定仍由 Core 做 —— 探针不许自己比版本号。
+    private static func describeAppPurchase(_ store: StoreKitStorefront) async -> String {
+        // L10N-EXEMPT-START: 探针报告文案
+        do {
+            let record = try await store.fetchAppPurchase()
+            let legacy = AppPurchaseMapper.legacyPaidPurchaseAt(from: record) != nil
+            return """
+            原始版本 \(record.originalAppVersion) · 购买于 \(record.originalPurchaseDate) · \
+            校验\(record.isVerified ? "通过" : "未通过") · 老付费用户：\(legacy ? "是" : "否")
+            """
+        } catch {
+            return "取不到（非商店构建属正常）—— 保留已知判定。原始错误：\(String(describing: error))"
+        }
+        // L10N-EXEMPT-END
     }
 
     // L10N-EXEMPT-START: 同上 —— 都是探针报告里的说明文字

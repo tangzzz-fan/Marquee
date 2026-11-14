@@ -107,6 +107,49 @@ struct EntitlementCacheTests {
         #expect(loaded?.hasPurchase == true)
     }
 
+    // MARK: - 老付费用户的字段（ticket 35）
+
+    @Test("legacy 购买日要能存下来 —— 否则老付费用户每次重启都要等商店")
+    func legacyPurchaseDateRoundTrips() {
+        let (cache, _) = makeCache()
+        var value = inputs(hasPurchase: false)
+        value.legacyPaidPurchaseAt = origin
+        cache.save(value)
+
+        let loaded = cache.load()
+        #expect(loaded != nil, "先证明确实读出来了，再断言内容（PITFALLS 128）")
+        #expect(loaded?.legacyPaidPurchaseAt == origin)
+        #expect(LicenseResolver.resolve(loaded!).entitlement == .pro(purchasedAt: origin),
+                "读回来就要能立刻判成 Pro —— 这才是缓存的意义")
+    }
+
+    @Test("**旧格式缓存仍能解码** —— 1.1.0 写下的那份里没有新字段")
+    func oldFormatWithoutLegacyFieldStillDecodes() {
+        let (cache, defaults) = makeCache()
+        // 这是 1.1.0 真实写下的形状：五个字段，没有 legacyPaidPurchaseAt。
+        // ⚠️ 新字段若是**非可选**，这份 JSON 会整体解码失败 ⇒ load() 返回 nil ⇒
+        // 所有老用户的缓存一夜之间失效（而它不报错，只是"启动闪一下锁"）。
+        let raw = #"{"hasPurchase":true,"purchasedAt":779000000,"hasUsedTrial":false}"#
+        defaults.set(Data(raw.utf8), forKey: "pro.entitlementCache")
+
+        let loaded = cache.load()
+        #expect(loaded != nil, "旧缓存必须仍能读出来；返回 nil 会让下面的断言空跑")
+        #expect(loaded?.hasPurchase == true)
+        #expect(loaded?.legacyPaidPurchaseAt == nil, "没有这个字段就是「不知道」，不是任何结论")
+    }
+
+    @Test("旧格式 + 没有购买 → 仍是免费，新字段不许把免费用户变成 Pro")
+    func oldFormatFreeUserStaysFree() {
+        let (cache, defaults) = makeCache()
+        let raw = #"{"hasPurchase":false,"hasUsedTrial":false}"#
+        defaults.set(Data(raw.utf8), forKey: "pro.entitlementCache")
+
+        let loaded = cache.load()
+        #expect(loaded != nil)
+        #expect(loaded?.legacyPaidPurchaseAt == nil)
+        #expect(LicenseResolver.resolve(loaded!).entitlement == .free)
+    }
+
     @Test("内存实现与落盘实现行为一致（缓存是接缝，两个实现不能分叉）")
     func inMemoryMatchesDisk() {
         let memory = InMemoryEntitlementCache()
@@ -120,5 +163,19 @@ struct EntitlementCacheTests {
 
         memory.clear()
         #expect(memory.load() == nil)
+    }
+
+    @Test("两个实现对 legacy 字段也一致（ticket 35）")
+    func bothImplementationsCarryLegacyField() {
+        var value = inputs(hasPurchase: false)
+        value.legacyPaidPurchaseAt = origin
+
+        let memory = InMemoryEntitlementCache()
+        memory.save(value)
+        let (disk, _) = makeCache()
+        disk.save(value)
+
+        #expect(memory.load()?.legacyPaidPurchaseAt == disk.load()?.legacyPaidPurchaseAt)
+        #expect(memory.load()?.legacyPaidPurchaseAt == origin)
     }
 }

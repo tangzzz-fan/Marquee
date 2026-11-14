@@ -100,6 +100,12 @@ public struct UserDefaultsEntitlementCache: EntitlementCaching, @unchecked Senda
         var revocation: String?
         var trialStartedAt: Date?
         var hasUsedTrial: Bool
+        /// app 本体那次付费购买的时间（ticket 35）。
+        ///
+        /// ⚠️ **必须是可选的**，这不是风格问题：1.1.0 写下的那份 JSON 里没有这个键。
+        /// 声明成非可选 ⇒ 旧缓存**整体解码失败** ⇒ `load()` 返回 nil ⇒
+        /// 所有老用户的缓存一夜之间失效。而它不报错，只是"启动闪一下锁"。
+        var legacyPaidPurchaseAt: Date?
 
         init(_ inputs: EntitlementInputs) {
             hasPurchase = inputs.hasPurchase
@@ -107,6 +113,7 @@ public struct UserDefaultsEntitlementCache: EntitlementCaching, @unchecked Senda
             revocation = inputs.revocation?.rawValue
             trialStartedAt = inputs.trialStartedAt
             hasUsedTrial = inputs.hasUsedTrial
+            legacyPaidPurchaseAt = inputs.legacyPaidPurchaseAt
         }
 
         func inputs(now: Date) -> EntitlementInputs {
@@ -118,6 +125,7 @@ public struct UserDefaultsEntitlementCache: EntitlementCaching, @unchecked Senda
                               revocation: revocation.flatMap(RevocationReason.init(rawValue:)),
                               trialStartedAt: trialStartedAt,
                               hasUsedTrial: hasUsedTrial,
+                              legacyPaidPurchaseAt: legacyPaidPurchaseAt,
                               now: now)
         }
     }

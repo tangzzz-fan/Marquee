@@ -203,6 +203,22 @@ public struct EntitlementInputs: Equatable, Sendable {
     public var trialStartedAt: Date?
     /// 试用**是否用过**。一旦用过就不能再来一次 —— 这是"一次试用"的落点。
     public var hasUsedTrial: Bool
+    /// **app 本体**那次付费购买的时间（ticket 35）。`nil` = 不是老付费用户。
+    ///
+    /// ## 为什么它是独立一位，而不是并进 `hasPurchase`
+    ///
+    /// 并进去会立刻踩一个陷阱：`StorefrontMapper` 里有一条
+    /// 「商店没有这笔交易、但我们缓存过有购买 ⇒ `.purchaseNotFound`」。
+    /// 老付费用户的 `Transaction.all` **永远是空的**（app 本体的购买不在里面），
+    /// 于是下一轮核实就把他判成**已撤销** —— 比不认他还糟。
+    ///
+    /// 更根本的理由：**app 本体的购买与内购的退款是两笔不同的交易**。
+    /// 用户退了 Pro 的内购，不该丢掉他当初买 app 得来的权益。
+    /// 所以这一位在判定顺序上**压过撤销**（见 `LicenseResolver.resolve`）。
+    ///
+    /// 存**日期**而不是布尔：界面要显示「已购买 · 某日」，用"现在"兜底
+    /// 会让老用户看到「今天购买」——一句可验证的假话。
+    public var legacyPaidPurchaseAt: Date?
     /// "现在"由外部传进来，不在内部读 `Date()` —— 否则天数计算没法测。
     public var now: Date
 
@@ -212,6 +228,7 @@ public struct EntitlementInputs: Equatable, Sendable {
                 revocation: RevocationReason? = nil,
                 trialStartedAt: Date? = nil,
                 hasUsedTrial: Bool = false,
+                legacyPaidPurchaseAt: Date? = nil,
                 now: Date) {
         self.isResolved = isResolved
         self.hasPurchase = hasPurchase
@@ -219,6 +236,7 @@ public struct EntitlementInputs: Equatable, Sendable {
         self.revocation = revocation
         self.trialStartedAt = trialStartedAt
         self.hasUsedTrial = hasUsedTrial
+        self.legacyPaidPurchaseAt = legacyPaidPurchaseAt
         self.now = now
     }
 
@@ -314,11 +332,21 @@ public enum LicenseResolver {
     /// 判定的**顺序就是它的语义**（每一档都在下面的测试里有对应条目）：
     ///
     /// 0. 还没查 → `.unknown`，**放行**。
-    /// 1. 撤销 → `.revoked`。撤销比"有购买"更晚发生，也更权威 ——
+    /// 1. **app 本体买过**（老付费用户）→ `.pro`，**压过撤销**。见下。
+    /// 2. 撤销 → `.revoked`。撤销比"有购买"更晚发生，也更权威 ——
     ///    退款之后收据可能还在缓存里躺一会儿。
-    /// 2. 有购买 → `.pro`，**永不过期**（买断）。
-    /// 3. 试用进行中 → `.trial(daysLeft:)`。
-    /// 4. 其它 → `.free`。
+    /// 3. 有内购 → `.pro`，**永不过期**（买断）。
+    /// 4. 试用进行中 → `.trial(daysLeft:)`。
+    /// 5. 其它 → `.free`。
+    ///
+    /// ## 第 1 档为什么在撤销**之前**（ticket 35）
+    ///
+    /// 不是"网开一面"，而是**两笔不同的交易**：app 本体的购买与内购的退款互不相干。
+    /// 用户退了 Pro 的内购，不该丢掉他当初花 ¥36 买 app 得来的权益。
+    ///
+    /// 而把它放在撤销之后（或并进 `hasPurchase`）的后果很具体：老付费用户的
+    /// `Transaction.all` 永远是空的 ⇒ `StorefrontMapper` 给出 `.purchaseNotFound`
+    /// ⇒ 界面说「购买已撤销」并要他**再买一次**。那比不认他还糟。
     public static func resolve(_ inputs: EntitlementInputs) -> EntitlementSnapshot {
         // 「能不能开始试用」与「现在处于哪一档」是同一次判定的两个面，
         // 在这里一次算清 —— 界面拿到的是完整结果，不用自己再补一次判断。
@@ -326,6 +354,17 @@ public enum LicenseResolver {
 
         guard inputs.isResolved else {
             return EntitlementSnapshot(entitlement: .unknown,
+                                       blockedReason: nil,
+                                       canStartTrial: trialAvailable)
+        }
+
+        // ⚠️ 这一档的条件**只看 legacy**，不许写成 `hasPurchase || legacy != nil`。
+        // 那样会让**内购也压过撤销** —— 而"退款后缓存里那条交易还躺一会儿"是真实处境，
+        // 既有规则「撤销优先于有购买」必须保住。（第一版就是那么写的，被既有测试抓出来了。）
+        if let legacyDate = inputs.legacyPaidPurchaseAt {
+            // 两笔都买过时用**内购**的日期：那是更晚、更具体的那一笔。
+            let date = inputs.hasPurchase ? (inputs.purchasedAt ?? inputs.now) : legacyDate
+            return EntitlementSnapshot(entitlement: .pro(purchasedAt: date),
                                        blockedReason: nil,
                                        canStartTrial: trialAvailable)
         }
@@ -379,8 +418,15 @@ public enum LicenseResolver {
         return Int(ceil(clamped / TrialPolicy.secondsPerDay))
     }
 
-    /// 还能不能开始试用。三个条件缺一不可。
+    /// 还能不能开始试用。四个条件缺一不可。
+    ///
+    /// 最后一条（ticket 35）：老付费用户**不能**试用 —— 他已经付过钱了。
+    /// 不加它，卡片会给一个付过 ¥36 的人显示「7 天免费试用」，
+    /// 他点下去买了一个自己已经有的东西。
     public static func canStartTrial(_ inputs: EntitlementInputs) -> Bool {
-        !inputs.hasUsedTrial && !inputs.hasPurchase && inputs.revocation == nil
+        !inputs.hasUsedTrial
+            && !inputs.hasPurchase
+            && inputs.revocation == nil
+            && inputs.legacyPaidPurchaseAt == nil
     }
 }

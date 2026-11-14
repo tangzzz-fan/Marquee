@@ -14,7 +14,7 @@ import StoreKit
 /// 未校验的交易也要如实记下来（带 `isVerified: false`），
 /// 让"未校验一律不算数"那条规则留在 Core 那一处 —— 在这里提前过滤掉，
 /// 就等于把同一条规则写了两遍，而两处迟早会分叉。
-public actor StoreKitStorefront: StorefrontReading, ProductPurchasing {
+public actor StoreKitStorefront: StorefrontReading, ProductPurchasing, AppPurchaseReading {
 
     private let logger = Logger(subsystem: AppIdentity().logSubsystem, category: "store")
     private var updatesTask: Task<Void, Never>?
@@ -52,6 +52,47 @@ public actor StoreKitStorefront: StorefrontReading, ProductPurchasing {
             }
         }
         return records
+    }
+
+    // MARK: - app 本体的购买（ticket 35）
+
+    /// 取 **app 本体**那一次购买（不是内购）。
+    ///
+    /// ## 为什么必须有这条路
+    ///
+    /// app 从付费下载改成免费 + 内购之后，**已经花 ¥36 买过 app 的人**在
+    /// `Transaction.all` 里是空的 —— 那个序列只含内购交易。
+    /// 不读 `AppTransaction` 就会把他锁在 Pro 外面，还要他再付一次。
+    ///
+    /// ## 这里的纪律
+    ///
+    /// **只翻译，不判断**（PITFALLS 130）：
+    /// - `unverified` 也如实返回、标 `isVerified: false` ⇒ 「未校验一律不算数」
+    ///   那条规则留在 Core（`AppPurchaseMapper`），它有脱机测试盯着；
+    /// - **不在这里比版本号**。"哪一版之前算老用户"是判定，写在这里就只有真机测得到；
+    /// - 取不到就**让错误抛出去**。绝不返回一个"空的" record ——
+    ///   那会被 Core 读成「确认他不是老用户」，而事实是「这次没问到」。
+    ///
+    /// ⚠️ 非商店构建（Dev / Developer ID）里这一步**必然失败**，那是预期的：
+    /// 编排会把它当「不知道」并保留已知判定，内购那条路不受影响。
+    public func fetchAppPurchase() async throws -> AppPurchaseRecord {
+        let result = try await AppTransaction.shared
+        switch result {
+        case .verified(let transaction):
+            logger.info("商店：app 本体购买 → 原始版本 \(transaction.originalAppVersion, privacy: .public)")
+            return Self.appPurchaseRecord(from: transaction, isVerified: true)
+        case .unverified(let transaction, let error):
+            // 与 fetchRecords 里那条完全同构：记下来、标 false，不在这里丢。
+            logger.warning("商店：app 本体的收据未通过校验（\(String(describing: error), privacy: .public)）")
+            return Self.appPurchaseRecord(from: transaction, isVerified: false)
+        }
+    }
+
+    private static func appPurchaseRecord(from transaction: AppTransaction,
+                                          isVerified: Bool) -> AppPurchaseRecord {
+        AppPurchaseRecord(originalAppVersion: transaction.originalAppVersion,
+                          originalPurchaseDate: transaction.originalPurchaseDate,
+                          isVerified: isVerified)
     }
 
     // MARK: - 监听交易更新
